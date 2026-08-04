@@ -40,39 +40,44 @@ public class SchemaInspector(string connectionString)
         return columns;
     }
 
-    // Returns the sorted column sets covered by unique constraints (or the
-    // unique index backing the primary key, if included) on the table.
+    // Returns the sorted column sets covered by unique indexes on the table --
+    // this includes both `ALTER TABLE ... ADD CONSTRAINT ... UNIQUE` constraints
+    // and bare `CREATE UNIQUE INDEX` indexes (e.g. from EF's HasIndex().IsUnique()),
+    // since Postgres only records the former in information_schema.table_constraints.
     public async Task<List<string[]>> GetUniqueConstraintColumnSetsAsync(string table)
     {
         await using var connection = await OpenAsync();
         await using var cmd = new NpgsqlCommand(
             """
-            select tc.constraint_name, kcu.column_name
-            from information_schema.table_constraints tc
-            join information_schema.key_column_usage kcu
-              on tc.constraint_name = kcu.constraint_name and tc.table_schema = kcu.table_schema
-            where tc.table_schema = 'public' and tc.table_name = @table and tc.constraint_type = 'UNIQUE'
-            order by kcu.ordinal_position
+            select i.relname as index_name, a.attname as column_name
+            from pg_index ix
+            join pg_class t on t.oid = ix.indrelid
+            join pg_class i on i.oid = ix.indexrelid
+            join pg_namespace n on n.oid = t.relnamespace
+            cross join lateral unnest(ix.indkey::int2[]) with ordinality as k(attnum, ord)
+            join pg_attribute a on a.attrelid = t.oid and a.attnum = k.attnum
+            where n.nspname = 'public' and t.relname = @table and ix.indisunique
+            order by i.relname, k.ord
             """,
             connection);
         cmd.Parameters.AddWithValue("table", table);
 
-        var byConstraint = new Dictionary<string, List<string>>();
+        var byIndex = new Dictionary<string, List<string>>();
         await using var reader = await cmd.ExecuteReaderAsync();
         while (await reader.ReadAsync())
         {
-            var constraintName = reader.GetString(0);
+            var indexName = reader.GetString(0);
             var columnName = reader.GetString(1);
-            if (!byConstraint.TryGetValue(constraintName, out var columns))
+            if (!byIndex.TryGetValue(indexName, out var columns))
             {
                 columns = [];
-                byConstraint[constraintName] = columns;
+                byIndex[indexName] = columns;
             }
 
             columns.Add(columnName);
         }
 
-        return byConstraint.Values.Select(c => c.ToArray()).ToList();
+        return byIndex.Values.Select(c => c.ToArray()).ToList();
     }
 
     public async Task<string?> GetForeignKeyTargetTableAsync(string table, string column)

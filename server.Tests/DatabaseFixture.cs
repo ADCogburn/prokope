@@ -23,17 +23,32 @@ public class DatabaseFixture : IAsyncLifetime
     {
         await _container.StartAsync();
 
-        _factory = new WebApplicationFactory<Program>().WithWebHostBuilder(builder =>
-            builder.ConfigureAppConfiguration((_, config) =>
-                config.AddInMemoryCollection(new Dictionary<string, string?>
-                {
-                    ["ConnectionStrings:Default"] = ConnectionString,
-                })));
+        try
+        {
+            _factory = new WebApplicationFactory<Program>().WithWebHostBuilder(builder =>
+                builder.ConfigureAppConfiguration((_, config) =>
+                    config.AddInMemoryCollection(new Dictionary<string, string?>
+                    {
+                        ["ConnectionStrings:Default"] = ConnectionString,
+                    })));
 
-        // Accessing Services forces the host to build, which runs Program.cs's
-        // startup path -- including db.Database.Migrate() -- against the
-        // container above.
-        using var scope = _factory.Services.CreateScope();
+            // Accessing Services forces the host to build, which runs Program.cs's
+            // startup path -- including db.Database.Migrate() -- against the
+            // container above.
+            using var scope = _factory.Services.CreateScope();
+        }
+        catch
+        {
+            // xUnit does not reliably call DisposeAsync on a fixture whose
+            // InitializeAsync faulted, so tear down whatever we started ourselves.
+            if (_factory is not null)
+            {
+                await _factory.DisposeAsync();
+            }
+
+            await _container.DisposeAsync();
+            throw;
+        }
     }
 
     public async Task DisposeAsync()
