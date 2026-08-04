@@ -19,6 +19,9 @@ obj/
 *.user
 *.suo
 
+# --- Scratch notes (agent/local, not for commit) ---
+.scratch/
+
 # --- Editors / OS ---
 .vscode/*
 !.vscode/extensions.json
