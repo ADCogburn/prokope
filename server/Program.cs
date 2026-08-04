@@ -33,6 +33,11 @@ builder.Services.AddScoped<ISessionTokenService, JwtSessionTokenService>();
 builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
     .AddJwtBearer(options =>
     {
+        // Without this, the token handler remaps the short "sub" claim to
+        // the long ClaimTypes.NameIdentifier URI on the way in, and
+        // AuthEndpoints.cs's principal.FindFirstValue(JwtRegisteredClaimNames.Sub)
+        // silently finds nothing.
+        options.MapInboundClaims = false;
         options.TokenValidationParameters = new TokenValidationParameters
         {
             ValidateIssuer = true,
