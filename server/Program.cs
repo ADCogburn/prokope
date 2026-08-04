@@ -1,4 +1,7 @@
+using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.IdentityModel.Tokens;
+using server.Auth;
 using server.Data;
 
 var builder = WebApplication.CreateBuilder(args);
@@ -11,6 +14,31 @@ builder.Services.AddDbContext<AppDbContext>(options => options
     .UseNpgsql(builder.Configuration.GetConnectionString("Default"))
     .UseSnakeCaseNamingConvention());
 
+builder.Services.AddScoped<IGoogleTokenVerifier, GoogleTokenVerifier>();
+builder.Services.AddScoped<ISessionTokenService, JwtSessionTokenService>();
+
+// Read eagerly (like Cors:SpaOrigins below) rather than inside the options
+// callback below, so a missing Jwt:SigningKey fails the app at startup
+// instead of surfacing as a 500 on the first authenticated request.
+var jwtIssuer = JwtConfiguration.Issuer(builder.Configuration);
+var jwtSigningKey = JwtConfiguration.SigningKey(builder.Configuration);
+
+builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
+    .AddJwtBearer(options =>
+    {
+        options.TokenValidationParameters = new TokenValidationParameters
+        {
+            ValidateIssuer = true,
+            ValidIssuer = jwtIssuer,
+            ValidateAudience = true,
+            ValidAudience = jwtIssuer,
+            ValidateLifetime = true,
+            ValidateIssuerSigningKey = true,
+            IssuerSigningKey = jwtSigningKey,
+        };
+    });
+builder.Services.AddAuthorization();
+
 // Comma-separated so the production origin can be set as a single Railway
 // env var (Cors__SpaOrigins), the same pattern #10 already uses for the
 // Postgres connection string and OAuth credentials. No AllowAnyOrigin: only
@@ -22,7 +50,7 @@ var spaOrigins = (builder.Configuration["Cors:SpaOrigins"] ?? string.Empty)
 builder.Services.AddCors(options => options.AddPolicy("SpaOrigin", policy => policy
     .WithOrigins(spaOrigins)
     .WithMethods("GET", "POST")
-    .WithHeaders("Content-Type")
+    .WithHeaders("Content-Type", "Authorization")
     .AllowCredentials()));
 
 var app = builder.Build();
@@ -44,6 +72,11 @@ if (app.Environment.IsDevelopment())
 app.UseHttpsRedirection();
 
 app.UseCors("SpaOrigin");
+
+app.UseAuthentication();
+app.UseAuthorization();
+
+app.MapAuthEndpoints();
 
 // Confirms the process is up (and, since Migrate() above already ran, that
 // migrations succeeded) -- for the docker build+run check and a one-time
