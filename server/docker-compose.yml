@@ -1,0 +1,30 @@
+# Runs the same image Railway builds and deploys (server/Dockerfile) against
+# a real local Postgres, so `docker build` + `docker run` behaves like the
+# Railway deployment per #15. Used by scripts/docker-smoke-test.sh and for
+# manual local verification.
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: prokope
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 2s
+      timeout: 2s
+      retries: 15
+
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      ConnectionStrings__Default: Host=postgres;Database=prokope;Username=postgres;Password=postgres
+      PORT: 8080
+    ports:
+      - "8080:8080"
