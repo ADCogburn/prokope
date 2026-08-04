@@ -4,6 +4,10 @@
 
 Issues, specs, and PRs live in GitHub (ADCogburn/prokope), via the `gh` CLI. See `docs/agents/issue-tracker.md`.
 
+### Triage labels
+
+Default canonical role names, used as-is. See `docs/agents/triage-labels.md`.
+
 ### Domain docs
 
 Single-context layout — `CONTEXT.md` + `docs/adr/` at the repo root. See `docs/agents/domain.md`.
