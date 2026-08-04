@@ -14,18 +14,14 @@ builder.Services.AddDbContext<AppDbContext>(options => options
     .UseNpgsql(builder.Configuration.GetConnectionString("Default"))
     .UseSnakeCaseNamingConvention());
 
-// Read eagerly (like Cors:SpaOrigins below) rather than inside a request
-// path, so missing config fails the app at startup instead of surfacing
-// as a 500 -- or, for Google:ClientId, silently skipping audience
-// validation -- on the first authenticated request.
+// Read eagerly (like Cors:SpaOrigins below) so a missing Google:ClientId
+// fails the app at startup instead of GoogleTokenVerifier silently
+// skipping audience validation on the first sign-in attempt.
 var googleClientId = builder.Configuration["Google:ClientId"];
 if (string.IsNullOrEmpty(googleClientId))
 {
     throw new InvalidOperationException("Google:ClientId is not configured.");
 }
-
-var jwtIssuer = JwtConfiguration.Issuer(builder.Configuration);
-var jwtSigningKey = JwtConfiguration.SigningKey(builder.Configuration);
 
 builder.Services.AddScoped<IGoogleTokenVerifier>(_ => new GoogleTokenVerifier(googleClientId));
 builder.Services.AddScoped<ISessionTokenService, JwtSessionTokenService>();
@@ -38,15 +34,25 @@ builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
         // AuthEndpoints.cs's principal.FindFirstValue(JwtRegisteredClaimNames.Sub)
         // silently finds nothing.
         options.MapInboundClaims = false;
+
+        // Deliberately read here (inside the options callback), not eagerly
+        // above like Google:ClientId: this callback runs lazily, once the
+        // host's configuration is fully built -- including a test host's
+        // ConfigureAppConfiguration overrides (see DatabaseFixture). Reading
+        // eagerly here previously validated tokens against the *default*
+        // Jwt:SigningKey/Issuer while JwtSessionTokenService (resolved via
+        // DI, seeing the fully-built config) signed tokens with the test
+        // fixture's override -- a silent mismatch that failed every token.
+        var issuer = JwtConfiguration.Issuer(builder.Configuration);
         options.TokenValidationParameters = new TokenValidationParameters
         {
             ValidateIssuer = true,
-            ValidIssuer = jwtIssuer,
+            ValidIssuer = issuer,
             ValidateAudience = true,
-            ValidAudience = jwtIssuer,
+            ValidAudience = issuer,
             ValidateLifetime = true,
             ValidateIssuerSigningKey = true,
-            IssuerSigningKey = jwtSigningKey,
+            IssuerSigningKey = JwtConfiguration.SigningKey(builder.Configuration),
         };
     });
 builder.Services.AddAuthorization();
