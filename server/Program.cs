@@ -14,14 +14,21 @@ builder.Services.AddDbContext<AppDbContext>(options => options
     .UseNpgsql(builder.Configuration.GetConnectionString("Default"))
     .UseSnakeCaseNamingConvention());
 
-builder.Services.AddScoped<IGoogleTokenVerifier, GoogleTokenVerifier>();
-builder.Services.AddScoped<ISessionTokenService, JwtSessionTokenService>();
+// Read eagerly (like Cors:SpaOrigins below) rather than inside a request
+// path, so missing config fails the app at startup instead of surfacing
+// as a 500 -- or, for Google:ClientId, silently skipping audience
+// validation -- on the first authenticated request.
+var googleClientId = builder.Configuration["Google:ClientId"];
+if (string.IsNullOrEmpty(googleClientId))
+{
+    throw new InvalidOperationException("Google:ClientId is not configured.");
+}
 
-// Read eagerly (like Cors:SpaOrigins below) rather than inside the options
-// callback below, so a missing Jwt:SigningKey fails the app at startup
-// instead of surfacing as a 500 on the first authenticated request.
 var jwtIssuer = JwtConfiguration.Issuer(builder.Configuration);
 var jwtSigningKey = JwtConfiguration.SigningKey(builder.Configuration);
+
+builder.Services.AddScoped<IGoogleTokenVerifier>(_ => new GoogleTokenVerifier(googleClientId));
+builder.Services.AddScoped<ISessionTokenService, JwtSessionTokenService>();
 
 builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
     .AddJwtBearer(options =>

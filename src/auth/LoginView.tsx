@@ -29,18 +29,40 @@ export function LoginView() {
   const { login } = useAuth()
   const buttonRef = useRef<HTMLDivElement>(null)
 
+  // index.html loads the GIS script with async/defer, so it may not have
+  // finished loading by the time this effect first runs -- poll briefly
+  // rather than silently no-opping and leaving the teacher with no button.
   useEffect(() => {
-    if (!window.google || !buttonRef.current) {
-      return
+    let cancelled = false
+    let intervalId: ReturnType<typeof setInterval> | undefined
+
+    function renderGoogleButton() {
+      if (!window.google || !buttonRef.current) {
+        return false
+      }
+
+      window.google.accounts.id.initialize({
+        client_id: GOOGLE_CLIENT_ID,
+        callback: (response) => {
+          void login(response.credential)
+        },
+      })
+      window.google.accounts.id.renderButton(buttonRef.current, { theme: 'outline', size: 'large' })
+      return true
     }
 
-    window.google.accounts.id.initialize({
-      client_id: GOOGLE_CLIENT_ID,
-      callback: (response) => {
-        void login(response.credential)
-      },
-    })
-    window.google.accounts.id.renderButton(buttonRef.current, { theme: 'outline', size: 'large' })
+    if (!renderGoogleButton()) {
+      intervalId = setInterval(() => {
+        if (cancelled || renderGoogleButton()) {
+          clearInterval(intervalId)
+        }
+      }, 100)
+    }
+
+    return () => {
+      cancelled = true
+      clearInterval(intervalId)
+    }
   }, [login])
 
   return (

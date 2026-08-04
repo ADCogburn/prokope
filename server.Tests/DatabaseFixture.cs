@@ -31,6 +31,11 @@ public class DatabaseFixture : IAsyncLifetime
     public const string JwtSigningKey = "test-fixture-signing-key-not-used-anywhere-else-0123456789";
     public const string JwtIssuer = "prokope-api-test";
 
+    // Program.cs fails fast at startup if Google:ClientId is unset (see
+    // #18); the real GoogleTokenVerifier is replaced by the stub below, so
+    // this value is never actually used to validate a token audience.
+    public const string GoogleClientId = "test-fixture-google-client-id";
+
     public HttpClient CreateClient() => _factory!.CreateClient();
 
     public async Task InitializeAsync()
@@ -48,6 +53,7 @@ public class DatabaseFixture : IAsyncLifetime
                         ["Cors:SpaOrigins"] = AllowedSpaOrigin,
                         ["Jwt:SigningKey"] = JwtSigningKey,
                         ["Jwt:Issuer"] = JwtIssuer,
+                        ["Google:ClientId"] = GoogleClientId,
                     }));
 
                 // The real GoogleTokenVerifier calls out to Google's network;
