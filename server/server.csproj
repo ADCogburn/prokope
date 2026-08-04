@@ -4,6 +4,10 @@
     <TargetFramework>net10.0</TargetFramework>
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
+    <!-- Microsoft.AspNetCore.OpenApi's own build targets set this too, but
+         Railway's Docker build wasn't picking that up transitively (CS9137
+         on `dotnet publish`); declare it explicitly as a safety net. -->
+    <InterceptorsNamespaces>$(InterceptorsNamespaces);Microsoft.AspNetCore.OpenApi.Generated</InterceptorsNamespaces>
   </PropertyGroup>
 
   <ItemGroup>
