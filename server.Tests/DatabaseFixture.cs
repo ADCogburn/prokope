@@ -19,6 +19,10 @@ public class DatabaseFixture : IAsyncLifetime
 
     public string ConnectionString => _container.GetConnectionString();
 
+    // Fixed rather than read from appsettings.Development.json, so CorsTests
+    // doesn't depend on which environment WebApplicationFactory happens to boot.
+    public const string AllowedSpaOrigin = "http://localhost:5173";
+
     public HttpClient CreateClient() => _factory!.CreateClient();
 
     public async Task InitializeAsync()
@@ -32,6 +36,7 @@ public class DatabaseFixture : IAsyncLifetime
                     config.AddInMemoryCollection(new Dictionary<string, string?>
                     {
                         ["ConnectionStrings:Default"] = ConnectionString,
+                        ["Cors:SpaOrigins"] = AllowedSpaOrigin,
                     })));
 
             // Accessing Services forces the host to build, which runs Program.cs's
