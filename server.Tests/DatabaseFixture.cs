@@ -41,12 +41,7 @@ public class DatabaseFixture : IAsyncLifetime
         {
             // xUnit does not reliably call DisposeAsync on a fixture whose
             // InitializeAsync faulted, so tear down whatever we started ourselves.
-            if (_factory is not null)
-            {
-                await _factory.DisposeAsync();
-            }
-
-            await _container.DisposeAsync();
+            await DisposeAsync();
             throw;
         }
     }
