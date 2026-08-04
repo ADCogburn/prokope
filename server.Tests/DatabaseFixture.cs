@@ -19,6 +19,8 @@ public class DatabaseFixture : IAsyncLifetime
 
     public string ConnectionString => _container.GetConnectionString();
 
+    public HttpClient CreateClient() => _factory!.CreateClient();
+
     public async Task InitializeAsync()
     {
         await _container.StartAsync();

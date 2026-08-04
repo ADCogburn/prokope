@@ -29,6 +29,11 @@ if (app.Environment.IsDevelopment())
 
 app.UseHttpsRedirection();
 
+// Confirms the process is up (and, since Migrate() above already ran, that
+// migrations succeeded) -- for the docker build+run check and a one-time
+// post-deploy manual hit. No auth, no dependency checks: see #15.
+app.MapGet("/health", () => Results.Ok());
+
 var summaries = new[]
 {
     "Freezing", "Bracing", "Chilly", "Cool", "Mild", "Warm", "Balmy", "Hot", "Sweltering", "Scorching"
