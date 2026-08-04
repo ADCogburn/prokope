@@ -1,0 +1,11 @@
+namespace server.Data.Entities;
+
+public class Subject
+{
+    public Guid Id { get; set; }
+    public Guid ClassId { get; set; }
+    public required string Name { get; set; }
+    public int Position { get; set; }
+    public DateTimeOffset CreatedAt { get; set; }
+    public DateTimeOffset? DeletedAt { get; set; }
+}
