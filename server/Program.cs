@@ -1,4 +1,7 @@
+using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.IdentityModel.Tokens;
+using server.Auth;
 using server.Data;
 
 var builder = WebApplication.CreateBuilder(args);
@@ -11,6 +14,49 @@ builder.Services.AddDbContext<AppDbContext>(options => options
     .UseNpgsql(builder.Configuration.GetConnectionString("Default"))
     .UseSnakeCaseNamingConvention());
 
+// Read eagerly (like Cors:SpaOrigins below) so a missing Google:ClientId
+// fails the app at startup instead of GoogleTokenVerifier silently
+// skipping audience validation on the first sign-in attempt.
+var googleClientId = builder.Configuration["Google:ClientId"];
+if (string.IsNullOrEmpty(googleClientId))
+{
+    throw new InvalidOperationException("Google:ClientId is not configured.");
+}
+
+builder.Services.AddScoped<IGoogleTokenVerifier>(_ => new GoogleTokenVerifier(googleClientId));
+builder.Services.AddScoped<ISessionTokenService, JwtSessionTokenService>();
+
+builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
+    .AddJwtBearer(options =>
+    {
+        // Without this, the token handler remaps the short "sub" claim to
+        // the long ClaimTypes.NameIdentifier URI on the way in, and
+        // AuthEndpoints.cs's principal.FindFirstValue(JwtRegisteredClaimNames.Sub)
+        // silently finds nothing.
+        options.MapInboundClaims = false;
+
+        // Deliberately read here (inside the options callback), not eagerly
+        // above like Google:ClientId: this callback runs lazily, once the
+        // host's configuration is fully built -- including a test host's
+        // ConfigureAppConfiguration overrides (see DatabaseFixture). Reading
+        // eagerly here previously validated tokens against the *default*
+        // Jwt:SigningKey/Issuer while JwtSessionTokenService (resolved via
+        // DI, seeing the fully-built config) signed tokens with the test
+        // fixture's override -- a silent mismatch that failed every token.
+        var issuer = JwtConfiguration.Issuer(builder.Configuration);
+        options.TokenValidationParameters = new TokenValidationParameters
+        {
+            ValidateIssuer = true,
+            ValidIssuer = issuer,
+            ValidateAudience = true,
+            ValidAudience = issuer,
+            ValidateLifetime = true,
+            ValidateIssuerSigningKey = true,
+            IssuerSigningKey = JwtConfiguration.SigningKey(builder.Configuration),
+        };
+    });
+builder.Services.AddAuthorization();
+
 // Comma-separated so the production origin can be set as a single Railway
 // env var (Cors__SpaOrigins), the same pattern #10 already uses for the
 // Postgres connection string and OAuth credentials. No AllowAnyOrigin: only
@@ -22,7 +68,7 @@ var spaOrigins = (builder.Configuration["Cors:SpaOrigins"] ?? string.Empty)
 builder.Services.AddCors(options => options.AddPolicy("SpaOrigin", policy => policy
     .WithOrigins(spaOrigins)
     .WithMethods("GET", "POST")
-    .WithHeaders("Content-Type")
+    .WithHeaders("Content-Type", "Authorization")
     .AllowCredentials()));
 
 var app = builder.Build();
@@ -44,6 +90,11 @@ if (app.Environment.IsDevelopment())
 app.UseHttpsRedirection();
 
 app.UseCors("SpaOrigin");
+
+app.UseAuthentication();
+app.UseAuthorization();
+
+app.MapAuthEndpoints();
 
 // Confirms the process is up (and, since Migrate() above already ran, that
 // migrations succeeded) -- for the docker build+run check and a one-time
