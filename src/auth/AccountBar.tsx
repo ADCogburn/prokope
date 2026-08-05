@@ -1,4 +1,5 @@
 import { useAuth } from './useAuth'
+import { ThemeToggle } from '../theme/ThemeToggle'
 import './AccountBar.css'
 
 /** Persistent corner affordance so a signed-in teacher can always see who they are and sign out. */
@@ -12,6 +13,7 @@ export function AccountBar() {
   return (
     <div className="account-bar">
       {user.isDemo && <span className="account-bar__demo-badge">Demo Mode</span>}
+      <ThemeToggle />
       <span className="account-bar__email">{user.email}</span>
       <button type="button" onClick={logout}>
         Log out

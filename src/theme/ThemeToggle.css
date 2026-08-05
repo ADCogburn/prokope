@@ -1,0 +1,47 @@
+.theme-toggle {
+  display: inline-flex;
+  gap: 2px;
+  padding: 2px;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  background: var(--code-bg);
+}
+
+/* Hidden by default post-first-use; revealed by the ancestor .account-bar
+   (defined in ../auth/AccountBar.css) on hover or keyboard focus-within, so
+   tabbing to a hidden option still reveals it. */
+.theme-toggle--reveal-on-hover {
+  opacity: 0;
+  transform: scale(0.92);
+  pointer-events: none;
+  transition:
+    opacity 0.15s ease,
+    transform 0.15s ease;
+}
+
+.account-bar:hover .theme-toggle--reveal-on-hover,
+.account-bar:focus-within .theme-toggle--reveal-on-hover {
+  opacity: 1;
+  transform: scale(1);
+  pointer-events: auto;
+}
+
+.theme-toggle__option {
+  font: inherit;
+  font-size: 11px;
+  padding: 3px 8px;
+  border: none;
+  border-radius: 999px;
+  background: transparent;
+  color: var(--text);
+  cursor: pointer;
+
+  &:hover {
+    color: var(--text-h);
+  }
+}
+
+.theme-toggle__option--active {
+  background: var(--accent-bg);
+  color: var(--accent);
+}

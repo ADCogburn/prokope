@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react'
 import { API_URL } from '../config'
 import { resetLocalStore } from '../sync'
+import { resetThemeForNewDemo } from '../theme/storage'
 import { AUTH_TOKEN_STORAGE_KEY } from './token'
 import { AuthContext, type AuthStatus, type AuthUser } from './authContextInstance'
 
@@ -97,6 +98,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     // See #65's login() comment -- every demo click mints a fresh user_id
     // server-side, making this path for it, not just an edge case.
     await resetLocalStore()
+    // Every fresh demo should look like a first-time visitor, not inherit
+    // the previous demo session's theme choice (#50).
+    resetThemeForNewDemo()
     localStorage.setItem(AUTH_TOKEN_STORAGE_KEY, body.token)
     setUser({ userId: body.userId, email: body.email, isDemo: body.isDemo })
     setStatus('authenticated')
