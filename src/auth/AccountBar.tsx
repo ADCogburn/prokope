@@ -1,4 +1,4 @@
-import { useAuth } from './AuthContext'
+import { useAuth } from './useAuth'
 import './AccountBar.css'
 
 /** Persistent corner affordance so a signed-in teacher can always see who they are and sign out. */

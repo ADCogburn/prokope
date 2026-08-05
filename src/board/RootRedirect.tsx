@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { Navigate } from 'react-router-dom'
-import { useAuth } from '../auth/AuthContext'
+import { useAuth } from '../auth/useAuth'
 import { getClassForUser, listSubjectsForClass } from '../db'
 import type { ClassRow } from '../db/schema'
 import { ClassSetup } from './ClassSetup'

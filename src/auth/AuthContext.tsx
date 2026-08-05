@@ -1,14 +1,7 @@
-import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from 'react'
+import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react'
 import { API_URL } from '../config'
 import { AUTH_TOKEN_STORAGE_KEY } from './token'
-
-export type AuthStatus = 'loading' | 'authenticated' | 'unauthenticated'
-
-export interface AuthUser {
-  userId: string
-  email: string
-  isDemo: boolean
-}
+import { AuthContext, type AuthStatus, type AuthUser } from './authContextInstance'
 
 interface MeResponse {
   userId: string
@@ -22,16 +15,6 @@ interface AuthResponse {
   email: string
   isDemo: boolean
 }
-
-interface AuthContextValue {
-  status: AuthStatus
-  user: AuthUser | null
-  login: (credential: string) => Promise<void>
-  loginAsDemo: () => Promise<void>
-  logout: () => void
-}
-
-const AuthContext = createContext<AuthContextValue | null>(null)
 
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [status, setStatus] = useState<AuthStatus>('loading')
@@ -123,12 +106,4 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   )
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>
-}
-
-export function useAuth(): AuthContextValue {
-  const context = useContext(AuthContext)
-  if (!context) {
-    throw new Error('useAuth must be used within an AuthProvider')
-  }
-  return context
 }
