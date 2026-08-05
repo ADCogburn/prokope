@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it } from 'vitest'
-import { render, screen, waitFor } from '@testing-library/react'
+import { fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { MemoryRouter, Route, Routes } from 'react-router-dom'
 import { ClassBoardRoute } from './ClassBoardRoute'
 import { db } from '../db/schema'
@@ -16,6 +16,7 @@ function renderRoute(initialPath: string) {
         <Route path="/" element={<div>Root stub</div>} />
         <Route path="/class/:classId" element={<ClassBoardRoute />} />
         <Route path="/class/:classId/subject/:subjectId" element={<ClassBoardRoute />} />
+        <Route path="/class/:classId/subject/:subjectId/curriculum" element={<div>Curriculum stub</div>} />
       </Routes>
     </MemoryRouter>,
   )
@@ -66,5 +67,17 @@ describe('ClassBoardRoute', () => {
     renderRoute(`/class/${classRow.id}/subject/${subjectB.id}`)
 
     await waitFor(() => expect(screen.getByText('Reading')).toBeInTheDocument())
+  })
+
+  it('navigates to that subject\'s curriculum route when a zero-lessons panel\'s "+" link is clicked', async () => {
+    const classRow = await createClass({ user_id: 'user-1', name: 'Homeroom' })
+    const subject = await createSubject({ class_id: classRow.id, name: 'Math', position: 0 })
+
+    renderRoute(`/class/${classRow.id}/subject/${subject.id}`)
+
+    await waitFor(() => expect(screen.getByRole('button', { name: '+ Add lessons' })).toBeInTheDocument())
+    fireEvent.click(screen.getByRole('button', { name: '+ Add lessons' }))
+
+    await waitFor(() => expect(screen.getByText('Curriculum stub')).toBeInTheDocument())
   })
 })
