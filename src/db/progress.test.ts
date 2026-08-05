@@ -1,7 +1,14 @@
 import { afterEach, describe, expect, it } from 'vitest'
 import { db } from './schema'
-import { getProgress, upsertProgressReview, upsertProgressStep } from './progress'
+import {
+  advanceProgress,
+  getProgress,
+  listProgressForStudents,
+  upsertProgressReview,
+  upsertProgressStep,
+} from './progress'
 import { getClientId } from './clientId'
+import { createLesson } from './lessons'
 
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 
@@ -109,5 +116,97 @@ describe('upsertProgressReview', () => {
       .equals(['student-1', 'subject-1'])
       .toArray()
     expect(rows).toHaveLength(1)
+  })
+})
+
+describe('listProgressForStudents', () => {
+  it('returns progress rows for the given students, across subjects', async () => {
+    const a = await upsertProgressStep('student-1', 'subject-1', { unit: 1, lesson_in_unit: 1 })
+    const b = await upsertProgressStep('student-1', 'subject-2', { unit: 1, lesson_in_unit: 1 })
+    await upsertProgressStep('student-2', 'subject-1', { unit: 1, lesson_in_unit: 1 })
+
+    const rows = await listProgressForStudents(['student-1'])
+
+    expect(rows.map((r) => r.id).sort()).toEqual([a.id, b.id].sort())
+  })
+
+  it('returns an empty array when no student in the list has any progress', async () => {
+    expect(await listProgressForStudents(['student-1'])).toEqual([])
+  })
+
+  it('returns an empty array for an empty student list', async () => {
+    await upsertProgressStep('student-1', 'subject-1', { unit: 1, lesson_in_unit: 1 })
+
+    expect(await listProgressForStudents([])).toEqual([])
+  })
+})
+
+describe('advanceProgress', () => {
+  function lessonInput(overrides: Partial<Parameters<typeof createLesson>[0]> = {}) {
+    return {
+      subject_id: 'subject-1',
+      unit: 1,
+      lesson_in_unit: 1,
+      title: 'Untitled lesson',
+      description: '',
+      ...overrides,
+    }
+  }
+
+  it('advances a student with no progress row yet to the first lesson in the subject', async () => {
+    const first = await createLesson(lessonInput({ title: 'Fractions' }))
+
+    const result = await advanceProgress('student-1', 'subject-1')
+
+    expect(result).toEqual(first)
+    const progress = await getProgress('student-1', 'subject-1')
+    expect(progress?.step_unit).toBe(1)
+    expect(progress?.step_lesson_in_unit).toBe(1)
+  })
+
+  it('advances a student to the next lesson after their current step', async () => {
+    await createLesson(lessonInput({ title: 'Fractions' }))
+    const second = await createLesson(lessonInput({ lesson_in_unit: 2, title: 'Decimals' }))
+    await upsertProgressStep('student-1', 'subject-1', { unit: 1, lesson_in_unit: 1 })
+
+    const result = await advanceProgress('student-1', 'subject-1')
+
+    expect(result).toEqual(second)
+    const progress = await getProgress('student-1', 'subject-1')
+    expect(progress?.step_unit).toBe(1)
+    expect(progress?.step_lesson_in_unit).toBe(2)
+  })
+
+  it('crosses a unit boundary the same way getNextLessonInSubject does', async () => {
+    await createLesson(lessonInput({ lesson_in_unit: 9, title: 'Last of unit 1' }))
+    const firstOfUnit2 = await createLesson(lessonInput({ unit: 2, title: 'First of unit 2' }))
+    await upsertProgressStep('student-1', 'subject-1', { unit: 1, lesson_in_unit: 9 })
+
+    const result = await advanceProgress('student-1', 'subject-1')
+
+    expect(result).toEqual(firstOfUnit2)
+  })
+
+  it('returns undefined and leaves progress untouched when already at the last lesson', async () => {
+    await createLesson(lessonInput({ title: 'Only lesson' }))
+    const before = await upsertProgressStep('student-1', 'subject-1', { unit: 1, lesson_in_unit: 1 })
+
+    const result = await advanceProgress('student-1', 'subject-1')
+
+    expect(result).toBeUndefined()
+    const after = await getProgress('student-1', 'subject-1')
+    expect(after).toEqual(before)
+  })
+
+  it('does not touch review/review_hlc/review_client_id when advancing', async () => {
+    await createLesson(lessonInput({ title: 'Fractions' }))
+    await createLesson(lessonInput({ lesson_in_unit: 2, title: 'Decimals' }))
+    await upsertProgressStep('student-1', 'subject-1', { unit: 1, lesson_in_unit: 1 })
+    await upsertProgressReview('student-1', 'subject-1', true)
+
+    await advanceProgress('student-1', 'subject-1')
+
+    const after = await getProgress('student-1', 'subject-1')
+    expect(after?.review).toBe(true)
   })
 })

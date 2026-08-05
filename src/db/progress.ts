@@ -1,10 +1,19 @@
-import { db, type ProgressRow } from './schema'
+import { db, type LessonRow, type ProgressRow } from './schema'
 import { getClientId } from './clientId'
 import { nextHlc } from './hlc'
+import { getNextLessonInSubject } from './lessons'
 
 export interface ProgressStep {
   unit: number
   lesson_in_unit: number
+}
+
+/** A progress row's current step, or the {0, 0} sentinel for "not started yet" if there's no row. */
+export function positionOf(progress: ProgressRow | undefined): ProgressStep {
+  if (!progress) {
+    return { unit: 0, lesson_in_unit: 0 }
+  }
+  return { unit: progress.step_unit, lesson_in_unit: progress.step_lesson_in_unit }
 }
 
 async function findProgressRow(
@@ -114,4 +123,34 @@ export async function upsertProgressReview(
 
   await db.progress.put(row)
   return row
+}
+
+export async function listProgressForStudents(studentIds: string[]): Promise<ProgressRow[]> {
+  if (studentIds.length === 0) {
+    return []
+  }
+  return db.progress.where('student_id').anyOf(studentIds).toArray()
+}
+
+/**
+ * Advances a student to the next lesson in a subject, per #22's addendum:
+ * "next" is whatever getNextLessonInSubject resolves to from the student's
+ * current step (or {0, 0} if they have no progress row yet). Returns the
+ * lesson advanced to, or undefined -- leaving progress untouched -- when
+ * the student is already on the subject's last lesson.
+ */
+export async function advanceProgress(
+  studentId: string,
+  subjectId: string,
+): Promise<LessonRow | undefined> {
+  const current = await findProgressRow(studentId, subjectId)
+  const after = positionOf(current)
+
+  const next = await getNextLessonInSubject(subjectId, after)
+  if (!next) {
+    return undefined
+  }
+
+  await upsertProgressStep(studentId, subjectId, { unit: next.unit, lesson_in_unit: next.lesson_in_unit })
+  return next
 }

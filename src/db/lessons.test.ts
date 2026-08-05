@@ -1,6 +1,14 @@
 import { afterEach, describe, expect, it } from 'vitest'
 import { db } from './schema'
-import { createLesson, deleteLesson, getLessonByPosition, listLessonsForSubject } from './lessons'
+import {
+  createLesson,
+  deleteLesson,
+  findNextLesson,
+  getLessonByPosition,
+  getNextLessonInSubject,
+  listLessonsForSubject,
+  listLessonsForSubjects,
+} from './lessons'
 
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 
@@ -73,6 +81,128 @@ describe('getLessonByPosition', () => {
 
   it('returns undefined when no lesson matches', async () => {
     expect(await getLessonByPosition('subject-1', 9, 9)).toBeUndefined()
+  })
+})
+
+describe('getNextLessonInSubject', () => {
+  it('returns the lesson with the smallest (unit, lesson_in_unit) tuple greater than the given step', async () => {
+    await createLesson(lessonInput({ unit: 1, lesson_in_unit: 1 }))
+    const current = await createLesson(lessonInput({ unit: 1, lesson_in_unit: 2 }))
+    const next = await createLesson(lessonInput({ unit: 1, lesson_in_unit: 3 }))
+    await createLesson(lessonInput({ unit: 2, lesson_in_unit: 1 }))
+
+    const found = await getNextLessonInSubject('subject-1', {
+      unit: current.unit,
+      lesson_in_unit: current.lesson_in_unit,
+    })
+
+    expect(found).toEqual(next)
+  })
+
+  it('crosses from a unit\'s last lesson into the next unit\'s first lesson with no special-casing', async () => {
+    const lastOfUnit1 = await createLesson(lessonInput({ unit: 1, lesson_in_unit: 9 }))
+    const firstOfUnit2 = await createLesson(lessonInput({ unit: 2, lesson_in_unit: 1 }))
+
+    const found = await getNextLessonInSubject('subject-1', {
+      unit: lastOfUnit1.unit,
+      lesson_in_unit: lastOfUnit1.lesson_in_unit,
+    })
+
+    expect(found).toEqual(firstOfUnit2)
+  })
+
+  it('returns undefined when the given step is the last lesson in the subject', async () => {
+    const last = await createLesson(lessonInput({ unit: 3, lesson_in_unit: 1 }))
+
+    const found = await getNextLessonInSubject('subject-1', {
+      unit: last.unit,
+      lesson_in_unit: last.lesson_in_unit,
+    })
+
+    expect(found).toBeUndefined()
+  })
+
+  it('returns undefined when the subject has no lessons at all', async () => {
+    expect(await getNextLessonInSubject('subject-1', { unit: 0, lesson_in_unit: 0 })).toBeUndefined()
+  })
+
+  it('treats {0, 0} (no progress yet) as before every real lesson', async () => {
+    const first = await createLesson(lessonInput({ unit: 1, lesson_in_unit: 1 }))
+
+    const found = await getNextLessonInSubject('subject-1', { unit: 0, lesson_in_unit: 0 })
+
+    expect(found).toEqual(first)
+  })
+
+  it('skips a soft-deleted lesson', async () => {
+    const current = await createLesson(lessonInput({ unit: 1, lesson_in_unit: 1 }))
+    const deleted = await createLesson(lessonInput({ unit: 1, lesson_in_unit: 2 }))
+    await deleteLesson(deleted.id)
+    const nextLive = await createLesson(lessonInput({ unit: 1, lesson_in_unit: 3 }))
+
+    const found = await getNextLessonInSubject('subject-1', {
+      unit: current.unit,
+      lesson_in_unit: current.lesson_in_unit,
+    })
+
+    expect(found).toEqual(nextLive)
+  })
+
+  it('scopes to the given subject, ignoring lessons in other subjects', async () => {
+    await createLesson(lessonInput({ subject_id: 'subject-2', unit: 1, lesson_in_unit: 1 }))
+
+    const found = await getNextLessonInSubject('subject-1', { unit: 0, lesson_in_unit: 0 })
+
+    expect(found).toBeUndefined()
+  })
+})
+
+describe('listLessonsForSubjects', () => {
+  it('returns lessons across the given subjects, sorted per subject-then-position', async () => {
+    const a = await createLesson(lessonInput({ subject_id: 'subject-1', unit: 1, lesson_in_unit: 1 }))
+    const b = await createLesson(lessonInput({ subject_id: 'subject-2', unit: 1, lesson_in_unit: 1 }))
+    await createLesson(lessonInput({ subject_id: 'subject-3', unit: 1, lesson_in_unit: 1 }))
+
+    const rows = await listLessonsForSubjects(['subject-1', 'subject-2'])
+
+    expect(rows.map((r) => r.id).sort()).toEqual([a.id, b.id].sort())
+  })
+
+  it('excludes soft-deleted rows', async () => {
+    const kept = await createLesson(lessonInput({ subject_id: 'subject-1' }))
+    const removed = await createLesson(lessonInput({ subject_id: 'subject-1', lesson_in_unit: 2 }))
+    await deleteLesson(removed.id)
+
+    const rows = await listLessonsForSubjects(['subject-1'])
+
+    expect(rows.map((r) => r.id)).toEqual([kept.id])
+  })
+
+  it('returns an empty array for an empty subject list', async () => {
+    await createLesson(lessonInput())
+
+    expect(await listLessonsForSubjects([])).toEqual([])
+  })
+})
+
+describe('findNextLesson', () => {
+  it('finds the smallest (unit, lesson_in_unit) tuple greater than the given step, scoped to one subject', async () => {
+    const own = await createLesson(lessonInput({ subject_id: 'subject-1', unit: 1, lesson_in_unit: 2 }))
+    await createLesson(lessonInput({ subject_id: 'subject-2', unit: 1, lesson_in_unit: 1 }))
+    const all = await listLessonsForSubjects(['subject-1', 'subject-2'])
+
+    const found = findNextLesson(all, 'subject-1', { unit: 0, lesson_in_unit: 0 })
+
+    expect(found).toEqual(own)
+  })
+
+  it('does not cross into another subject even when its lessons sort earlier', async () => {
+    await createLesson(lessonInput({ subject_id: 'subject-2', unit: 1, lesson_in_unit: 1 }))
+    const all = await listLessonsForSubjects(['subject-1', 'subject-2'])
+
+    const found = findNextLesson(all, 'subject-1', { unit: 0, lesson_in_unit: 0 })
+
+    expect(found).toBeUndefined()
   })
 })
 

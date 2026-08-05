@@ -24,6 +24,15 @@ export async function getClass(id: string): Promise<ClassRow | undefined> {
   return row && row.deleted_at === null ? row : undefined
 }
 
+/** MVP is single-class-per-teacher (per #12): at most one live row per user_id. */
+export async function getClassForUser(userId: string): Promise<ClassRow | undefined> {
+  return db.class
+    .where('user_id')
+    .equals(userId)
+    .filter((row) => row.deleted_at === null)
+    .first()
+}
+
 export async function deleteClass(id: string): Promise<void> {
   const now = new Date().toISOString()
   await db.class.update(id, { deleted_at: now, updated_at: now })
