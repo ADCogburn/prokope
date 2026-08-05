@@ -1,17 +1,9 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useMemo } from 'react'
 import { Navigate, useNavigate, useParams } from 'react-router-dom'
 import { useLiveQuery } from 'dexie-react-hooks'
-import {
-  getClass,
-  listLessonsForSubjects,
-  listProgressForStudents,
-  listStudentsForClass,
-  listSubjectsForClass,
-} from '../db'
-import type { ClassRow } from '../db/schema'
+import { listLessonsForSubjects, listProgressForStudents, listStudentsForClass, listSubjectsForClass } from '../db'
 import { ClassBoard } from './ClassBoard'
-
-type ClassLookupStatus = 'loading' | 'found' | 'not-found'
+import { useClassLookup } from './useClassLookup'
 
 /**
  * `/class/:classId` and `/class/:classId/subject/:subjectId`, per #12/#22.
@@ -23,25 +15,7 @@ export function ClassBoardRoute() {
   const { classId = '', subjectId } = useParams<{ classId: string; subjectId?: string }>()
   const navigate = useNavigate()
 
-  const [classStatus, setClassStatus] = useState<ClassLookupStatus>('loading')
-  const [classRow, setClassRow] = useState<ClassRow>()
-
-  useEffect(() => {
-    let cancelled = false
-    setClassStatus('loading')
-    getClass(classId).then((row) => {
-      if (cancelled) return
-      if (row) {
-        setClassRow(row)
-        setClassStatus('found')
-      } else {
-        setClassStatus('not-found')
-      }
-    })
-    return () => {
-      cancelled = true
-    }
-  }, [classId])
+  const { status: classStatus, classRow } = useClassLookup(classId)
 
   const subjects = useLiveQuery(() => listSubjectsForClass(classId), [classId])
   const students = useLiveQuery(() => listStudentsForClass(classId), [classId])
