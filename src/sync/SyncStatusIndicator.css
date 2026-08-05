@@ -1,0 +1,47 @@
+.sync-status {
+  position: fixed;
+  right: 16px;
+  bottom: 16px;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 12px;
+  border-radius: 999px;
+  font-size: 14px;
+  color: var(--text-h);
+  background: var(--code-bg);
+  border: 1px solid var(--border);
+  box-shadow: var(--shadow);
+  z-index: 100;
+}
+
+.sync-status__dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: currentcolor;
+  flex-shrink: 0;
+}
+
+.sync-status--synced .sync-status__dot {
+  color: var(--success);
+}
+
+.sync-status--syncing .sync-status__dot {
+  color: var(--accent);
+  animation: sync-status-pulse 1s ease-in-out infinite;
+}
+
+.sync-status--not-connected .sync-status__dot {
+  color: var(--error);
+}
+
+@keyframes sync-status-pulse {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.3;
+  }
+}
