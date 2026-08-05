@@ -141,33 +141,6 @@
   min-width: 200px;
 }
 
-.class-board__dots {
-  position: absolute;
-  bottom: 16px;
-  left: 50%;
-  transform: translateX(-50%);
-  display: flex;
-  gap: 6px;
-}
-
-.class-board__dot {
-  width: 8px;
-  height: 8px;
-  border-radius: 999px;
-  border: none;
-  padding: 0;
-  background: var(--border);
-  cursor: pointer;
-  transition:
-    width 0.2s,
-    background-color 0.2s;
-}
-
-.class-board__dot--active {
-  width: 18px;
-  background: var(--accent);
-}
-
 .progress-cell {
   display: flex;
   align-items: center;
