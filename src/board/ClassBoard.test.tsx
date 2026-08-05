@@ -300,4 +300,34 @@ describe('ClassBoard', () => {
     expect(screen.getByText('Reading', { selector: '.subject-reorder__chip-name' })).toBeInTheDocument()
     expect(screen.queryByRole('button', { name: 'Go to Math' })).not.toBeInTheDocument()
   })
+
+  it('wires up the book icon: menu -> SubjectPickerModal -> curriculum navigation, closing the modal', async () => {
+    const classRow = await createClass({ user_id: 'user-1', name: 'Homeroom' })
+    const subjectA = await createSubject({ class_id: classRow.id, name: 'Math', position: 0 })
+    const subjectB = await createSubject({ class_id: classRow.id, name: 'Reading', position: 1 })
+    const onCurriculumNavigate = vi.fn()
+
+    renderBoard({
+      classRow,
+      subjects: [subjectA, subjectB],
+      students: [],
+      progress: [],
+      lessons: [],
+      activeSubjectId: subjectA.id,
+      onCurriculumNavigate,
+    })
+
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
+
+    fireEvent.click(screen.getByRole('button', { name: 'Add lessons menu' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Add lessons' }))
+
+    const dialog = screen.getByRole('dialog', { name: 'Add lessons' })
+    expect(dialog).toBeInTheDocument()
+
+    fireEvent.click(screen.getByRole('button', { name: 'Reading' }))
+
+    expect(onCurriculumNavigate).toHaveBeenCalledWith(subjectB.id)
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
+  })
 })

@@ -5,6 +5,7 @@ import { useCarouselDrag } from './useCarouselDrag'
 import { ProgressCell } from './ProgressCell'
 import { InlineAddCard } from './InlineAddCard'
 import { SubjectReorder } from './SubjectReorder'
+import { SubjectPickerModal } from './SubjectPickerModal'
 import './ClassBoard.css'
 
 const PANEL_GAP = 24
@@ -101,6 +102,8 @@ export function ClassBoard({
   const [containerWidth, setContainerWidth] = useState(0)
   const panelRefs = useRef(new Map<string, HTMLDivElement>())
   const panelRects = useRef(new Map<string, DOMRect>())
+  const [bookMenuOpen, setBookMenuOpen] = useState(false)
+  const [pickerOpen, setPickerOpen] = useState(false)
 
   useEffect(() => {
     const el = wrapRef.current
@@ -203,9 +206,45 @@ export function ClassBoard({
   return (
     <div className="class-board">
       <header className="class-board__header">
-        <h1>{classRow.name}</h1>
+        <div className="class-board__header-row">
+          <h1>{classRow.name}</h1>
+          <div className="class-board__book">
+            <button
+              type="button"
+              aria-label="Add lessons menu"
+              className="class-board__book-button"
+              onClick={() => setBookMenuOpen((open) => !open)}
+            >
+              <span aria-hidden="true">📖</span>
+            </button>
+            {bookMenuOpen && (
+              <div className="class-board__book-menu">
+                <button
+                  type="button"
+                  className="class-board__book-menu-item"
+                  onClick={() => {
+                    setBookMenuOpen(false)
+                    setPickerOpen(true)
+                  }}
+                >
+                  Add lessons
+                </button>
+              </div>
+            )}
+          </div>
+        </div>
         <p>Drag the subject cards left or right to spin through the wheel.</p>
       </header>
+      {pickerOpen && (
+        <SubjectPickerModal
+          subjects={subjects}
+          onSelectSubject={(subjectId) => {
+            setPickerOpen(false)
+            onCurriculumNavigate(subjectId)
+          }}
+          onClose={() => setPickerOpen(false)}
+        />
+      )}
       <div className="class-board__body">
         <div className="class-board__students">
           {students.map((student) => {
