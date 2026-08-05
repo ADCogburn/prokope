@@ -66,7 +66,7 @@ function renderBoard(props: {
 }
 
 describe('ClassBoard', () => {
-  it('shows an empty-state message when the class has no subjects', async () => {
+  it('shows only the add-subject card when the class has no subjects', async () => {
     const classRow = await createClass({ user_id: 'user-1', name: 'Homeroom' })
 
     renderBoard({
@@ -78,7 +78,79 @@ describe('ClassBoard', () => {
       activeSubjectId: undefined,
     })
 
-    expect(screen.getByText('No subjects yet.')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: '+ Add subject' })).toBeInTheDocument()
+    expect(screen.queryByText('No subjects yet.')).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /^Go to/ })).not.toBeInTheDocument()
+  })
+
+  it('creates the first subject from the zero-subjects add-card and persists it', async () => {
+    const classRow = await createClass({ user_id: 'user-1', name: 'Homeroom' })
+
+    renderBoard({
+      classRow,
+      subjects: [],
+      students: [],
+      progress: [],
+      lessons: [],
+      activeSubjectId: undefined,
+    })
+
+    fireEvent.click(screen.getByRole('button', { name: '+ Add subject' }))
+    fireEvent.change(screen.getByLabelText('Subject name'), { target: { value: 'Science' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Add' }))
+
+    await waitFor(async () => {
+      const rows = await db.subject.where('class_id').equals(classRow.id).toArray()
+      expect(rows).toHaveLength(1)
+      expect(rows[0]).toMatchObject({ name: 'Science', position: 0 })
+    })
+  })
+
+  it('creates a new subject from the trailing add-card, appended at the end', async () => {
+    const classRow = await createClass({ user_id: 'user-1', name: 'Homeroom' })
+    const subjectA = await createSubject({ class_id: classRow.id, name: 'Math', position: 0 })
+    const subjectB = await createSubject({ class_id: classRow.id, name: 'Reading', position: 1 })
+
+    renderBoard({
+      classRow,
+      subjects: [subjectA, subjectB],
+      students: [],
+      progress: [],
+      lessons: [],
+      activeSubjectId: subjectA.id,
+    })
+
+    fireEvent.click(screen.getByRole('button', { name: '+ Add subject' }))
+    fireEvent.change(screen.getByLabelText('Subject name'), { target: { value: 'Science' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Add' }))
+
+    await waitFor(async () => {
+      const rows = await db.subject.where('class_id').equals(classRow.id).toArray()
+      const science = rows.find((row) => row.name === 'Science')
+      expect(science?.position).toBe(2)
+    })
+  })
+
+  it('cancelling the add-subject form collapses it back to the "+" card without creating a subject', async () => {
+    const classRow = await createClass({ user_id: 'user-1', name: 'Homeroom' })
+    const subject = await createSubject({ class_id: classRow.id, name: 'Math', position: 0 })
+
+    renderBoard({
+      classRow,
+      subjects: [subject],
+      students: [],
+      progress: [],
+      lessons: [],
+      activeSubjectId: subject.id,
+    })
+
+    fireEvent.click(screen.getByRole('button', { name: '+ Add subject' }))
+    fireEvent.change(screen.getByLabelText('Subject name'), { target: { value: 'Science' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Cancel' }))
+
+    expect(screen.getByRole('button', { name: '+ Add subject' })).toBeInTheDocument()
+    const rows = await db.subject.where('class_id').equals(classRow.id).toArray()
+    expect(rows).toHaveLength(1)
   })
 
   it("renders the active subject's panel with each student's progress cell", async () => {
