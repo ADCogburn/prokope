@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { useAuth } from './AuthContext'
+import './LoginView.css'
 
 // The Google client ID is a public, non-secret, build-time value set in
 // Cloudflare Pages' env config, per #10's per-provider secrets convention.
@@ -80,14 +81,25 @@ export function LoginView() {
   }, [login])
 
   return (
-    <div>
-      <h1>Sign in</h1>
-      <p>Sign in with your Google account to continue.</p>
-      <div ref={buttonRef} data-testid="google-signin-button" />
-      <button type="button" onClick={() => void handleExploreAsGuest()} disabled={demoPending}>
-        Explore as Guest
-      </button>
-      {demoError && <p role="alert">{demoError}</p>}
+    <div className="login-view">
+      <h1 className="login-view__title">Prokope</h1>
+      <p className="login-view__tagline">Know where every student stands</p>
+      <div className="login-view__actions">
+        <div ref={buttonRef} data-testid="google-signin-button" />
+        <button
+          type="button"
+          className="login-view__guest-button"
+          onClick={() => void handleExploreAsGuest()}
+          disabled={demoPending}
+        >
+          Explore as Guest
+        </button>
+        {demoError && (
+          <p role="alert" className="login-view__error">
+            {demoError}
+          </p>
+        )}
+      </div>
     </div>
   )
 }
