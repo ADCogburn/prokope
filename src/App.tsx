@@ -3,6 +3,7 @@ import reactLogo from './assets/react.svg'
 import viteLogo from './assets/vite.svg'
 import heroImg from './assets/hero.png'
 import { useAuth } from './auth/AuthContext'
+import { SyncStatusIndicator } from './sync/SyncStatusIndicator'
 import './App.css'
 
 function App() {
@@ -11,6 +12,7 @@ function App() {
 
   return (
     <>
+      <SyncStatusIndicator />
       <section id="center">
         <div className="hero">
           <img src={heroImg} className="base" width="170" height="179" alt="" />
