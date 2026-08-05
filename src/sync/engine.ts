@@ -1,6 +1,7 @@
 import { AUTH_TOKEN_STORAGE_KEY } from '../auth/token'
 import type { ProgressRow } from '../db'
 import {
+  clearAllTables,
   deleteRawProgress,
   getRawProgressByPair,
   listRowsUpdatedSince,
@@ -12,7 +13,7 @@ import {
 } from '../db/sync'
 import { pullChanges, pushChanges, type SyncBatch } from './api'
 import { mergeProgressRows } from './mergeProgress'
-import { getPullWatermark, getPushWatermark, setPullWatermark, setPushWatermark } from './watermarks'
+import { clearWatermarks, getPullWatermark, getPushWatermark, setPullWatermark, setPushWatermark } from './watermarks'
 
 /**
  * Calls #7's push/pull endpoints and applies the response against the local
@@ -79,6 +80,22 @@ function batchWatermark(batch: SyncBatch, floor: string): string {
 
 function getToken(): string | null {
   return localStorage.getItem(AUTH_TOKEN_STORAGE_KEY)
+}
+
+/**
+ * Wipes the local Dexie tables and both sync watermarks. The local store has
+ * no concept of *which* signed-in user its rows belong to (reads scope by
+ * user_id -- see #46's "decoy row" fix in db/classes.ts -- but the sync
+ * engine's own push path does not), so a previous session's rows are
+ * otherwise still sitting there, still "dirty" relative to the old
+ * watermark, ready to be swept into the next push and rejected by the
+ * server's ownership check with a 403. Call this on every account switch
+ * (auth/AuthContext.tsx's login()/loginAsDemo()/logout()) so a new session
+ * always starts from a clean local store.
+ */
+export async function resetLocalStore(): Promise<void> {
+  await clearAllTables()
+  clearWatermarks()
 }
 
 /**

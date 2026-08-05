@@ -27,3 +27,10 @@ export function getPullWatermark(): string | null {
 export function setPullWatermark(value: string): void {
   localStorage.setItem(PULL_KEY, value)
 }
+
+// Both watermarks are meaningless once the signed-in user changes -- see
+// resetLocalStore in sync/engine.ts.
+export function clearWatermarks(): void {
+  localStorage.removeItem(PUSH_KEY)
+  localStorage.removeItem(PULL_KEY)
+}
