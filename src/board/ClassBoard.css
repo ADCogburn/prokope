@@ -130,6 +130,17 @@
   overflow-y: auto;
 }
 
+.class-board__add-card-slot {
+  flex-shrink: 0;
+  align-self: stretch;
+  display: flex;
+  align-items: center;
+}
+
+.class-board__add-card {
+  min-width: 200px;
+}
+
 .class-board__dots {
   position: absolute;
   bottom: 16px;

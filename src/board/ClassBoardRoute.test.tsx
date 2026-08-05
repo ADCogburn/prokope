@@ -33,7 +33,9 @@ describe('ClassBoardRoute', () => {
 
     renderRoute(`/class/${classRow.id}`)
 
-    await waitFor(() => expect(screen.getByText('No subjects yet.')).toBeInTheDocument())
+    await waitFor(() =>
+      expect(screen.getByRole('button', { name: '+ Add subject' })).toBeInTheDocument(),
+    )
   })
 
   it('redirects to the first subject when the URL has no subjectId', async () => {

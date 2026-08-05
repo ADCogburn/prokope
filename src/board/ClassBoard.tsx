@@ -1,14 +1,70 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState, type FormEvent } from 'react'
 import type { ClassRow, ProgressRow, StudentRow, SubjectRow, LessonRow } from '../db/schema'
-import { advanceProgress, findNextLesson, positionOf, upsertProgressReview } from '../db'
+import { advanceProgress, createSubject, findNextLesson, positionOf, upsertProgressReview } from '../db'
 import { useCarouselDrag } from './useCarouselDrag'
 import { ProgressCell } from './ProgressCell'
+import { InlineAddCard } from './InlineAddCard'
 import './ClassBoard.css'
 
 const PANEL_GAP = 24
 
 function progressKey(studentId: string, subjectId: string) {
   return `${studentId}:${subjectId}`
+}
+
+interface AddSubjectCardProps {
+  classId: string
+  position: number
+}
+
+/** Trailing/alone "+" card for adding a subject, per #58. Calls createSubject directly, consistent with ClassBoard already calling advanceProgress/upsertProgressReview directly rather than via callback props. */
+function AddSubjectCard({ classId, position }: AddSubjectCardProps) {
+  const [name, setName] = useState('')
+  const [submitting, setSubmitting] = useState(false)
+
+  return (
+    <InlineAddCard addLabel="Add subject" className="class-board__add-card">
+      {({ collapse }) => {
+        async function handleSubmit(event: FormEvent) {
+          event.preventDefault()
+          const trimmed = name.trim()
+          if (trimmed === '' || submitting) return
+          setSubmitting(true)
+          await createSubject({ class_id: classId, name: trimmed, position })
+          setSubmitting(false)
+          setName('')
+          collapse()
+        }
+
+        return (
+          <form className="inline-add-card__form" onSubmit={handleSubmit}>
+            <label htmlFor="new-subject-name">Subject name</label>
+            <input
+              id="new-subject-name"
+              value={name}
+              onChange={(event) => setName(event.target.value)}
+              placeholder="e.g. Math"
+              autoFocus
+            />
+            <div className="inline-add-card__actions">
+              <button
+                type="button"
+                onClick={() => {
+                  setName('')
+                  collapse()
+                }}
+              >
+                Cancel
+              </button>
+              <button type="submit" disabled={submitting || name.trim() === ''}>
+                Add
+              </button>
+            </div>
+          </form>
+        )
+      }}
+    </InlineAddCard>
+  )
 }
 
 interface ClassBoardProps {
@@ -105,7 +161,7 @@ export function ClassBoard({
         <header className="class-board__header">
           <h1>{classRow.name}</h1>
         </header>
-        <p className="class-board__empty-message">No subjects yet.</p>
+        <AddSubjectCard classId={classRow.id} position={0} />
       </div>
     )
   }
@@ -175,6 +231,9 @@ export function ClassBoard({
                 </div>
               )
             })}
+            <div className="class-board__add-card-slot" style={{ marginRight: PANEL_GAP }}>
+              <AddSubjectCard classId={classRow.id} position={subjects.length} />
+            </div>
           </div>
 
           <div className="class-board__dots">
