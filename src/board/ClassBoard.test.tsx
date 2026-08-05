@@ -174,7 +174,7 @@ describe('ClassBoard', () => {
     expect(screen.getByText('This Subject is empty.')).toBeInTheDocument()
     // Emily still appears in the always-present left-hand student roster --
     // it's her per-subject progress cell that should be gone.
-    expect(screen.queryByText('Flag for review')).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Flag for review' })).not.toBeInTheDocument()
     expect(screen.queryByText('Not started')).not.toBeInTheDocument()
 
     fireEvent.click(screen.getByRole('button', { name: '+ Add lessons' }))

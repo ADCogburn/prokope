@@ -29,8 +29,8 @@ describe('formatStep', () => {
     expect(formatStep(progressRow({ step_unit: 0, step_lesson_in_unit: 0 }))).toBe('Not started')
   })
 
-  it('formats a real step as Unit x Lesson y', () => {
-    expect(formatStep(progressRow({ step_unit: 3, step_lesson_in_unit: 4 }))).toBe('Unit 3 · Lesson 4')
+  it('formats a real step as Lesson unit.lessonInUnit', () => {
+    expect(formatStep(progressRow({ step_unit: 3, step_lesson_in_unit: 4 }))).toBe('Lesson 3.4')
   })
 })
 
@@ -97,7 +97,7 @@ describe('ProgressCell', () => {
     expect(onAdvance).toHaveBeenCalledTimes(1)
   })
 
-  it('calls onToggleReview when the review toggle is clicked, and reflects the flagged state', () => {
+  it('calls onToggleReview when the review toggle is clicked, and reflects the flagged state via aria-label', () => {
     const onToggleReview = vi.fn()
     render(
       <ProgressCell
@@ -110,8 +110,40 @@ describe('ProgressCell', () => {
       />,
     )
 
-    const button = screen.getByRole('button', { name: 'Flagged' })
+    const button = screen.getByRole('button', { name: 'Remove review flag' })
     button.click()
     expect(onToggleReview).toHaveBeenCalledTimes(1)
+  })
+
+  it('labels the review toggle "Flag for review" when unflagged, without an active class', () => {
+    render(
+      <ProgressCell
+        studentName="Emily"
+        progress={progressRow({ review: false })}
+        hasNextLesson
+        hasAnyLessons
+        onAdvance={vi.fn()}
+        onToggleReview={vi.fn()}
+      />,
+    )
+
+    const button = screen.getByRole('button', { name: 'Flag for review' })
+    expect(button.className).not.toContain('progress-cell__review-toggle--active')
+  })
+
+  it('adds the active class to the review toggle when flagged', () => {
+    render(
+      <ProgressCell
+        studentName="Emily"
+        progress={progressRow({ review: true })}
+        hasNextLesson
+        hasAnyLessons
+        onAdvance={vi.fn()}
+        onToggleReview={vi.fn()}
+      />,
+    )
+
+    const button = screen.getByRole('button', { name: 'Remove review flag' })
+    expect(button.className).toContain('progress-cell__review-toggle--active')
   })
 })
