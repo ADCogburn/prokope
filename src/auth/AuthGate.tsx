@@ -1,5 +1,5 @@
 import type { ReactNode } from 'react'
-import { useAuth } from './AuthContext'
+import { useAuth } from './useAuth'
 import { LoginView } from './LoginView'
 
 // A conditional render, not a router: #22's class-scoped routing lives

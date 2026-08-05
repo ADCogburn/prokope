@@ -1,14 +1,7 @@
-import { createContext, useContext, useEffect, useState, type ReactNode } from 'react'
+import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react'
 import { API_URL } from '../config'
 import { AUTH_TOKEN_STORAGE_KEY } from './token'
-
-export type AuthStatus = 'loading' | 'authenticated' | 'unauthenticated'
-
-export interface AuthUser {
-  userId: string
-  email: string
-  isDemo: boolean
-}
+import { AuthContext, type AuthStatus, type AuthUser } from './authContextInstance'
 
 interface MeResponse {
   userId: string
@@ -22,16 +15,6 @@ interface AuthResponse {
   email: string
   isDemo: boolean
 }
-
-interface AuthContextValue {
-  status: AuthStatus
-  user: AuthUser | null
-  login: (credential: string) => Promise<void>
-  loginAsDemo: () => Promise<void>
-  logout: () => void
-}
-
-const AuthContext = createContext<AuthContextValue | null>(null)
 
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [status, setStatus] = useState<AuthStatus>('loading')
@@ -74,7 +57,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   }, [])
 
-  async function login(credential: string) {
+  // Stabilized with useCallback: LoginView's Google-button effect depends on
+  // `login`, and an unstable reference there causes GIS's initialize()/
+  // renderButton() to fire again on every unrelated AuthProvider re-render,
+  // rendering a second button into the same node (visible as a stray box
+  // with default GIS styling behind the real one).
+  const login = useCallback(async (credential: string) => {
     const response = await fetch(`${API_URL}/auth/google`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -89,11 +77,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     localStorage.setItem(AUTH_TOKEN_STORAGE_KEY, body.token)
     setUser({ userId: body.userId, email: body.email, isDemo: body.isDemo })
     setStatus('authenticated')
-  }
+  }, [])
 
   // Same session/storage path as login(), just against /auth/demo, which
   // needs no credential -- see #32.
-  async function loginAsDemo() {
+  const loginAsDemo = useCallback(async () => {
     const response = await fetch(`${API_URL}/auth/demo`, { method: 'POST' })
 
     if (!response.ok) {
@@ -104,23 +92,18 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     localStorage.setItem(AUTH_TOKEN_STORAGE_KEY, body.token)
     setUser({ userId: body.userId, email: body.email, isDemo: body.isDemo })
     setStatus('authenticated')
-  }
+  }, [])
 
-  function logout() {
+  const logout = useCallback(() => {
     localStorage.removeItem(AUTH_TOKEN_STORAGE_KEY)
     setUser(null)
     setStatus('unauthenticated')
-  }
+  }, [])
 
-  return (
-    <AuthContext.Provider value={{ status, user, login, loginAsDemo, logout }}>{children}</AuthContext.Provider>
+  const value = useMemo(
+    () => ({ status, user, login, loginAsDemo, logout }),
+    [status, user, login, loginAsDemo, logout],
   )
-}
 
-export function useAuth(): AuthContextValue {
-  const context = useContext(AuthContext)
-  if (!context) {
-    throw new Error('useAuth must be used within an AuthProvider')
-  }
-  return context
+  return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>
 }

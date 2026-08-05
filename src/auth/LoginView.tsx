@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import { useAuth } from './AuthContext'
+import { useAuth } from './useAuth'
 import './LoginView.css'
 
 // The Google client ID is a public, non-secret, build-time value set in
