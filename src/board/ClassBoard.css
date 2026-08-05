@@ -1,0 +1,225 @@
+.class-board {
+  display: flex;
+  flex-direction: column;
+  height: 100svh;
+  width: 100%;
+  text-align: left;
+}
+
+.class-board--empty {
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+}
+
+.class-board__header {
+  padding: 16px 24px;
+  background: var(--bg);
+  border-bottom: 1px solid var(--border);
+
+  h1 {
+    margin: 0 0 4px;
+    font-size: 20px;
+  }
+  p {
+    margin: 0;
+    font-size: 14px;
+    color: var(--text);
+  }
+}
+
+.class-board__empty-message {
+  padding: 16px 24px;
+  color: var(--text);
+}
+
+.class-board__body {
+  flex: 1;
+  display: flex;
+  overflow: hidden;
+}
+
+.class-board__students {
+  width: 220px;
+  flex-shrink: 0;
+  background: var(--bg);
+  border-right: 1px solid var(--border);
+  overflow-y: auto;
+  padding: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.class-board__student {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 8px 12px;
+}
+
+.class-board__student-avatar {
+  width: 32px;
+  height: 32px;
+  flex-shrink: 0;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--accent);
+  background: var(--accent-bg);
+}
+
+.class-board__student-name {
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--text-h);
+}
+
+.class-board__review-count {
+  font-size: 11px;
+  color: var(--error);
+}
+
+.class-board__carousel-wrap {
+  flex: 1;
+  position: relative;
+  overflow: hidden;
+  display: flex;
+  align-items: center;
+}
+
+.class-board__carousel {
+  position: absolute;
+  inset-block: 0;
+  display: flex;
+  align-items: center;
+  user-select: none;
+  cursor: grab;
+  transition: transform 300ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.class-board__carousel--dragging {
+  cursor: grabbing;
+}
+
+.class-board__panel {
+  flex-shrink: 0;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  box-shadow: var(--shadow);
+  overflow: hidden;
+  transition: opacity 300ms ease;
+}
+
+.class-board__panel-header {
+  padding: 12px 16px;
+  color: var(--text-h);
+  font-weight: 600;
+  background: var(--accent-bg);
+  border-bottom: 1px solid var(--border);
+}
+
+.class-board__panel-body {
+  max-height: 60vh;
+  overflow-y: auto;
+}
+
+.class-board__dots {
+  position: absolute;
+  bottom: 16px;
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  gap: 6px;
+}
+
+.class-board__dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 999px;
+  border: none;
+  padding: 0;
+  background: var(--border);
+  cursor: pointer;
+  transition:
+    width 0.2s,
+    background-color 0.2s;
+}
+
+.class-board__dot--active {
+  width: 18px;
+  background: var(--accent);
+}
+
+.progress-cell {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 8px 16px;
+  border-bottom: 1px solid var(--border);
+}
+
+.progress-cell:last-child {
+  border-bottom: none;
+}
+
+.progress-cell--review {
+  background: var(--accent-bg);
+}
+
+.progress-cell__student {
+  font-size: 14px;
+  color: var(--text-h);
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.progress-cell__step {
+  font-size: 13px;
+  color: var(--text);
+  flex-shrink: 0;
+}
+
+.progress-cell__actions {
+  display: flex;
+  gap: 6px;
+  flex-shrink: 0;
+}
+
+.progress-cell__review-toggle,
+.progress-cell__advance {
+  font: inherit;
+  font-size: 12px;
+  padding: 4px 8px;
+  border-radius: 6px;
+  border: 1px solid var(--border);
+  background: var(--bg);
+  color: var(--text-h);
+  cursor: pointer;
+
+  &:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+  }
+}
+
+.progress-cell__review-toggle--active {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: white;
+}
+
+.progress-cell__advance {
+  background: var(--accent-bg);
+  border-color: var(--accent-border);
+}
