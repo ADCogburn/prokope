@@ -216,7 +216,7 @@
 .progress-cell__review-toggle--active {
   background: var(--accent);
   border-color: var(--accent);
-  color: white;
+  color: var(--on-accent);
 }
 
 .progress-cell__advance {

@@ -1,4 +1,4 @@
-import { useCallback, useRef, useState } from 'react'
+import { useCallback, useRef, useState, type PointerEvent as ReactPointerEvent } from 'react'
 
 /**
  * Drag-to-spin carousel: pans continuously while dragging, then snaps to
@@ -12,14 +12,14 @@ export function useCarouselDrag(panelWidth: number, itemCount: number, initialIn
   const [dragging, setDragging] = useState(false)
   const startX = useRef(0)
 
-  const onPointerDown = useCallback((e: React.PointerEvent) => {
+  const onPointerDown = useCallback((e: ReactPointerEvent) => {
     ;(e.target as HTMLElement).setPointerCapture(e.pointerId)
     startX.current = e.clientX
     setDragging(true)
   }, [])
 
   const onPointerMove = useCallback(
-    (e: React.PointerEvent) => {
+    (e: ReactPointerEvent) => {
       if (!dragging) return
       setDragPx(e.clientX - startX.current)
     },

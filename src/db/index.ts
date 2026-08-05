@@ -26,6 +26,7 @@ export {
   upsertProgressReview,
   listProgressForStudents,
   advanceProgress,
+  positionOf,
 } from './progress'
 export type { ProgressStep } from './progress'
 

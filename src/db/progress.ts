@@ -8,6 +8,14 @@ export interface ProgressStep {
   lesson_in_unit: number
 }
 
+/** A progress row's current step, or the {0, 0} sentinel for "not started yet" if there's no row. */
+export function positionOf(progress: ProgressRow | undefined): ProgressStep {
+  if (!progress) {
+    return { unit: 0, lesson_in_unit: 0 }
+  }
+  return { unit: progress.step_unit, lesson_in_unit: progress.step_lesson_in_unit }
+}
+
 async function findProgressRow(
   studentId: string,
   subjectId: string,
@@ -136,9 +144,7 @@ export async function advanceProgress(
   subjectId: string,
 ): Promise<LessonRow | undefined> {
   const current = await findProgressRow(studentId, subjectId)
-  const after = current
-    ? { unit: current.step_unit, lesson_in_unit: current.step_lesson_in_unit }
-    : { unit: 0, lesson_in_unit: 0 }
+  const after = positionOf(current)
 
   const next = await getNextLessonInSubject(subjectId, after)
   if (!next) {

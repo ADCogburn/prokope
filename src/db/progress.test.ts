@@ -142,14 +142,19 @@ describe('listProgressForStudents', () => {
 })
 
 describe('advanceProgress', () => {
-  it('advances a student with no progress row yet to the first lesson in the subject', async () => {
-    const first = await createLesson({
+  function lessonInput(overrides: Partial<Parameters<typeof createLesson>[0]> = {}) {
+    return {
       subject_id: 'subject-1',
       unit: 1,
       lesson_in_unit: 1,
-      title: 'Fractions',
+      title: 'Untitled lesson',
       description: '',
-    })
+      ...overrides,
+    }
+  }
+
+  it('advances a student with no progress row yet to the first lesson in the subject', async () => {
+    const first = await createLesson(lessonInput({ title: 'Fractions' }))
 
     const result = await advanceProgress('student-1', 'subject-1')
 
@@ -160,20 +165,8 @@ describe('advanceProgress', () => {
   })
 
   it('advances a student to the next lesson after their current step', async () => {
-    await createLesson({
-      subject_id: 'subject-1',
-      unit: 1,
-      lesson_in_unit: 1,
-      title: 'Fractions',
-      description: '',
-    })
-    const second = await createLesson({
-      subject_id: 'subject-1',
-      unit: 1,
-      lesson_in_unit: 2,
-      title: 'Decimals',
-      description: '',
-    })
+    await createLesson(lessonInput({ title: 'Fractions' }))
+    const second = await createLesson(lessonInput({ lesson_in_unit: 2, title: 'Decimals' }))
     await upsertProgressStep('student-1', 'subject-1', { unit: 1, lesson_in_unit: 1 })
 
     const result = await advanceProgress('student-1', 'subject-1')
@@ -185,20 +178,8 @@ describe('advanceProgress', () => {
   })
 
   it('crosses a unit boundary the same way getNextLessonInSubject does', async () => {
-    await createLesson({
-      subject_id: 'subject-1',
-      unit: 1,
-      lesson_in_unit: 9,
-      title: 'Last of unit 1',
-      description: '',
-    })
-    const firstOfUnit2 = await createLesson({
-      subject_id: 'subject-1',
-      unit: 2,
-      lesson_in_unit: 1,
-      title: 'First of unit 2',
-      description: '',
-    })
+    await createLesson(lessonInput({ lesson_in_unit: 9, title: 'Last of unit 1' }))
+    const firstOfUnit2 = await createLesson(lessonInput({ unit: 2, title: 'First of unit 2' }))
     await upsertProgressStep('student-1', 'subject-1', { unit: 1, lesson_in_unit: 9 })
 
     const result = await advanceProgress('student-1', 'subject-1')
@@ -207,13 +188,7 @@ describe('advanceProgress', () => {
   })
 
   it('returns undefined and leaves progress untouched when already at the last lesson', async () => {
-    await createLesson({
-      subject_id: 'subject-1',
-      unit: 1,
-      lesson_in_unit: 1,
-      title: 'Only lesson',
-      description: '',
-    })
+    await createLesson(lessonInput({ title: 'Only lesson' }))
     const before = await upsertProgressStep('student-1', 'subject-1', { unit: 1, lesson_in_unit: 1 })
 
     const result = await advanceProgress('student-1', 'subject-1')
@@ -224,20 +199,8 @@ describe('advanceProgress', () => {
   })
 
   it('does not touch review/review_hlc/review_client_id when advancing', async () => {
-    await createLesson({
-      subject_id: 'subject-1',
-      unit: 1,
-      lesson_in_unit: 1,
-      title: 'Fractions',
-      description: '',
-    })
-    await createLesson({
-      subject_id: 'subject-1',
-      unit: 1,
-      lesson_in_unit: 2,
-      title: 'Decimals',
-      description: '',
-    })
+    await createLesson(lessonInput({ title: 'Fractions' }))
+    await createLesson(lessonInput({ lesson_in_unit: 2, title: 'Decimals' }))
     await upsertProgressStep('student-1', 'subject-1', { unit: 1, lesson_in_unit: 1 })
     await upsertProgressReview('student-1', 'subject-1', true)
 

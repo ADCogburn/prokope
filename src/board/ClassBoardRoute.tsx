@@ -1,7 +1,13 @@
 import { useEffect, useMemo, useState } from 'react'
 import { Navigate, useNavigate, useParams } from 'react-router-dom'
 import { useLiveQuery } from 'dexie-react-hooks'
-import { getClass, listLessonsForSubjects, listProgressForStudents, listStudentsForClass, listSubjectsForClass } from '../db'
+import {
+  getClass,
+  listLessonsForSubjects,
+  listProgressForStudents,
+  listStudentsForClass,
+  listSubjectsForClass,
+} from '../db'
 import type { ClassRow } from '../db/schema'
 import { ClassBoard } from './ClassBoard'
 

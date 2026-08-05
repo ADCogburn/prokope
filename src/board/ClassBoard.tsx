@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import type { ClassRow, ProgressRow, StudentRow, SubjectRow, LessonRow } from '../db/schema'
-import { advanceProgress, findNextLesson, upsertProgressReview } from '../db'
+import { advanceProgress, findNextLesson, positionOf, upsertProgressReview } from '../db'
 import { useCarouselDrag } from './useCarouselDrag'
 import { ProgressCell } from './ProgressCell'
 import './ClassBoard.css'
@@ -158,10 +158,7 @@ export function ClassBoard({
                   <div className="class-board__panel-body">
                     {students.map((student) => {
                       const studentProgress = progressByKey.get(progressKey(student.id, subject.id))
-                      const after = studentProgress
-                        ? { unit: studentProgress.step_unit, lesson_in_unit: studentProgress.step_lesson_in_unit }
-                        : { unit: 0, lesson_in_unit: 0 }
-                      const nextLesson = findNextLesson(subjectLessons, subject.id, after)
+                      const nextLesson = findNextLesson(subjectLessons, subject.id, positionOf(studentProgress))
                       return (
                         <ProgressCell
                           key={student.id}
