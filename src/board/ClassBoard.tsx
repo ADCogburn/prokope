@@ -76,6 +76,7 @@ interface ClassBoardProps {
   lessons: LessonRow[]
   activeSubjectId: string | undefined
   onSubjectChange: (subjectId: string) => void
+  onCurriculumNavigate: (subjectId: string) => void
 }
 
 /**
@@ -93,6 +94,7 @@ export function ClassBoard({
   lessons,
   activeSubjectId,
   onSubjectChange,
+  onCurriculumNavigate,
 }: ClassBoardProps) {
   const wrapRef = useRef<HTMLDivElement>(null)
   const [panelWidth, setPanelWidth] = useState(420)
@@ -248,21 +250,34 @@ export function ClassBoard({
                 >
                   <div className="class-board__panel-header">{subject.name}</div>
                   <div className="class-board__panel-body">
-                    {students.map((student) => {
-                      const studentProgress = progressByKey.get(progressKey(student.id, subject.id))
-                      const nextLesson = findNextLesson(subjectLessons, subject.id, positionOf(studentProgress))
-                      return (
-                        <ProgressCell
-                          key={student.id}
-                          studentName={student.name}
-                          progress={studentProgress}
-                          hasNextLesson={nextLesson !== undefined}
-                          hasAnyLessons={subjectLessons.length > 0}
-                          onAdvance={() => void handleAdvance(student.id, subject.id)}
-                          onToggleReview={() => void handleToggleReview(student.id, subject.id)}
-                        />
-                      )
-                    })}
+                    {subjectLessons.length === 0 ? (
+                      <div className="class-board__panel-empty">
+                        <p>This Subject is empty.</p>
+                        <button
+                          type="button"
+                          className="class-board__panel-empty-link"
+                          onClick={() => onCurriculumNavigate(subject.id)}
+                        >
+                          + Add lessons
+                        </button>
+                      </div>
+                    ) : (
+                      students.map((student) => {
+                        const studentProgress = progressByKey.get(progressKey(student.id, subject.id))
+                        const nextLesson = findNextLesson(subjectLessons, subject.id, positionOf(studentProgress))
+                        return (
+                          <ProgressCell
+                            key={student.id}
+                            studentName={student.name}
+                            progress={studentProgress}
+                            hasNextLesson={nextLesson !== undefined}
+                            hasAnyLessons={subjectLessons.length > 0}
+                            onAdvance={() => void handleAdvance(student.id, subject.id)}
+                            onToggleReview={() => void handleToggleReview(student.id, subject.id)}
+                          />
+                        )
+                      })
+                    )}
                   </div>
                 </div>
               )

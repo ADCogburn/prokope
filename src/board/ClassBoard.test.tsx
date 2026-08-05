@@ -51,6 +51,7 @@ function renderBoard(props: {
   lessons: LessonRow[]
   activeSubjectId: string | undefined
   onSubjectChange?: (id: string) => void
+  onCurriculumNavigate?: (id: string) => void
 }) {
   return render(
     <ClassBoard
@@ -61,6 +62,7 @@ function renderBoard(props: {
       lessons={props.lessons}
       activeSubjectId={props.activeSubjectId}
       onSubjectChange={props.onSubjectChange ?? vi.fn()}
+      onCurriculumNavigate={props.onCurriculumNavigate ?? vi.fn()}
     />,
   )
 }
@@ -151,6 +153,33 @@ describe('ClassBoard', () => {
     expect(screen.getByRole('button', { name: '+ Add subject' })).toBeInTheDocument()
     const rows = await db.subject.where('class_id').equals(classRow.id).toArray()
     expect(rows).toHaveLength(1)
+  })
+
+  it('shows "This Subject is empty." and a curriculum-navigation link instead of the student list when the panel has zero lessons', async () => {
+    const classRow = await createClass({ user_id: 'user-1', name: 'Homeroom' })
+    const subject = await createSubject({ class_id: classRow.id, name: 'Math', position: 0 })
+    const student = await createStudent({ class_id: classRow.id, name: 'Emily', position: 0 })
+    const onCurriculumNavigate = vi.fn()
+
+    renderBoard({
+      classRow,
+      subjects: [subject],
+      students: [student],
+      progress: [],
+      lessons: [],
+      activeSubjectId: subject.id,
+      onCurriculumNavigate,
+    })
+
+    expect(screen.getByText('This Subject is empty.')).toBeInTheDocument()
+    // Emily still appears in the always-present left-hand student roster --
+    // it's her per-subject progress cell that should be gone.
+    expect(screen.queryByText('Flag for review')).not.toBeInTheDocument()
+    expect(screen.queryByText('Not started')).not.toBeInTheDocument()
+
+    fireEvent.click(screen.getByRole('button', { name: '+ Add lessons' }))
+
+    expect(onCurriculumNavigate).toHaveBeenCalledWith(subject.id)
   })
 
   it("renders the active subject's panel with each student's progress cell", async () => {
