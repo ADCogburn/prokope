@@ -162,6 +162,55 @@
   cursor: grabbing;
 }
 
+.class-board__carousel-arrow {
+  position: absolute;
+  top: 50%;
+  z-index: 2;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  padding: 0;
+  border: none;
+  border-radius: 50%;
+  background: none;
+  color: var(--text);
+  opacity: 0.3;
+  cursor: pointer;
+  transition: opacity 150ms ease, color 150ms ease;
+
+  &:hover,
+  &:focus-visible {
+    opacity: 1;
+    color: var(--text-h);
+  }
+
+  svg {
+    width: 22px;
+    height: 22px;
+    display: block;
+  }
+
+  path {
+    fill: none;
+    stroke: currentColor;
+    stroke-width: 2;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+  }
+}
+
+.class-board__carousel-arrow--prev {
+  left: 8px;
+  transform: translateY(-50%);
+}
+
+.class-board__carousel-arrow--next {
+  right: 8px;
+  transform: translateY(-50%);
+}
+
 .class-board__panel {
   flex-shrink: 0;
   background: var(--bg);
