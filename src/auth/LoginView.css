@@ -38,12 +38,15 @@
   margin-top: 24px;
 }
 
-/* GIS renders the "pill" shape as a rounded button inside a plain
-   rectangular iframe, so the iframe's own white background peeks out
-   past the pill's rounded ends unless we clip it to match. */
-.login-view__actions [data-testid='google-signin-button'] iframe {
-  border-radius: 999px;
+/* GIS wraps the button in an iframe that's deliberately larger than
+   the button itself (extra margin reserved for the hover/focus ring),
+   so clipping the iframe alone leaves a visible halo around the real
+   button. Clip the tightly-sized container div instead -- GIS sets
+   its width/height inline to match the actual button, and the
+   oversized iframe overflows past its edges, which this then crops. */
+.login-view__actions [data-testid='google-signin-button'] {
   overflow: hidden;
+  border-radius: 999px;
 }
 
 .login-view__guest-button {
