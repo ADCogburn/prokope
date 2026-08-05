@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState, type FormEvent } from 'react'
+import { useEffect, useLayoutEffect, useMemo, useRef, useState, type FormEvent } from 'react'
 import type { ClassRow, ProgressRow, StudentRow, SubjectRow, LessonRow } from '../db/schema'
 import { advanceProgress, createSubject, findNextLesson, positionOf, upsertProgressReview } from '../db'
 import { useCarouselDrag } from './useCarouselDrag'
@@ -97,6 +97,8 @@ export function ClassBoard({
   const wrapRef = useRef<HTMLDivElement>(null)
   const [panelWidth, setPanelWidth] = useState(420)
   const [containerWidth, setContainerWidth] = useState(0)
+  const panelRefs = useRef(new Map<string, HTMLDivElement>())
+  const panelRects = useRef(new Map<string, DOMRect>())
 
   useEffect(() => {
     const el = wrapRef.current
@@ -146,6 +148,35 @@ export function ClassBoard({
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeSubjectId, subjects])
+
+  const subjectOrderKey = subjects.map((s) => s.id).join(',')
+  // A saved reorder changes each panel's position via normal DOM/flex
+  // reflow, which the browser doesn't animate on its own -- FLIP each panel
+  // from where it was to where it now is so the swap reads as a slide
+  // instead of a jump-cut, per #59.
+  useLayoutEffect(() => {
+    const prevRects = panelRects.current
+    const nextRects = new Map<string, DOMRect>()
+    panelRefs.current.forEach((el, id) => nextRects.set(id, el.getBoundingClientRect()))
+
+    panelRefs.current.forEach((el, id) => {
+      const prev = prevRects.get(id)
+      const next = nextRects.get(id)
+      if (!prev || !next) return
+      const deltaX = prev.left - next.left
+      if (deltaX === 0) return
+      el.style.transition = 'none'
+      el.style.transform = `translateX(${deltaX}px)`
+      el.getBoundingClientRect()
+      requestAnimationFrame(() => {
+        el.style.transition = 'transform 300ms ease'
+        el.style.transform = ''
+      })
+    })
+
+    panelRects.current = nextRects
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [subjectOrderKey])
 
   async function handleAdvance(studentId: string, subjectId: string) {
     await advanceProgress(studentId, subjectId)
@@ -208,6 +239,10 @@ export function ClassBoard({
               return (
                 <div
                   key={subject.id}
+                  ref={(el) => {
+                    if (el) panelRefs.current.set(subject.id, el)
+                    else panelRefs.current.delete(subject.id)
+                  }}
                   className="class-board__panel"
                   style={{ width: panelWidth, marginRight: PANEL_GAP, opacity: i === index ? 1 : 0.45 }}
                 >

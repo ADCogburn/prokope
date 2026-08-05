@@ -9,7 +9,7 @@ export function abbreviateSubjectName(name: string): string {
   return name.length > ABBREVIATE_AT ? `${name.slice(0, ABBREVIATE_AT - 1)}…` : name
 }
 
-function moveItem<T>(items: T[], from: number, to: number): T[] {
+function moveItem(items: SubjectRow[], from: number, to: number): SubjectRow[] {
   const next = items.slice()
   const [moved] = next.splice(from, 1)
   next.splice(to, 0, moved)
@@ -62,7 +62,7 @@ export function SubjectReorder({ subjects, activeIndex, onDotClick }: SubjectReo
           className="subject-reorder__pencil"
           onClick={() => setStaged(subjects)}
         >
-          ✎
+          <span aria-hidden="true">✎</span>
         </button>
       </div>
     )
@@ -99,7 +99,7 @@ export function SubjectReorder({ subjects, activeIndex, onDotClick }: SubjectReo
         onClick={() => void handleSave()}
         disabled={saving}
       >
-        ✓
+        <span aria-hidden="true">✓</span>
       </button>
     </div>
   )
