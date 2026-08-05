@@ -1,12 +1,8 @@
 import { AUTH_TOKEN_STORAGE_KEY } from '../auth/token'
-import type { ClassRow, LessonRow, ProgressRow, StudentRow, SubjectRow } from '../db'
+import type { ProgressRow } from '../db'
 import {
   deleteRawProgress,
-  getRawClass,
-  getRawLesson,
   getRawProgressByPair,
-  getRawStudent,
-  getRawSubject,
   listRowsUpdatedSince,
   putRawClass,
   putRawLesson,
@@ -25,38 +21,6 @@ import { getPullWatermark, getPushWatermark, setPullWatermark, setPushWatermark 
  * listeners, no retry/backoff. That scheduling, plus the sync-status UI, is
  * #21's job; it calls push()/pull() directly once wired up.
  */
-
-// class/subject/lesson/student have no per-field HLC (per #6) -- a plain
-// "don't let an older write clobber a newer one" guard on the shared
-// updated_at column is the whole conflict story for these tables. progress
-// gets the real per-field merge below.
-async function applyRemoteClass(incoming: ClassRow): Promise<void> {
-  const existing = await getRawClass(incoming.id)
-  if (!existing || existing.updated_at < incoming.updated_at) {
-    await putRawClass(incoming)
-  }
-}
-
-async function applyRemoteSubject(incoming: SubjectRow): Promise<void> {
-  const existing = await getRawSubject(incoming.id)
-  if (!existing || existing.updated_at < incoming.updated_at) {
-    await putRawSubject(incoming)
-  }
-}
-
-async function applyRemoteLesson(incoming: LessonRow): Promise<void> {
-  const existing = await getRawLesson(incoming.id)
-  if (!existing || existing.updated_at < incoming.updated_at) {
-    await putRawLesson(incoming)
-  }
-}
-
-async function applyRemoteStudent(incoming: StudentRow): Promise<void> {
-  const existing = await getRawStudent(incoming.id)
-  if (!existing || existing.updated_at < incoming.updated_at) {
-    await putRawStudent(incoming)
-  }
-}
 
 // A remote progress row's (student_id, subject_id) pair may already exist
 // locally under a *different* id -- two devices that each created a row for
@@ -79,12 +43,15 @@ async function applyRemoteProgress(incoming: ProgressRow): Promise<void> {
   await putRawProgress(merged)
 }
 
+// class/subject/lesson/student have no per-field HLC and no conflict
+// resolution at all (per #6/#7) -- same as the server's push handler, this
+// is a plain overwrite-by-id, last-received-wins.
 async function applyRemoteBatch(batch: SyncBatch): Promise<void> {
   await Promise.all([
-    ...batch.classes.map(applyRemoteClass),
-    ...batch.subjects.map(applyRemoteSubject),
-    ...batch.lessons.map(applyRemoteLesson),
-    ...batch.students.map(applyRemoteStudent),
+    ...batch.classes.map(putRawClass),
+    ...batch.subjects.map(putRawSubject),
+    ...batch.lessons.map(putRawLesson),
+    ...batch.students.map(putRawStudent),
     ...batch.progress.map(applyRemoteProgress),
   ])
 }

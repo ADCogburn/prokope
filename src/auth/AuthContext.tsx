@@ -1,13 +1,6 @@
 import { createContext, useContext, useEffect, useState, type ReactNode } from 'react'
+import { API_URL } from '../config'
 import { AUTH_TOKEN_STORAGE_KEY } from './token'
-
-// The SPA (Cloudflare Pages) and API (Railway) are different origins (per
-// #9), so calls to /auth/* need the API's absolute origin, not a relative
-// path. VITE_API_URL is a public, build-time value set in Cloudflare
-// Pages' env config, per #10's per-provider secrets convention -- same
-// pattern as the Google client ID. Falls back to the API's local dev port
-// (server/Properties/launchSettings.json) so `npm run dev` works untouched.
-const API_URL = (import.meta.env.VITE_API_URL as string | undefined) ?? 'http://localhost:5083'
 
 export type AuthStatus = 'loading' | 'authenticated' | 'unauthenticated'
 

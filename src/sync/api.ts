@@ -1,10 +1,5 @@
+import { API_URL } from '../config'
 import type { SyncSnapshot } from '../db/sync'
-
-// Same cross-origin setup as AuthContext.tsx: the SPA (Cloudflare Pages) and
-// API (Railway) are different origins (#9), so this needs the API's
-// absolute origin. Falls back to the API's local dev port so `npm run dev`
-// works untouched.
-const API_URL = (import.meta.env.VITE_API_URL as string | undefined) ?? 'http://localhost:5083'
 
 export type SyncBatch = SyncSnapshot
 

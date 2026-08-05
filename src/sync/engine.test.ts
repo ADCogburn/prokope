@@ -167,18 +167,18 @@ describe('pull', () => {
     expect(await getRawClass(incoming.id)).toEqual(incoming)
   })
 
-  it('does not let an incoming class row clobber a newer local edit', async () => {
+  it('overwrites a local row with an incoming one unconditionally -- no conflict resolution for this table, per #6/#7', async () => {
     localStorage.setItem(AUTH_TOKEN_STORAGE_KEY, 'a-token')
-    const newerLocal = makeClass({ name: 'Local newer edit', updated_at: '2024-06-01T00:00:00.000Z' })
-    await putRawClass(newerLocal)
-    const staleIncoming = { ...newerLocal, name: 'Stale server value', updated_at: '2024-01-01T00:00:00.000Z' }
+    const local = makeClass({ name: 'Local edit', updated_at: '2024-06-01T00:00:00.000Z' })
+    await putRawClass(local)
+    const incoming = { ...local, name: 'Incoming value', updated_at: '2024-01-01T00:00:00.000Z' }
     vi.mocked(fetch).mockResolvedValueOnce(
-      jsonResponse({ ...emptyBatch(), classes: [staleIncoming], watermark: '2024-05-01T00:00:00.000Z' }),
+      jsonResponse({ ...emptyBatch(), classes: [incoming], watermark: '2024-05-01T00:00:00.000Z' }),
     )
 
     await pull()
 
-    expect((await getRawClass(newerLocal.id))?.name).toBe('Local newer edit')
+    expect((await getRawClass(local.id))?.name).toBe('Incoming value')
   })
 
   it('merges an incoming progress row per-field rather than overwriting local edits', async () => {
