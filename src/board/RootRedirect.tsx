@@ -3,6 +3,7 @@ import { Navigate } from 'react-router-dom'
 import { useAuth } from '../auth/useAuth'
 import { getClassForUser, listSubjectsForClass } from '../db'
 import type { ClassRow } from '../db/schema'
+import { pull } from '../sync/engine'
 import { ClassSetup } from './ClassSetup'
 
 type Status = 'loading' | 'no-class' | 'has-class'
@@ -25,16 +26,26 @@ export function RootRedirect() {
     }
 
     let cancelled = false
-    getClassForUser(user.userId).then(async (classRow) => {
-      if (cancelled || !classRow) {
-        if (!cancelled) setStatus('no-class')
-        return
-      }
-      const subjects = await listSubjectsForClass(classRow.id)
-      if (cancelled) return
-      setTarget(subjects.length > 0 ? `/class/${classRow.id}/subject/${subjects[0].id}` : `/class/${classRow.id}`)
-      setStatus('has-class')
-    })
+    // A freshly authenticated user (e.g. a just-created guest demo account)
+    // may already have server-side data -- a class the demo seeder just
+    // created -- that hasn't reached this device's Dexie yet. Pull once
+    // before reading Dexie so that data has a chance to arrive first,
+    // instead of deciding "no-class" from a local store that's simply not
+    // caught up yet (#46). Local data is still the fallback if the pull
+    // fails, e.g. while offline.
+    pull()
+      .catch(() => {})
+      .then(() => getClassForUser(user.userId))
+      .then(async (classRow) => {
+        if (cancelled || !classRow) {
+          if (!cancelled) setStatus('no-class')
+          return
+        }
+        const subjects = await listSubjectsForClass(classRow.id)
+        if (cancelled) return
+        setTarget(subjects.length > 0 ? `/class/${classRow.id}/subject/${subjects[0].id}` : `/class/${classRow.id}`)
+        setStatus('has-class')
+      })
 
     return () => {
       cancelled = true
