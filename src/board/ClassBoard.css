@@ -33,6 +33,11 @@
   align-items: center;
   justify-content: space-between;
   gap: 12px;
+  /* auth/AccountBar.css is a fixed top-right overlay (badge + theme toggle +
+     email + logout, ~600px wide worst-case with the demo badge) that sits on
+     top of this row -- reserve space so the book icon isn't hidden under it
+     (#72). */
+  padding-right: 600px;
 }
 
 .class-board__book {

@@ -21,6 +21,13 @@
   letter-spacing: 0.02em;
 }
 
+.account-bar__email {
+  max-width: 200px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .account-bar button {
   font: inherit;
   padding: 4px 10px;
