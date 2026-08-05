@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react'
 import { API_URL } from '../config'
+import { resetLocalStore } from '../sync'
 import { AUTH_TOKEN_STORAGE_KEY } from './token'
 import { AuthContext, type AuthStatus, type AuthUser } from './authContextInstance'
 
@@ -74,6 +75,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
 
     const body = (await response.json()) as AuthResponse
+    // Wipe any previous session's local data before adopting this one's
+    // token -- see #65: without this, a still-dirty row tagged with the old
+    // session's user_id gets swept into this session's next push and 403s.
+    await resetLocalStore()
     localStorage.setItem(AUTH_TOKEN_STORAGE_KEY, body.token)
     setUser({ userId: body.userId, email: body.email, isDemo: body.isDemo })
     setStatus('authenticated')
@@ -89,6 +94,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
 
     const body = (await response.json()) as AuthResponse
+    // See #65's login() comment -- every demo click mints a fresh user_id
+    // server-side, making this path for it, not just an edge case.
+    await resetLocalStore()
     localStorage.setItem(AUTH_TOKEN_STORAGE_KEY, body.token)
     setUser({ userId: body.userId, email: body.email, isDemo: body.isDemo })
     setStatus('authenticated')
@@ -98,6 +106,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     localStorage.removeItem(AUTH_TOKEN_STORAGE_KEY)
     setUser(null)
     setStatus('unauthenticated')
+    // Fire-and-forget, like entity CRUD's writes -- logout shouldn't block
+    // on Dexie, and the next login() clears again before it pulls anyway.
+    void resetLocalStore()
   }, [])
 
   const value = useMemo(

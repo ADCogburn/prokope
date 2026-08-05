@@ -51,3 +51,11 @@ export const getRawProgressByPair = (studentId: string, subjectId: string): Prom
   db.progress.where('[student_id+subject_id]').equals([studentId, subjectId]).first()
 export const putRawProgress = (row: ProgressRow): Promise<string> => db.progress.put(row)
 export const deleteRawProgress = (id: string): Promise<void> => db.progress.delete(id)
+
+// Wipes every local table. Called on account switch (see resetLocalStore in
+// sync/engine.ts) so a previous session's rows -- tagged with a user_id the
+// new session's token doesn't own -- can't get swept into the next push and
+// rejected by the server's ownership check.
+export async function clearAllTables(): Promise<void> {
+  await Promise.all(db.tables.map((table) => table.clear()))
+}

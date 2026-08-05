@@ -3,8 +3,8 @@ import { db } from '../db/schema'
 import type { ClassRow, ProgressRow } from '../db'
 import { getRawClass, getRawProgressByPair, putRawClass, putRawProgress } from '../db/sync'
 import { AUTH_TOKEN_STORAGE_KEY } from '../auth/token'
-import { push, pull } from './engine'
-import { getPushWatermark, getPullWatermark, setPullWatermark } from './watermarks'
+import { push, pull, resetLocalStore } from './engine'
+import { getPushWatermark, getPullWatermark, setPullWatermark, setPushWatermark } from './watermarks'
 
 function makeClass(overrides: Partial<ClassRow> = {}): ClassRow {
   return {
@@ -51,6 +51,32 @@ beforeEach(() => {
 afterEach(async () => {
   vi.unstubAllGlobals()
   await Promise.all(db.tables.map((table) => table.clear()))
+})
+
+describe('resetLocalStore', () => {
+  it('clears every Dexie table and both watermarks', async () => {
+    await putRawClass(makeClass())
+    await putRawProgress(makeProgress())
+    setPushWatermark('2024-03-01T00:00:00.000Z')
+    setPullWatermark('2024-03-01T00:00:00.000Z')
+
+    await resetLocalStore()
+
+    expect(await db.class.count()).toBe(0)
+    expect(await db.progress.count()).toBe(0)
+    expect(getPushWatermark()).toBeNull()
+    expect(getPullWatermark()).toBeNull()
+  })
+
+  it('leaves a subsequent push treating the (now-empty) store as having nothing dirty', async () => {
+    localStorage.setItem(AUTH_TOKEN_STORAGE_KEY, 'a-token')
+    await putRawClass(makeClass({ user_id: 'old-user' }))
+
+    await resetLocalStore()
+    await push()
+
+    expect(fetch).not.toHaveBeenCalled()
+  })
 })
 
 describe('push', () => {

@@ -1,5 +1,8 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { act, render, screen, waitFor } from '@testing-library/react'
+import { db } from '../db/schema'
+import { putRawClass } from '../db/sync'
+import { getPullWatermark, getPushWatermark, setPullWatermark, setPushWatermark } from '../sync/watermarks'
 import { AuthProvider } from './AuthContext'
 import { useAuth } from './useAuth'
 import { AUTH_TOKEN_STORAGE_KEY } from './token'
@@ -32,8 +35,9 @@ describe('AuthProvider / useAuth', () => {
     vi.stubGlobal('fetch', vi.fn())
   })
 
-  afterEach(() => {
+  afterEach(async () => {
     vi.unstubAllGlobals()
+    await Promise.all(db.tables.map((table) => table.clear()))
   })
 
   it('resolves to unauthenticated when no token is stored', async () => {
@@ -94,10 +98,45 @@ describe('AuthProvider / useAuth', () => {
       screen.getByText('login').click()
     })
 
-    await waitFor(() => expect(screen.getByTestId('status')).toHaveTextContent('authenticated'))
+    // Anchored regex, not the plain string: toHaveTextContent does a substring
+    // match, and 'unauthenticated' contains 'authenticated' -- a plain-string
+    // wait here would resolve on the pre-login status and race the assertions
+    // below against login()'s still-pending state updates.
+    await waitFor(() => expect(screen.getByTestId('status')).toHaveTextContent(/^authenticated$/))
     expect(screen.getByTestId('email')).toHaveTextContent('new.teacher@example.com')
     expect(screen.getByTestId('is-demo')).toHaveTextContent('false')
     expect(localStorage.getItem(AUTH_TOKEN_STORAGE_KEY)).toBe('issued-token')
+  })
+
+  it('login() wipes a previous session\'s local rows and watermarks before adopting the new token (#65)', async () => {
+    await putRawClass({
+      id: 'stale-class',
+      user_id: 'a-previous-sessions-user-id',
+      name: 'Stale',
+      created_at: '2024-01-01T00:00:00.000Z',
+      updated_at: '2024-01-01T00:00:00.000Z',
+      deleted_at: null,
+    })
+    setPushWatermark('2024-01-01T00:00:00.000Z')
+    setPullWatermark('2024-01-01T00:00:00.000Z')
+    vi.mocked(fetch).mockResolvedValueOnce(
+      new Response(
+        JSON.stringify({ token: 'issued-token', userId: 'u2', email: 'new.teacher@example.com', isDemo: false }),
+        { status: 200 },
+      ),
+    )
+
+    renderProbe()
+    await waitFor(() => expect(screen.getByTestId('status')).toHaveTextContent(/^unauthenticated$/))
+
+    await act(async () => {
+      screen.getByText('login').click()
+    })
+    await waitFor(() => expect(screen.getByTestId('status')).toHaveTextContent(/^authenticated$/))
+
+    expect(await db.class.get('stale-class')).toBeUndefined()
+    expect(getPushWatermark()).toBeNull()
+    expect(getPullWatermark()).toBeNull()
   })
 
   it('loginAsDemo() transitions to authenticated with an isDemo user and stores the token', async () => {
@@ -115,7 +154,8 @@ describe('AuthProvider / useAuth', () => {
       screen.getByText('login-demo').click()
     })
 
-    await waitFor(() => expect(screen.getByTestId('status')).toHaveTextContent('authenticated'))
+    // See the login() test above for why this must be an anchored regex.
+    await waitFor(() => expect(screen.getByTestId('status')).toHaveTextContent(/^authenticated$/))
     expect(screen.getByTestId('is-demo')).toHaveTextContent('true')
     expect(localStorage.getItem(AUTH_TOKEN_STORAGE_KEY)).toBe('demo-token')
     expect(fetch).toHaveBeenCalledWith(expect.stringContaining('/auth/demo'), expect.objectContaining({ method: 'POST' }))
@@ -153,5 +193,38 @@ describe('AuthProvider / useAuth', () => {
 
     expect(screen.getByTestId('status')).toHaveTextContent('unauthenticated')
     expect(localStorage.getItem(AUTH_TOKEN_STORAGE_KEY)).toBeNull()
+  })
+
+  it('logout() wipes local rows and watermarks (#65)', async () => {
+    localStorage.setItem(AUTH_TOKEN_STORAGE_KEY, 'a-valid-token')
+    vi.mocked(fetch).mockResolvedValueOnce(
+      new Response(
+        JSON.stringify({ userId: 'u3', email: 'logout.teacher@example.com', isDemo: false }),
+        { status: 200 },
+      ),
+    )
+    await putRawClass({
+      id: 'own-class',
+      user_id: 'u3',
+      name: 'Room 5',
+      created_at: '2024-01-01T00:00:00.000Z',
+      updated_at: '2024-01-01T00:00:00.000Z',
+      deleted_at: null,
+    })
+    setPushWatermark('2024-01-01T00:00:00.000Z')
+
+    renderProbe()
+    await waitFor(() => expect(screen.getByTestId('status')).toHaveTextContent(/^authenticated$/))
+
+    act(() => {
+      screen.getByText('logout').click()
+    })
+
+    // logout() fires the reset without awaiting it (see AuthContext.tsx),
+    // so poll for it to land rather than asserting immediately.
+    await vi.waitFor(async () => {
+      expect(await db.class.get('own-class')).toBeUndefined()
+    })
+    expect(getPushWatermark()).toBeNull()
   })
 })
