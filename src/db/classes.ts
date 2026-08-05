@@ -24,13 +24,20 @@ export async function getClass(id: string): Promise<ClassRow | undefined> {
   return row && row.deleted_at === null ? row : undefined
 }
 
-/** MVP is single-class-per-teacher (per #12): at most one live row per user_id. */
+/**
+ * MVP is single-class-per-teacher (per #12): at most one live row per
+ * user_id. Sorted by created_at (rather than an unordered `.first()`) so
+ * that if a second, decoy row ever exists locally -- #46 traced one path
+ * where a client sync gap let that happen -- the teacher's real, original
+ * class always wins over it deterministically.
+ */
 export async function getClassForUser(userId: string): Promise<ClassRow | undefined> {
-  return db.class
+  const rows = await db.class
     .where('user_id')
     .equals(userId)
     .filter((row) => row.deleted_at === null)
-    .first()
+    .sortBy('created_at')
+  return rows[0]
 }
 
 export async function deleteClass(id: string): Promise<void> {
