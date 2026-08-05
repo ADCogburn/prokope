@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useAuth } from './AuthContext'
 
 // The Google client ID is a public, non-secret, build-time value set in
@@ -26,8 +26,22 @@ declare global {
 }
 
 export function LoginView() {
-  const { login } = useAuth()
+  const { login, loginAsDemo } = useAuth()
   const buttonRef = useRef<HTMLDivElement>(null)
+  const [demoError, setDemoError] = useState<string | null>(null)
+  const [demoPending, setDemoPending] = useState(false)
+
+  async function handleExploreAsGuest() {
+    setDemoError(null)
+    setDemoPending(true)
+    try {
+      await loginAsDemo()
+    } catch {
+      setDemoError('Demo mode is not available right now. Please try again later.')
+    } finally {
+      setDemoPending(false)
+    }
+  }
 
   // index.html loads the GIS script with async/defer, so it may not have
   // finished loading by the time this effect first runs -- poll briefly
@@ -70,6 +84,10 @@ export function LoginView() {
       <h1>Sign in</h1>
       <p>Sign in with your Google account to continue.</p>
       <div ref={buttonRef} data-testid="google-signin-button" />
+      <button type="button" onClick={() => void handleExploreAsGuest()} disabled={demoPending}>
+        Explore as Guest
+      </button>
+      {demoError && <p role="alert">{demoError}</p>}
     </div>
   )
 }

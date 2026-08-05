@@ -25,7 +25,7 @@ describe('AccountBar', () => {
     vi.stubGlobal(
       'fetch',
       vi.fn().mockResolvedValue(
-        new Response(JSON.stringify({ userId: 'u1', email: 'teacher@example.com' }), { status: 200 }),
+        new Response(JSON.stringify({ userId: 'u1', email: 'teacher@example.com', isDemo: false }), { status: 200 }),
       ),
     )
 
@@ -43,7 +43,7 @@ describe('AccountBar', () => {
     vi.stubGlobal(
       'fetch',
       vi.fn().mockResolvedValue(
-        new Response(JSON.stringify({ userId: 'u1', email: 'teacher@example.com' }), { status: 200 }),
+        new Response(JSON.stringify({ userId: 'u1', email: 'teacher@example.com', isDemo: false }), { status: 200 }),
       ),
     )
 
@@ -57,5 +57,42 @@ describe('AccountBar', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Log out' }))
 
     expect(localStorage.getItem(AUTH_TOKEN_STORAGE_KEY)).toBeNull()
+  })
+
+  it('shows a Demo Mode badge for a demo account', async () => {
+    localStorage.setItem(AUTH_TOKEN_STORAGE_KEY, 'a-token')
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue(
+        new Response(JSON.stringify({ userId: 'u1', email: 'demo@example.com', isDemo: true }), { status: 200 }),
+      ),
+    )
+
+    render(
+      <AuthProvider>
+        <AccountBar />
+      </AuthProvider>,
+    )
+
+    await waitFor(() => expect(screen.getByText('Demo Mode')).toBeInTheDocument())
+  })
+
+  it('shows no Demo Mode badge for a real account', async () => {
+    localStorage.setItem(AUTH_TOKEN_STORAGE_KEY, 'a-token')
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue(
+        new Response(JSON.stringify({ userId: 'u1', email: 'teacher@example.com', isDemo: false }), { status: 200 }),
+      ),
+    )
+
+    render(
+      <AuthProvider>
+        <AccountBar />
+      </AuthProvider>,
+    )
+
+    await waitFor(() => expect(screen.getByText('teacher@example.com')).toBeInTheDocument())
+    expect(screen.queryByText('Demo Mode')).not.toBeInTheDocument()
   })
 })

@@ -11,6 +11,7 @@ export function AccountBar() {
 
   return (
     <div className="account-bar">
+      {user.isDemo && <span className="account-bar__demo-badge">Demo Mode</span>}
       <span className="account-bar__email">{user.email}</span>
       <button type="button" onClick={logout}>
         Log out
