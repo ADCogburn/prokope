@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import { db } from './schema'
 import { createClass, deleteClass, getClass, getClassForUser } from './classes'
 
@@ -62,6 +62,25 @@ describe('getClassForUser', () => {
     await createClass({ user_id: 'user-2', name: 'Other Homeroom' })
 
     expect(await getClassForUser('user-1')).toBeUndefined()
+  })
+
+  // A user should only ever have one live class (per #12), but #46 traced a
+  // client sync gap that could let a second, empty one get created locally
+  // before the real one arrived. Deterministically preferring the oldest
+  // row means that decoy never wins over the teacher's actual class. Pins
+  // each row's random UUID so the decoy's id would sort first alphabetically
+  // -- an unordered `.first()` would pick it, proving the sort is what
+  // makes this deterministic rather than getting lucky on id order.
+  it('prefers the earliest-created class when more than one somehow exists', async () => {
+    const randomUUID = vi.spyOn(crypto, 'randomUUID')
+    randomUUID.mockReturnValueOnce('bbbbbbbb-0000-0000-0000-000000000000')
+    const seeded = await createClass({ user_id: 'user-1', name: 'Seeded Class' })
+    await new Promise((resolve) => setTimeout(resolve, 2))
+    randomUUID.mockReturnValueOnce('aaaaaaaa-0000-0000-0000-000000000000')
+    await createClass({ user_id: 'user-1', name: 'Accidental Decoy' })
+    randomUUID.mockRestore()
+
+    expect(await getClassForUser('user-1')).toEqual(seeded)
   })
 })
 
