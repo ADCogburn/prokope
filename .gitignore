@@ -23,6 +23,9 @@ obj/
 # --- Scratch notes (agent/local, not for commit) ---
 .scratch/
 
+# --- Personal learning workspace (teach skill, Andrew-only, never pushed) ---
+.andrew-docs/
+
 # --- Editors / OS ---
 .vscode/*
 !.vscode/extensions.json
