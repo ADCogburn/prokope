@@ -18,22 +18,15 @@ interface InlineAddCardProps {
 export function InlineAddCard({ addLabel, className, children }: InlineAddCardProps) {
   const [expanded, setExpanded] = useState(false)
   const collapse = () => setExpanded(false)
+  const classes = `inline-add-card${className ? ` ${className}` : ''}`
 
   if (!expanded) {
     return (
-      <button
-        type="button"
-        className={`inline-add-card${className ? ` ${className}` : ''}`}
-        onClick={() => setExpanded(true)}
-      >
+      <button type="button" className={classes} onClick={() => setExpanded(true)}>
         + {addLabel}
       </button>
     )
   }
 
-  return (
-    <div className={`inline-add-card inline-add-card--expanded${className ? ` ${className}` : ''}`}>
-      {children({ collapse })}
-    </div>
-  )
+  return <div className={`${classes} inline-add-card--expanded`}>{children({ collapse })}</div>
 }

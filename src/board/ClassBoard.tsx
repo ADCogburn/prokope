@@ -47,7 +47,13 @@ function AddSubjectCard({ classId, position }: AddSubjectCardProps) {
               autoFocus
             />
             <div className="inline-add-card__actions">
-              <button type="button" onClick={collapse}>
+              <button
+                type="button"
+                onClick={() => {
+                  setName('')
+                  collapse()
+                }}
+              >
                 Cancel
               </button>
               <button type="submit" disabled={submitting || name.trim() === ''}>
