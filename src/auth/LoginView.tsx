@@ -62,7 +62,11 @@ export function LoginView() {
           void login(response.credential)
         },
       })
-      window.google.accounts.id.renderButton(buttonRef.current, { theme: 'outline', size: 'large' })
+      window.google.accounts.id.renderButton(buttonRef.current, {
+        theme: 'outline',
+        size: 'large',
+        shape: 'pill',
+      })
       return true
     }
 
