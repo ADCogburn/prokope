@@ -47,7 +47,7 @@ describe('LoginView', () => {
   it("firing Google's callback with a credential calls the auth module's login", async () => {
     vi.mocked(fetch).mockResolvedValueOnce(
       new Response(
-        JSON.stringify({ token: 'issued-token', userId: 'u1', email: 'teacher@example.com' }),
+        JSON.stringify({ token: 'issued-token', userId: 'u1', email: 'teacher@example.com', isDemo: false }),
         { status: 200 },
       ),
     )
@@ -67,5 +67,43 @@ describe('LoginView', () => {
         expect.objectContaining({ method: 'POST' }),
       ),
     )
+  })
+
+  it('renders an "Explore as Guest" button that calls POST /auth/demo', async () => {
+    vi.mocked(fetch).mockResolvedValueOnce(
+      new Response(
+        JSON.stringify({ token: 'demo-token', userId: 'demo-1', email: 'demo@example.com', isDemo: true }),
+        { status: 200 },
+      ),
+    )
+
+    render(
+      <AuthProvider>
+        <LoginView />
+      </AuthProvider>,
+    )
+
+    screen.getByRole('button', { name: 'Explore as Guest' }).click()
+
+    await waitFor(() =>
+      expect(fetch).toHaveBeenCalledWith(
+        expect.stringContaining('/auth/demo'),
+        expect.objectContaining({ method: 'POST' }),
+      ),
+    )
+  })
+
+  it('shows a graceful error when demo sign-in fails', async () => {
+    vi.mocked(fetch).mockResolvedValueOnce(new Response(null, { status: 403 }))
+
+    render(
+      <AuthProvider>
+        <LoginView />
+      </AuthProvider>,
+    )
+
+    screen.getByRole('button', { name: 'Explore as Guest' }).click()
+
+    await waitFor(() => expect(screen.getByRole('alert')).toBeInTheDocument())
   })
 })

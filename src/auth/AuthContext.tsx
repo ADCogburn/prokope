@@ -7,23 +7,27 @@ export type AuthStatus = 'loading' | 'authenticated' | 'unauthenticated'
 export interface AuthUser {
   userId: string
   email: string
+  isDemo: boolean
 }
 
 interface MeResponse {
   userId: string
   email: string
+  isDemo: boolean
 }
 
-interface GoogleSignInResponse {
+interface AuthResponse {
   token: string
   userId: string
   email: string
+  isDemo: boolean
 }
 
 interface AuthContextValue {
   status: AuthStatus
   user: AuthUser | null
   login: (credential: string) => Promise<void>
+  loginAsDemo: () => Promise<void>
   logout: () => void
 }
 
@@ -56,7 +60,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         }
 
         const body = (await response.json()) as MeResponse
-        setUser({ userId: body.userId, email: body.email })
+        setUser({ userId: body.userId, email: body.email, isDemo: body.isDemo })
         setStatus('authenticated')
       })
       .catch(() => {
@@ -81,9 +85,24 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       throw new Error('Google sign-in was rejected')
     }
 
-    const body = (await response.json()) as GoogleSignInResponse
+    const body = (await response.json()) as AuthResponse
     localStorage.setItem(AUTH_TOKEN_STORAGE_KEY, body.token)
-    setUser({ userId: body.userId, email: body.email })
+    setUser({ userId: body.userId, email: body.email, isDemo: body.isDemo })
+    setStatus('authenticated')
+  }
+
+  // Same session/storage path as login(), just against /auth/demo, which
+  // needs no credential -- see #32.
+  async function loginAsDemo() {
+    const response = await fetch(`${API_URL}/auth/demo`, { method: 'POST' })
+
+    if (!response.ok) {
+      throw new Error('Demo sign-in is not available right now')
+    }
+
+    const body = (await response.json()) as AuthResponse
+    localStorage.setItem(AUTH_TOKEN_STORAGE_KEY, body.token)
+    setUser({ userId: body.userId, email: body.email, isDemo: body.isDemo })
     setStatus('authenticated')
   }
 
@@ -93,7 +112,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setStatus('unauthenticated')
   }
 
-  return <AuthContext.Provider value={{ status, user, login, logout }}>{children}</AuthContext.Provider>
+  return (
+    <AuthContext.Provider value={{ status, user, login, loginAsDemo, logout }}>{children}</AuthContext.Provider>
+  )
 }
 
 export function useAuth(): AuthContextValue {

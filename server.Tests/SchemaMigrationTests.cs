@@ -24,9 +24,10 @@ public class SchemaMigrationTests(DatabaseFixture fixture) : IClassFixture<Datab
         var columns = await _schema.GetColumnsAsync("users");
 
         AssertColumn(columns, "id", "uuid", nullable: false);
-        AssertColumn(columns, "google_sub", "text", nullable: false);
+        AssertColumn(columns, "google_sub", "text", nullable: true);
         AssertColumn(columns, "email", "text", nullable: false);
         AssertColumn(columns, "created_at", "timestamp with time zone", nullable: false);
+        AssertColumn(columns, "is_demo", "boolean", nullable: false);
         Assert.False(columns.ContainsKey("deleted_at"), "users should have no deleted_at column (server-only, no offline-delete scenario).");
     }
 

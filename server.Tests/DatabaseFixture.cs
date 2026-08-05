@@ -36,7 +36,18 @@ public class DatabaseFixture : IAsyncLifetime
     // this value is never actually used to validate a token audience.
     public const string GoogleClientId = "test-fixture-google-client-id";
 
+    // Overridden by DemoAccountDisabledDatabaseFixture to exercise the
+    // App:DemoAccountEnabled=false path -- that variant boots its own
+    // Postgres container, since the flag is only read by Program.cs at
+    // WebApplicationFactory build time.
+    protected virtual bool DemoAccountEnabled => true;
+
     public HttpClient CreateClient() => _factory!.CreateClient();
+
+    // Exposes the running app's DI container so tests can assert directly
+    // against the database (e.g. demo-seeded rows) without a dedicated
+    // read endpoint for every entity.
+    public IServiceProvider Services => _factory!.Services;
 
     public async Task InitializeAsync()
     {
@@ -54,6 +65,7 @@ public class DatabaseFixture : IAsyncLifetime
                         ["Jwt:SigningKey"] = JwtSigningKey,
                         ["Jwt:Issuer"] = JwtIssuer,
                         ["Google:ClientId"] = GoogleClientId,
+                        ["App:DemoAccountEnabled"] = DemoAccountEnabled ? "true" : "false",
                     }));
 
                 // The real GoogleTokenVerifier calls out to Google's network;
@@ -86,4 +98,12 @@ public class DatabaseFixture : IAsyncLifetime
 
         await _container.DisposeAsync();
     }
+}
+
+// Same real-app boot as DatabaseFixture, but with App:DemoAccountEnabled
+// forced off, so DemoAuthDisabledTests can assert on the disabled path
+// without affecting the shared fixture other test classes use.
+public class DemoAccountDisabledDatabaseFixture : DatabaseFixture
+{
+    protected override bool DemoAccountEnabled => false;
 }

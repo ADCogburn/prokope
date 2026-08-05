@@ -38,9 +38,43 @@ public static class AuthEndpoints
             }
 
             var token = tokenService.IssueToken(user.Id);
-            return Results.Ok(new AuthResponse(token, user.Id, user.Email));
+            return Results.Ok(new AuthResponse(token, user.Id, user.Email, user.IsDemo));
         })
         .WithName("GoogleSignIn");
+
+        app.MapPost("/auth/demo", async (
+            IConfiguration configuration,
+            ISessionTokenService tokenService,
+            AppDbContext db,
+            CancellationToken cancellationToken) =>
+        {
+            // Config-flag gated (App:DemoAccountEnabled), not eagerly read at
+            // startup like Google:ClientId: unlike Google sign-in, the whole
+            // app isn't unusable without this, so a missing/false flag should
+            // just disable the one endpoint, not fail the container to boot.
+            if (!configuration.GetValue<bool>("App:DemoAccountEnabled"))
+            {
+                return Results.Problem(
+                    detail: "Demo accounts are currently disabled.",
+                    statusCode: StatusCodes.Status403Forbidden);
+            }
+
+            var user = new User
+            {
+                Id = Guid.NewGuid(),
+                GoogleSub = null,
+                Email = $"demo-{Guid.NewGuid():N}@demo.prokope.local",
+                CreatedAt = DateTimeOffset.UtcNow,
+                IsDemo = true,
+            };
+            db.Users.Add(user);
+            DemoAccountSeeder.Seed(db, user.Id);
+            await db.SaveChangesAsync(cancellationToken);
+
+            var token = tokenService.IssueToken(user.Id);
+            return Results.Ok(new AuthResponse(token, user.Id, user.Email, user.IsDemo));
+        })
+        .WithName("DemoSignIn");
 
         app.MapGet("/auth/me", async (
             ClaimsPrincipal principal,
@@ -59,7 +93,7 @@ public static class AuthEndpoints
                 return Results.Unauthorized();
             }
 
-            return Results.Ok(new MeResponse(user.Id, user.Email));
+            return Results.Ok(new MeResponse(user.Id, user.Email, user.IsDemo));
         })
         .WithName("GetCurrentUser")
         .RequireAuthorization();
