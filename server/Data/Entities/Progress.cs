@@ -12,4 +12,5 @@ public class Progress
     public bool Review { get; set; }
     public required string ReviewHlc { get; set; }
     public Guid ReviewClientId { get; set; }
+    public DateTimeOffset UpdatedAt { get; set; }
 }

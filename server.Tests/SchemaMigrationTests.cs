@@ -39,6 +39,7 @@ public class SchemaMigrationTests(DatabaseFixture fixture) : IClassFixture<Datab
         AssertColumn(columns, "user_id", "uuid", nullable: false);
         AssertColumn(columns, "name", "text", nullable: false);
         AssertColumn(columns, "created_at", "timestamp with time zone", nullable: false);
+        AssertColumn(columns, "updated_at", "timestamp with time zone", nullable: false);
         AssertColumn(columns, "deleted_at", "timestamp with time zone", nullable: true);
     }
 
@@ -52,6 +53,7 @@ public class SchemaMigrationTests(DatabaseFixture fixture) : IClassFixture<Datab
         AssertColumn(columns, "name", "text", nullable: false);
         AssertColumn(columns, "position", "integer", nullable: false);
         AssertColumn(columns, "created_at", "timestamp with time zone", nullable: false);
+        AssertColumn(columns, "updated_at", "timestamp with time zone", nullable: false);
         AssertColumn(columns, "deleted_at", "timestamp with time zone", nullable: true);
     }
 
@@ -67,6 +69,7 @@ public class SchemaMigrationTests(DatabaseFixture fixture) : IClassFixture<Datab
         AssertColumn(columns, "title", "text", nullable: false);
         AssertColumn(columns, "description", "text", nullable: false);
         AssertColumn(columns, "created_at", "timestamp with time zone", nullable: false);
+        AssertColumn(columns, "updated_at", "timestamp with time zone", nullable: false);
         AssertColumn(columns, "deleted_at", "timestamp with time zone", nullable: true);
     }
 
@@ -80,6 +83,7 @@ public class SchemaMigrationTests(DatabaseFixture fixture) : IClassFixture<Datab
         AssertColumn(columns, "name", "text", nullable: false);
         AssertColumn(columns, "position", "integer", nullable: false);
         AssertColumn(columns, "created_at", "timestamp with time zone", nullable: false);
+        AssertColumn(columns, "updated_at", "timestamp with time zone", nullable: false);
         AssertColumn(columns, "deleted_at", "timestamp with time zone", nullable: true);
     }
 
@@ -98,6 +102,7 @@ public class SchemaMigrationTests(DatabaseFixture fixture) : IClassFixture<Datab
         AssertColumn(columns, "review", "boolean", nullable: false);
         AssertColumn(columns, "review_hlc", "text", nullable: false);
         AssertColumn(columns, "review_client_id", "uuid", nullable: false);
+        AssertColumn(columns, "updated_at", "timestamp with time zone", nullable: false);
         Assert.False(columns.ContainsKey("deleted_at"), "progress should have no deleted_at -- fields are overwritten in place, never removed.");
     }
 

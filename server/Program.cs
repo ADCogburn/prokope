@@ -3,6 +3,7 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Tokens;
 using server.Auth;
 using server.Data;
+using server.Sync;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -95,6 +96,7 @@ app.UseAuthentication();
 app.UseAuthorization();
 
 app.MapAuthEndpoints();
+app.MapSyncEndpoints();
 
 // Confirms the process is up (and, since Migrate() above already ran, that
 // migrations succeeded) -- for the docker build+run check and a one-time

@@ -27,6 +27,7 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
         {
             entity.ToTable("class");
             entity.HasKey(e => e.Id);
+            entity.HasIndex(e => e.UpdatedAt);
             ConfigureForeignKey<Class, User>(entity, e => e.UserId);
         });
 
@@ -34,6 +35,7 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
         {
             entity.ToTable("subject");
             entity.HasKey(e => e.Id);
+            entity.HasIndex(e => e.UpdatedAt);
             ConfigureForeignKey<Subject, Class>(entity, e => e.ClassId);
         });
 
@@ -42,6 +44,7 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
             entity.ToTable("lesson");
             entity.HasKey(e => e.Id);
             entity.HasIndex(e => new { e.SubjectId, e.Unit, e.LessonInUnit }).IsUnique();
+            entity.HasIndex(e => e.UpdatedAt);
             ConfigureForeignKey<Lesson, Subject>(entity, e => e.SubjectId);
         });
 
@@ -49,6 +52,7 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
         {
             entity.ToTable("student");
             entity.HasKey(e => e.Id);
+            entity.HasIndex(e => e.UpdatedAt);
             ConfigureForeignKey<Student, Class>(entity, e => e.ClassId);
         });
 
@@ -57,6 +61,7 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
             entity.ToTable("progress");
             entity.HasKey(e => e.Id);
             entity.HasIndex(e => new { e.StudentId, e.SubjectId }).IsUnique();
+            entity.HasIndex(e => e.UpdatedAt);
             ConfigureForeignKey<Progress, Student>(entity, e => e.StudentId);
             ConfigureForeignKey<Progress, Subject>(entity, e => e.SubjectId);
         });
