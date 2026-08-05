@@ -234,7 +234,7 @@
 }
 
 .progress-cell--review {
-  background: var(--accent-bg);
+  background: var(--review-bg);
 }
 
 .progress-cell__student {
@@ -259,14 +259,60 @@
   flex-shrink: 0;
 }
 
-.progress-cell__review-toggle,
+.progress-cell__review-toggle {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  border: none;
+  border-radius: 6px;
+  background: none;
+  color: var(--text);
+  cursor: pointer;
+
+  &:hover {
+    background: var(--accent-bg);
+  }
+
+  svg {
+    width: 16px;
+    height: 16px;
+    display: block;
+  }
+
+  line {
+    stroke: currentColor;
+    stroke-width: 2;
+    stroke-linecap: round;
+  }
+
+  path {
+    fill: none;
+    stroke: currentColor;
+    stroke-width: 2;
+    stroke-linejoin: round;
+  }
+}
+
+.progress-cell__review-toggle--active {
+  color: var(--review-bg);
+
+  path {
+    fill: currentColor;
+  }
+}
+
 .progress-cell__advance {
   font: inherit;
   font-size: 12px;
+  min-width: 15ch;
+  text-align: center;
   padding: 4px 8px;
   border-radius: 6px;
-  border: 1px solid var(--border);
-  background: var(--bg);
+  border: 1px solid var(--accent-border);
+  background: var(--accent-bg);
   color: var(--text-h);
   cursor: pointer;
 
@@ -274,15 +320,4 @@
     opacity: 0.5;
     cursor: not-allowed;
   }
-}
-
-.progress-cell__review-toggle--active {
-  background: var(--accent);
-  border-color: var(--accent);
-  color: var(--on-accent);
-}
-
-.progress-cell__advance {
-  background: var(--accent-bg);
-  border-color: var(--accent-border);
 }

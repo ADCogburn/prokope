@@ -1,10 +1,13 @@
 import type { ProgressRow } from '../db/schema'
+import { formatStep } from './formatStep'
 
-export function formatStep(progress: ProgressRow | undefined): string {
-  if (!progress || (progress.step_unit === 0 && progress.step_lesson_in_unit === 0)) {
-    return 'Not started'
-  }
-  return `Unit ${progress.step_unit} · Lesson ${progress.step_lesson_in_unit}`
+function FlagIcon() {
+  return (
+    <svg viewBox="0 0 24 24" aria-hidden="true">
+      <line x1="5" y1="3" x2="5" y2="21" />
+      <path d="M5 4 L19 8 L5 13 Z" />
+    </svg>
+  )
 }
 
 interface ProgressCellProps {
@@ -26,18 +29,20 @@ export function ProgressCell({
   onToggleReview,
 }: ProgressCellProps) {
   const advanceLabel = !hasAnyLessons ? 'No lessons yet' : hasNextLesson ? 'Next lesson' : 'Complete'
+  const isFlagged = Boolean(progress?.review)
 
   return (
-    <div className={`progress-cell${progress?.review ? ' progress-cell--review' : ''}`}>
+    <div className={`progress-cell${isFlagged ? ' progress-cell--review' : ''}`}>
       <span className="progress-cell__student">{studentName}</span>
       <span className="progress-cell__step">{formatStep(progress)}</span>
       <div className="progress-cell__actions">
         <button
           type="button"
-          className={`progress-cell__review-toggle${progress?.review ? ' progress-cell__review-toggle--active' : ''}`}
+          className={`progress-cell__review-toggle${isFlagged ? ' progress-cell__review-toggle--active' : ''}`}
           onClick={onToggleReview}
+          aria-label={isFlagged ? 'Remove review flag' : 'Flag for review'}
         >
-          {progress?.review ? 'Flagged' : 'Flag for review'}
+          <FlagIcon />
         </button>
         <button
           type="button"
