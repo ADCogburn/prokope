@@ -14,6 +14,14 @@ function progressKey(studentId: string, subjectId: string) {
   return `${studentId}:${subjectId}`
 }
 
+function ChevronIcon({ direction }: { direction: 'left' | 'right' }) {
+  return (
+    <svg viewBox="0 0 24 24" aria-hidden="true">
+      <path d={direction === 'left' ? 'M15 4 L7 12 L15 20' : 'M9 4 L17 12 L9 20'} />
+    </svg>
+  )
+}
+
 interface AddSubjectCardProps {
   classId: string
   position: number
@@ -267,6 +275,16 @@ export function ClassBoard({
         </div>
 
         <div ref={wrapRef} className="class-board__carousel-wrap">
+          {index > 0 && (
+            <button
+              type="button"
+              aria-label="Previous subject"
+              className="class-board__carousel-arrow class-board__carousel-arrow--prev"
+              onClick={() => goTo(index - 1)}
+            >
+              <ChevronIcon direction="left" />
+            </button>
+          )}
           <div
             {...bind}
             className={`class-board__carousel${dragging ? ' class-board__carousel--dragging' : ''}`}
@@ -325,6 +343,16 @@ export function ClassBoard({
               <AddSubjectCard classId={classRow.id} position={subjects.length} />
             </div>
           </div>
+          {index < subjects.length - 1 && (
+            <button
+              type="button"
+              aria-label="Next subject"
+              className="class-board__carousel-arrow class-board__carousel-arrow--next"
+              onClick={() => goTo(index + 1)}
+            >
+              <ChevronIcon direction="right" />
+            </button>
+          )}
 
           <SubjectReorder subjects={subjects} activeIndex={index} onDotClick={goTo} />
         </div>

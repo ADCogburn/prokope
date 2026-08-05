@@ -301,6 +301,84 @@ describe('ClassBoard', () => {
     expect(screen.queryByRole('button', { name: 'Go to Math' })).not.toBeInTheDocument()
   })
 
+  it('hides both carousel arrows when there is only one subject', async () => {
+    const { classRow, subject } = await seedClassWithOneSubjectOneStudent()
+
+    renderBoard({
+      classRow,
+      subjects: [subject],
+      students: [],
+      progress: [],
+      lessons: [],
+      activeSubjectId: subject.id,
+    })
+
+    expect(screen.queryByRole('button', { name: 'Previous subject' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Next subject' })).not.toBeInTheDocument()
+  })
+
+  it('hides the previous arrow on the first subject and the next arrow on the last, showing the other', async () => {
+    const classRow = await createClass({ user_id: 'user-1', name: 'Homeroom' })
+    const subjectA = await createSubject({ class_id: classRow.id, name: 'Math', position: 0 })
+    const subjectB = await createSubject({ class_id: classRow.id, name: 'Reading', position: 1 })
+
+    renderBoard({
+      classRow,
+      subjects: [subjectA, subjectB],
+      students: [],
+      progress: [],
+      lessons: [],
+      activeSubjectId: subjectA.id,
+    })
+
+    expect(screen.queryByRole('button', { name: 'Previous subject' })).not.toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Next subject' })).toBeInTheDocument()
+  })
+
+  it('clicking the next arrow advances to the next subject and calls onSubjectChange', async () => {
+    const classRow = await createClass({ user_id: 'user-1', name: 'Homeroom' })
+    const subjectA = await createSubject({ class_id: classRow.id, name: 'Math', position: 0 })
+    const subjectB = await createSubject({ class_id: classRow.id, name: 'Reading', position: 1 })
+    const onSubjectChange = vi.fn()
+
+    renderBoard({
+      classRow,
+      subjects: [subjectA, subjectB],
+      students: [],
+      progress: [],
+      lessons: [],
+      activeSubjectId: subjectA.id,
+      onSubjectChange,
+    })
+
+    fireEvent.click(screen.getByRole('button', { name: 'Next subject' }))
+
+    await waitFor(() => expect(onSubjectChange).toHaveBeenCalledWith(subjectB.id))
+    expect(screen.queryByRole('button', { name: 'Next subject' })).not.toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Previous subject' })).toBeInTheDocument()
+  })
+
+  it('clicking the previous arrow returns to the prior subject and calls onSubjectChange', async () => {
+    const classRow = await createClass({ user_id: 'user-1', name: 'Homeroom' })
+    const subjectA = await createSubject({ class_id: classRow.id, name: 'Math', position: 0 })
+    const subjectB = await createSubject({ class_id: classRow.id, name: 'Reading', position: 1 })
+    const onSubjectChange = vi.fn()
+
+    renderBoard({
+      classRow,
+      subjects: [subjectA, subjectB],
+      students: [],
+      progress: [],
+      lessons: [],
+      activeSubjectId: subjectB.id,
+      onSubjectChange,
+    })
+
+    fireEvent.click(screen.getByRole('button', { name: 'Previous subject' }))
+
+    await waitFor(() => expect(onSubjectChange).toHaveBeenCalledWith(subjectA.id))
+  })
+
   it('wires up the book icon: menu -> SubjectPickerModal -> curriculum navigation, closing the modal', async () => {
     const classRow = await createClass({ user_id: 'user-1', name: 'Homeroom' })
     const subjectA = await createSubject({ class_id: classRow.id, name: 'Math', position: 0 })
