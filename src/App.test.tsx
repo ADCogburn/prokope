@@ -5,11 +5,12 @@ import { AuthProvider } from './auth/AuthContext'
 import { AuthGate } from './auth/AuthGate'
 import { AUTH_TOKEN_STORAGE_KEY } from './auth/token'
 import { db } from './db/schema'
+import { ThemeProvider } from './theme/ThemeProvider'
 
-// Mirrors main.tsx's real composition (AuthProvider > AuthGate > App) so
-// this exercises the actual tree teachers hit, not App in isolation --
-// App's routes assume an authenticated user, a precondition AuthGate
-// provides in production.
+// Mirrors main.tsx's real composition (ThemeProvider > AuthProvider >
+// AuthGate > App) so this exercises the actual tree teachers hit, not App
+// in isolation -- App's routes assume an authenticated user, a
+// precondition AuthGate provides in production.
 describe('App', () => {
   beforeEach(async () => {
     localStorage.clear()
@@ -20,11 +21,13 @@ describe('App', () => {
     vi.stubGlobal('fetch', vi.fn())
 
     render(
-      <AuthProvider>
-        <AuthGate>
-          <App />
-        </AuthGate>
-      </AuthProvider>,
+      <ThemeProvider>
+        <AuthProvider>
+          <AuthGate>
+            <App />
+          </AuthGate>
+        </AuthProvider>
+      </ThemeProvider>,
     )
 
     await waitFor(() => expect(screen.getByTestId('google-signin-button')).toBeInTheDocument())
@@ -40,11 +43,13 @@ describe('App', () => {
     )
 
     render(
-      <AuthProvider>
-        <AuthGate>
-          <App />
-        </AuthGate>
-      </AuthProvider>,
+      <ThemeProvider>
+        <AuthProvider>
+          <AuthGate>
+            <App />
+          </AuthGate>
+        </AuthProvider>
+      </ThemeProvider>,
     )
 
     await waitFor(() => expect(screen.getByText('Set up your class')).toBeInTheDocument())

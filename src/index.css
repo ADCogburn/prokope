@@ -1,8 +1,8 @@
 :root {
-  --text: #6b6375;
-  --text-h: #08060d;
+  --text: #64748b;
+  --text-h: #0f172a;
   --bg: #fff;
-  --border: #e5e4e7;
+  --border: #e2e8f0;
   --code-bg: #f4f3ec;
   --accent: #aa3bff;
   --accent-bg: rgba(170, 59, 255, 0.1);
@@ -54,6 +54,51 @@
   #social .button-icon {
     filter: invert(1) brightness(2);
   }
+}
+
+/*
+ * Manual theme overrides (#50). ThemeProvider (src/theme/ThemeProvider.tsx)
+ * sets data-theme on <html> for an explicit Light/Dark choice, and removes
+ * it for "System" (the default), leaving the two blocks above in charge of
+ * following the OS. The attribute selector below out-specificities the
+ * plain `:root` inside the prefers-color-scheme block above ((0,2,0) vs.
+ * (0,1,0)), so an explicit choice wins regardless of source order or the
+ * OS's own setting -- e.g. forcing Light while the OS is in dark mode.
+ */
+:root[data-theme='light'] {
+  --text: #64748b;
+  --text-h: #0f172a;
+  --bg: #fff;
+  --border: #e2e8f0;
+  --code-bg: #f4f3ec;
+  --accent: #aa3bff;
+  --accent-bg: rgba(170, 59, 255, 0.1);
+  --accent-border: rgba(170, 59, 255, 0.5);
+  --on-accent: #fff;
+  --social-bg: rgba(244, 243, 236, 0.5);
+  --success: #1f9d4c;
+  --error: #d8342f;
+  --shadow:
+    rgba(0, 0, 0, 0.1) 0 10px 15px -3px, rgba(0, 0, 0, 0.05) 0 4px 6px -2px;
+  color-scheme: light;
+}
+
+:root[data-theme='dark'] {
+  --text: #9ca3af;
+  --text-h: #f3f4f6;
+  --bg: #16171d;
+  --border: #2e303a;
+  --code-bg: #1f2028;
+  --accent: #c084fc;
+  --accent-bg: rgba(192, 132, 252, 0.15);
+  --accent-border: rgba(192, 132, 252, 0.5);
+  --on-accent: var(--bg);
+  --social-bg: rgba(47, 48, 58, 0.5);
+  --success: #34c759;
+  --error: #ff453a;
+  --shadow:
+    rgba(0, 0, 0, 0.4) 0 10px 15px -3px, rgba(0, 0, 0, 0.25) 0 4px 6px -2px;
+  color-scheme: dark;
 }
 
 #root {

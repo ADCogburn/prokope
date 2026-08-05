@@ -3,6 +3,17 @@ import { fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { AccountBar } from './AccountBar'
 import { AuthProvider } from './AuthContext'
 import { AUTH_TOKEN_STORAGE_KEY } from './token'
+import { ThemeProvider } from '../theme/ThemeProvider'
+
+function renderAccountBar() {
+  return render(
+    <ThemeProvider>
+      <AuthProvider>
+        <AccountBar />
+      </AuthProvider>
+    </ThemeProvider>,
+  )
+}
 
 describe('AccountBar', () => {
   beforeEach(() => {
@@ -11,11 +22,7 @@ describe('AccountBar', () => {
 
   it('renders nothing while unauthenticated', () => {
     vi.stubGlobal('fetch', vi.fn())
-    render(
-      <AuthProvider>
-        <AccountBar />
-      </AuthProvider>,
-    )
+    renderAccountBar()
 
     expect(screen.queryByText('Log out')).not.toBeInTheDocument()
   })
@@ -29,11 +36,7 @@ describe('AccountBar', () => {
       ),
     )
 
-    render(
-      <AuthProvider>
-        <AccountBar />
-      </AuthProvider>,
-    )
+    renderAccountBar()
 
     await waitFor(() => expect(screen.getByText('teacher@example.com')).toBeInTheDocument())
   })
@@ -47,11 +50,7 @@ describe('AccountBar', () => {
       ),
     )
 
-    render(
-      <AuthProvider>
-        <AccountBar />
-      </AuthProvider>,
-    )
+    renderAccountBar()
 
     await waitFor(() => expect(screen.getByRole('button', { name: 'Log out' })).toBeInTheDocument())
     fireEvent.click(screen.getByRole('button', { name: 'Log out' }))
@@ -68,11 +67,7 @@ describe('AccountBar', () => {
       ),
     )
 
-    render(
-      <AuthProvider>
-        <AccountBar />
-      </AuthProvider>,
-    )
+    renderAccountBar()
 
     await waitFor(() => expect(screen.getByText('Demo Mode')).toBeInTheDocument())
   })
@@ -86,13 +81,26 @@ describe('AccountBar', () => {
       ),
     )
 
-    render(
-      <AuthProvider>
-        <AccountBar />
-      </AuthProvider>,
-    )
+    renderAccountBar()
 
     await waitFor(() => expect(screen.getByText('teacher@example.com')).toBeInTheDocument())
     expect(screen.queryByText('Demo Mode')).not.toBeInTheDocument()
+  })
+
+  it('renders a Light/Dark/System theme toggle for a signed-in teacher', async () => {
+    localStorage.setItem(AUTH_TOKEN_STORAGE_KEY, 'a-token')
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue(
+        new Response(JSON.stringify({ userId: 'u1', email: 'teacher@example.com', isDemo: false }), { status: 200 }),
+      ),
+    )
+
+    renderAccountBar()
+
+    await waitFor(() => expect(screen.getByRole('radiogroup', { name: 'Theme' })).toBeInTheDocument())
+    expect(screen.getByRole('radio', { name: 'Light' })).toBeInTheDocument()
+    expect(screen.getByRole('radio', { name: 'Dark' })).toBeInTheDocument()
+    expect(screen.getByRole('radio', { name: 'System' })).toBeInTheDocument()
   })
 })

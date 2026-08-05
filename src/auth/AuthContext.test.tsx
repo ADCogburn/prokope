@@ -3,6 +3,7 @@ import { act, render, screen, waitFor } from '@testing-library/react'
 import { db } from '../db/schema'
 import { putRawClass } from '../db/sync'
 import { getPullWatermark, getPushWatermark, setPullWatermark, setPushWatermark } from '../sync/watermarks'
+import { getStoredTheme, hasMadeThemeChoice, markThemeChoiceMade, setStoredTheme } from '../theme/storage'
 import { AuthProvider } from './AuthContext'
 import { useAuth } from './useAuth'
 import { AUTH_TOKEN_STORAGE_KEY } from './token'
@@ -159,6 +160,28 @@ describe('AuthProvider / useAuth', () => {
     expect(screen.getByTestId('is-demo')).toHaveTextContent('true')
     expect(localStorage.getItem(AUTH_TOKEN_STORAGE_KEY)).toBe('demo-token')
     expect(fetch).toHaveBeenCalledWith(expect.stringContaining('/auth/demo'), expect.objectContaining({ method: 'POST' }))
+  })
+
+  it('loginAsDemo() resets the theme choice to System, so a fresh demo looks like a first-time visitor (#50)', async () => {
+    setStoredTheme('dark')
+    markThemeChoiceMade()
+    vi.mocked(fetch).mockResolvedValueOnce(
+      new Response(
+        JSON.stringify({ token: 'demo-token', userId: 'u-demo', email: 'demo@example.com', isDemo: true }),
+        { status: 200 },
+      ),
+    )
+
+    renderProbe()
+    await waitFor(() => expect(screen.getByTestId('status')).toHaveTextContent('unauthenticated'))
+
+    await act(async () => {
+      screen.getByText('login-demo').click()
+    })
+
+    await waitFor(() => expect(screen.getByTestId('status')).toHaveTextContent(/^authenticated$/))
+    expect(getStoredTheme()).toBe('system')
+    expect(hasMadeThemeChoice()).toBe(false)
   })
 
   it('loginAsDemo() throws and leaves the session unauthenticated when the server rejects it', async () => {
