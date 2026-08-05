@@ -38,6 +38,14 @@
   margin-top: 24px;
 }
 
+/* GIS renders the "pill" shape as a rounded button inside a plain
+   rectangular iframe, so the iframe's own white background peeks out
+   past the pill's rounded ends unless we clip it to match. */
+.login-view__actions [data-testid='google-signin-button'] iframe {
+  border-radius: 999px;
+  overflow: hidden;
+}
+
 .login-view__guest-button {
   font: inherit;
   font-size: 14px;
