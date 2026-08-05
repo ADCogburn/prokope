@@ -4,6 +4,7 @@ import { advanceProgress, createSubject, findNextLesson, positionOf, upsertProgr
 import { useCarouselDrag } from './useCarouselDrag'
 import { ProgressCell } from './ProgressCell'
 import { InlineAddCard } from './InlineAddCard'
+import { SubjectReorder } from './SubjectReorder'
 import './ClassBoard.css'
 
 const PANEL_GAP = 24
@@ -236,17 +237,7 @@ export function ClassBoard({
             </div>
           </div>
 
-          <div className="class-board__dots">
-            {subjects.map((subject, i) => (
-              <button
-                key={subject.id}
-                type="button"
-                aria-label={`Go to ${subject.name}`}
-                onClick={() => goTo(i)}
-                className={`class-board__dot${i === index ? ' class-board__dot--active' : ''}`}
-              />
-            ))}
-          </div>
+          <SubjectReorder subjects={subjects} activeIndex={index} onDotClick={goTo} />
         </div>
       </div>
     </div>

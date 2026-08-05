@@ -250,4 +250,25 @@ describe('ClassBoard', () => {
 
     await waitFor(() => expect(onSubjectChange).toHaveBeenCalledWith(subjectB.id))
   })
+
+  it('wires up SubjectReorder: clicking its pencil swaps the dots for that subject\'s name chips', async () => {
+    const classRow = await createClass({ user_id: 'user-1', name: 'Homeroom' })
+    const subjectA = await createSubject({ class_id: classRow.id, name: 'Math', position: 0 })
+    const subjectB = await createSubject({ class_id: classRow.id, name: 'Reading', position: 1 })
+
+    renderBoard({
+      classRow,
+      subjects: [subjectA, subjectB],
+      students: [],
+      progress: [],
+      lessons: [],
+      activeSubjectId: subjectA.id,
+    })
+
+    fireEvent.click(screen.getByRole('button', { name: 'Reorder subjects' }))
+
+    expect(screen.getByText('Math', { selector: '.subject-reorder__chip-name' })).toBeInTheDocument()
+    expect(screen.getByText('Reading', { selector: '.subject-reorder__chip-name' })).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Go to Math' })).not.toBeInTheDocument()
+  })
 })
