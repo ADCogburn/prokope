@@ -45,6 +45,16 @@ describe('createLesson', () => {
 
     await expect(createLesson(lessonInput({ title: 'Different title' }))).rejects.toThrow()
   })
+
+  it('allows recreating a lesson at the same position after the original was removed', async () => {
+    const original = await createLesson(lessonInput())
+    await deleteLesson(original.id)
+
+    const recreated = await createLesson(lessonInput({ title: 'New lesson at the same spot' }))
+
+    expect(recreated.id).not.toBe(original.id)
+    expect(await getLessonByPosition('subject-1', 1, 1)).toEqual(recreated)
+  })
 })
 
 describe('listLessonsForSubject', () => {

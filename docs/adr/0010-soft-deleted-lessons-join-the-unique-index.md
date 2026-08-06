@@ -1,0 +1,9 @@
+# Soft-deleted lessons join the uniqueness key
+
+`lesson`'s Dexie schema enforces `&[subject_id+unit+lesson_in_unit]` as unique, but soft-delete (`deleted_at`) doesn't remove a row from that index — so removing a lesson and recreating one at the same unit/position (issue #129) throws a Dexie `ConstraintError`, since the old, hidden row still occupies the slot.
+
+The first fix attempted here was extending the index to `&[subject_id+unit+lesson_in_unit+deleted_at]`, on the theory that live rows' shared `deleted_at: null` would still uniquely enforce among themselves while a removed row's distinct `deleted_at` timestamp wouldn't collide with a new live row. That doesn't work: IndexedDB excludes a record from a compound index entirely when any key-path component evaluates to `null` (not a valid IndexedDB key), so every live row — the exact case this needed to protect — is silently dropped from the index, and the "unique" constraint enforces nothing among them.
+
+Fixed instead by dropping the `&` (uniqueness) from the index — kept as a plain `[subject_id+unit+lesson_in_unit]` index for fast position lookups — and enforcing the uniqueness in `createLesson` itself: it looks up the position's live lesson (if any) via `getLessonByPosition` and throws before inserting if one exists. This mirrors a check `AddLessonModal` already does at the UI layer before ever calling `createLesson`; this makes it a hard guarantee at the data layer too, not just a UI nicety.
+
+Considered instead blanking out `unit`/`lesson_in_unit` on removal to vacate the slot, but rejected — it mutates a "removed" row's data and would complicate any future restore feature. Requires a Dexie schema version bump; no data migration/backfill needed. `class`, `subject`, and `student` don't have this hazard: their only unique constraint is `id`, which is never reused after removal.

@@ -65,6 +65,16 @@ class ProkopeDatabase extends Dexie {
       student: 'id, class_id, [class_id+position]',
       progress: 'id, &[student_id+subject_id]',
     })
+    // #135/ADR-0010: drops the DB-level uniqueness from this compound index
+    // (IndexedDB excludes a record from a compound index entirely when any
+    // key-path component is null, so a `deleted_at`-inclusive unique index
+    // can't actually enforce anything among live rows, whose deleted_at is
+    // null) -- kept as a plain index for position lookups, with createLesson
+    // now doing the uniqueness check against live rows itself. No data
+    // migration needed.
+    this.version(2).stores({
+      lesson: 'id, subject_id, [subject_id+unit+lesson_in_unit]',
+    })
   }
 }
 
