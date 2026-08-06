@@ -6,6 +6,7 @@ import {
   getUpcomingWeekDates,
   ordinalOfStep,
   projectSubjectWeek,
+  type SkipException,
 } from './weeklyLessonPlan'
 
 function lessonRow(overrides: Partial<LessonRow> = {}): LessonRow {
@@ -191,6 +192,102 @@ describe('projectSubjectWeek', () => {
     const days = projectSubjectWeek(lessons, subjectId, progress, ['a'], weekDates)
 
     expect(days.map((d) => d.lesson?.title)).toEqual(['L5', undefined, undefined, undefined, undefined])
+  })
+})
+
+describe('projectSubjectWeek with skip exceptions', () => {
+  const subjectId = 'subj1'
+  const lessons = [
+    lessonRow({ id: 'l1', subject_id: subjectId, unit: 1, lesson_in_unit: 1, title: 'L1' }),
+    lessonRow({ id: 'l2', subject_id: subjectId, unit: 1, lesson_in_unit: 2, title: 'L2' }),
+    lessonRow({ id: 'l3', subject_id: subjectId, unit: 1, lesson_in_unit: 3, title: 'L3' }),
+    lessonRow({ id: 'l4', subject_id: subjectId, unit: 2, lesson_in_unit: 1, title: 'L4' }),
+    lessonRow({ id: 'l5', subject_id: subjectId, unit: 2, lesson_in_unit: 2, title: 'L5' }),
+  ]
+  const weekDates = [
+    new Date(2024, 0, 1), // Monday
+    new Date(2024, 0, 2), // Tuesday
+    new Date(2024, 0, 3), // Wednesday
+    new Date(2024, 0, 4), // Thursday
+    new Date(2024, 0, 5), // Friday
+  ]
+  // Not-started (ordinal -1) -> Monday rounds to lessons[0] = L1.
+  const notStartedProgress = [progressRow({ student_id: 'a', subject_id: subjectId, step_unit: 0, step_lesson_in_unit: 0 })]
+
+  it('a single skipped day shows the reason and consumes no lesson; the next day absorbs what the skipped day would have shown; the day that falls off the end of the week is undefined', () => {
+    const threeLessons = lessons.slice(0, 3) // L1, L2, L3
+    const exceptions: SkipException[] = [{ subjectId, date: weekDates[2], reason: 'Field trip' }] // Wednesday
+
+    const days = projectSubjectWeek(threeLessons, subjectId, notStartedProgress, ['a'], weekDates, exceptions)
+
+    expect(days.map((d) => d.lesson?.title)).toEqual(['L1', 'L2', undefined, 'L3', undefined]) // Wed skipped, Thu absorbs it, Fri falls off the end
+    expect(days.map((d) => d.skipReason)).toEqual([undefined, undefined, 'Field trip', undefined, undefined])
+  })
+
+  it('skipping the first day (Monday) still walks the rest of the week correctly', () => {
+    const exceptions: SkipException[] = [{ subjectId, date: weekDates[0], reason: 'Assembly' }]
+
+    const days = projectSubjectWeek(lessons, subjectId, notStartedProgress, ['a'], weekDates, exceptions)
+
+    expect(days[0].lesson).toBeUndefined()
+    expect(days[0].skipReason).toBe('Assembly')
+    expect(days.slice(1).map((d) => d.lesson?.title)).toEqual(['L1', 'L2', 'L3', 'L4'])
+    expect(days.slice(1).every((d) => d.skipReason === undefined)).toBe(true)
+  })
+
+  it('a skip on a day that is already lessonless (past the last defined lesson) still shows the reason', () => {
+    const lastLessonProgress = [
+      progressRow({ student_id: 'a', subject_id: subjectId, step_unit: 2, step_lesson_in_unit: 2 }), // ordinal 4, the last lesson
+    ]
+    const exceptions: SkipException[] = [{ subjectId, date: weekDates[2], reason: 'Nothing left to teach anyway' }]
+
+    const days = projectSubjectWeek(lessons, subjectId, lastLessonProgress, ['a'], weekDates, exceptions)
+
+    expect(days.map((d) => d.lesson?.title)).toEqual(['L5', undefined, undefined, undefined, undefined])
+    expect(days[2].skipReason).toBe('Nothing left to teach anyway')
+    expect(days.filter((_, i) => i !== 2).every((d) => d.skipReason === undefined)).toBe(true)
+  })
+
+  it('skipping every day in the week leaves every cell showing the reason and no lessons', () => {
+    const exceptions: SkipException[] = weekDates.map((date) => ({ subjectId, date, reason: 'Week off' }))
+
+    const days = projectSubjectWeek(lessons, subjectId, notStartedProgress, ['a'], weekDates, exceptions)
+
+    expect(days.every((d) => d.lesson === undefined)).toBe(true)
+    expect(days.every((d) => d.skipReason === 'Week off')).toBe(true)
+  })
+
+  it('defaults to no exceptions, matching the pre-#84 behavior exactly (regression guard)', () => {
+    const withDefault = projectSubjectWeek(lessons, subjectId, notStartedProgress, ['a'], weekDates)
+    const withExplicitEmpty = projectSubjectWeek(lessons, subjectId, notStartedProgress, ['a'], weekDates, [])
+
+    expect(withDefault).toEqual(withExplicitEmpty)
+    expect(withDefault.map((d) => d.lesson?.title)).toEqual(['L1', 'L2', 'L3', 'L4', 'L5'])
+    expect(withDefault.every((d) => d.skipReason === undefined)).toBe(true)
+  })
+})
+
+describe('buildWeeklyLessonPlan with skip exceptions', () => {
+  it("an exception for one subject doesn't affect another subject's projection", () => {
+    const subjects = [subjectRow({ id: 's1', name: 'Math' }), subjectRow({ id: 's2', name: 'Reading' })]
+    const lessons = [
+      lessonRow({ id: 'm1', subject_id: 's1', unit: 1, lesson_in_unit: 1, title: 'Math L1' }),
+      lessonRow({ id: 'm2', subject_id: 's1', unit: 1, lesson_in_unit: 2, title: 'Math L2' }),
+      lessonRow({ id: 'r1', subject_id: 's2', unit: 1, lesson_in_unit: 1, title: 'Reading L1' }),
+      lessonRow({ id: 'r2', subject_id: 's2', unit: 1, lesson_in_unit: 2, title: 'Reading L2' }),
+    ]
+    const monday = new Date(2024, 0, 1)
+    const weekDates = getUpcomingWeekDates(monday)
+    const exceptions: SkipException[] = [{ subjectId: 's1', date: weekDates[0], reason: 'Field trip' }]
+
+    const { rows } = buildWeeklyLessonPlan(subjects, lessons, [], ['a'], monday, exceptions)
+
+    const mathRow = rows.find((r) => r.subject.id === 's1')!
+    const readingRow = rows.find((r) => r.subject.id === 's2')!
+    expect(mathRow.days[0].lesson).toBeUndefined()
+    expect(mathRow.days[0].skipReason).toBe('Field trip')
+    expect(readingRow.days[0].skipReason).toBeUndefined()
+    expect(readingRow.days[0].lesson?.title).toBe('Reading L1')
   })
 })
 

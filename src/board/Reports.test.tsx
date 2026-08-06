@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { fireEvent, render, screen } from '@testing-library/react'
+import { fireEvent, render, screen, within } from '@testing-library/react'
 import { Reports } from './Reports'
 import type { ClassRow, LessonRow, ProgressRow, StudentRow, SubjectRow } from '../db/schema'
 
@@ -126,5 +126,41 @@ describe('Reports', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Print' }))
 
     expect(window.print).toHaveBeenCalledTimes(1)
+  })
+
+  it('shows the Skip control only for the weekly lesson plan report, per #84', () => {
+    render(<Reports {...baseProps} students={[studentRow()]} onBack={vi.fn()} />)
+
+    expect(screen.queryByRole('button', { name: '+ Skip' })).not.toBeInTheDocument()
+
+    fireEvent.change(screen.getByRole('combobox', { name: 'Report type' }), { target: { value: 'weekly-plan' } })
+
+    expect(screen.getByRole('button', { name: '+ Skip' })).toBeInTheDocument()
+
+    fireEvent.change(screen.getByRole('combobox', { name: 'Report type' }), { target: { value: 'per-student' } })
+
+    expect(screen.queryByRole('button', { name: '+ Skip' })).not.toBeInTheDocument()
+  })
+
+  it('adding a skip entry through the panel changes what the weekly lesson plan report renders, per #84', () => {
+    render(<Reports {...baseProps} students={[studentRow()]} onBack={vi.fn()} />)
+
+    fireEvent.change(screen.getByRole('combobox', { name: 'Report type' }), { target: { value: 'weekly-plan' } })
+    fireEvent.click(screen.getByRole('button', { name: '+ Skip' }))
+    fireEvent.change(screen.getByRole('combobox', { name: 'Skip type' }), { target: { value: 'day' } })
+
+    // Day mode shows only the day checkboxes (no subject checkboxes); check the first (Monday).
+    const [firstDayCheckbox] = screen.getAllByRole('checkbox')
+    fireEvent.click(firstDayCheckbox)
+    fireEvent.change(screen.getByRole('textbox', { name: 'Reason' }), { target: { value: 'Holiday' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Add skip' }))
+
+    const row = screen.getByRole('row', { name: /Math/ })
+    expect(within(row).getByText('Lesson: Holiday')).toBeInTheDocument()
+
+    // The entry shows up in the review list and can be removed.
+    expect(screen.getByRole('button', { name: 'Remove' })).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: 'Remove' }))
+    expect(screen.queryByText('Lesson: Holiday')).not.toBeInTheDocument()
   })
 })
