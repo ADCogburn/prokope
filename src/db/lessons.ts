@@ -85,6 +85,24 @@ export function findNextLesson(
     )
 }
 
+/**
+ * Auto-suggest helper for the add-lesson form, per #74: one more than the
+ * highest lesson_in_unit already used within `requestedUnit` for this
+ * subject, or 1 if that unit has no lessons yet. Purely a convenience
+ * default -- createLesson doesn't enforce contiguous numbering (see #73,
+ * closed as not planned), and the teacher can overwrite the suggestion.
+ */
+export function getNextLessonPosition(
+  lessons: LessonRow[],
+  subjectId: string,
+  requestedUnit: number,
+): LessonPosition {
+  const maxLessonInUnit = lessons
+    .filter((row) => row.subject_id === subjectId && row.deleted_at === null && row.unit === requestedUnit)
+    .reduce((max, row) => Math.max(max, row.lesson_in_unit), 0)
+  return { unit: requestedUnit, lesson_in_unit: maxLessonInUnit + 1 }
+}
+
 export async function getNextLessonInSubject(
   subjectId: string,
   after: LessonPosition,
