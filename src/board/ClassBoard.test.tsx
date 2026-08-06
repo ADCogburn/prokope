@@ -411,6 +411,105 @@ describe('ClassBoard', () => {
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
   })
 
+  it('clicking Bulk Advance advances every student in the active subject and skips one already on the last lesson', async () => {
+    const classRow = await createClass({ user_id: 'user-1', name: 'Homeroom' })
+    const subject = await createSubject({ class_id: classRow.id, name: 'Math', position: 0 })
+    const emily = await createStudent({ class_id: classRow.id, name: 'Emily', position: 0 })
+    const sam = await createStudent({ class_id: classRow.id, name: 'Sam', position: 1 })
+    const lesson = await createLesson({
+      subject_id: subject.id,
+      unit: 1,
+      lesson_in_unit: 1,
+      title: 'Fractions',
+      description: '',
+    })
+    const samProgress = await upsertProgressStep(sam.id, subject.id, {
+      unit: lesson.unit,
+      lesson_in_unit: lesson.lesson_in_unit,
+    })
+
+    renderBoard({
+      classRow,
+      subjects: [subject],
+      students: [emily, sam],
+      progress: [samProgress],
+      lessons: [lesson],
+      activeSubjectId: subject.id,
+    })
+
+    fireEvent.click(screen.getByRole('button', { name: 'Bulk Advance' }))
+
+    await waitFor(async () => {
+      const emilyRow = await db.progress.where('[student_id+subject_id]').equals([emily.id, subject.id]).first()
+      expect(emilyRow?.step_unit).toBe(1)
+      expect(emilyRow?.step_lesson_in_unit).toBe(1)
+    })
+    const samRow = await db.progress.where('[student_id+subject_id]').equals([sam.id, subject.id]).first()
+    expect(samRow?.step_hlc).toBe(samProgress.step_hlc)
+  })
+
+  it('shows an Undo control after Bulk Advance that reverts every advanced student to their pre-batch position', async () => {
+    const { classRow, subject, student, lesson } = await seedClassWithOneSubjectOneStudent()
+
+    renderBoard({
+      classRow,
+      subjects: [subject],
+      students: [student],
+      progress: [],
+      lessons: [lesson],
+      activeSubjectId: subject.id,
+    })
+
+    fireEvent.click(screen.getByRole('button', { name: 'Bulk Advance' }))
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Undo' })).toBeInTheDocument())
+
+    fireEvent.click(screen.getByRole('button', { name: 'Undo' }))
+
+    await waitFor(async () => {
+      const row = await db.progress.where('[student_id+subject_id]').equals([student.id, subject.id]).first()
+      expect(row?.step_unit).toBe(0)
+      expect(row?.step_lesson_in_unit).toBe(0)
+    })
+    expect(screen.queryByRole('button', { name: 'Undo' })).not.toBeInTheDocument()
+  })
+
+  it('clears the Undo control once a single-cell edit touches the same subject\'s progress', async () => {
+    const { classRow, subject, student, lesson } = await seedClassWithOneSubjectOneStudent()
+
+    renderBoard({
+      classRow,
+      subjects: [subject],
+      students: [student],
+      progress: [],
+      lessons: [lesson],
+      activeSubjectId: subject.id,
+    })
+
+    fireEvent.click(screen.getByRole('button', { name: 'Bulk Advance' }))
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Undo' })).toBeInTheDocument())
+
+    fireEvent.click(screen.getByRole('button', { name: 'Flag for review' }))
+
+    await waitFor(() => expect(screen.queryByRole('button', { name: 'Undo' })).not.toBeInTheDocument())
+  })
+
+  it('disables Bulk Advance when the active subject has no lessons', async () => {
+    const classRow = await createClass({ user_id: 'user-1', name: 'Homeroom' })
+    const subject = await createSubject({ class_id: classRow.id, name: 'Math', position: 0 })
+    const student = await createStudent({ class_id: classRow.id, name: 'Emily', position: 0 })
+
+    renderBoard({
+      classRow,
+      subjects: [subject],
+      students: [student],
+      progress: [],
+      lessons: [],
+      activeSubjectId: subject.id,
+    })
+
+    expect(screen.getByRole('button', { name: 'Bulk Advance' })).toBeDisabled()
+  })
+
   it('wires up the book icon menu\'s "Generate report" item, closing the menu', async () => {
     const classRow = await createClass({ user_id: 'user-1', name: 'Homeroom' })
     const subject = await createSubject({ class_id: classRow.id, name: 'Math', position: 0 })

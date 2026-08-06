@@ -1,6 +1,15 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, type FormEvent } from 'react'
 import type { ClassRow, ProgressRow, StudentRow, SubjectRow, LessonRow } from '../db/schema'
-import { advanceProgress, createSubject, findNextLesson, positionOf, upsertProgressReview } from '../db'
+import {
+  advanceProgress,
+  bulkAdvanceProgress,
+  createSubject,
+  findNextLesson,
+  positionOf,
+  upsertProgressReview,
+  upsertProgressStep,
+  type BulkAdvanceEntry,
+} from '../db'
 import { useCarouselDrag } from './useCarouselDrag'
 import { ProgressCell } from './ProgressCell'
 import { InlineAddCard } from './InlineAddCard'
@@ -114,6 +123,7 @@ export function ClassBoard({
   const panelRects = useRef(new Map<string, DOMRect>())
   const [bookMenuOpen, setBookMenuOpen] = useState(false)
   const [pickerOpen, setPickerOpen] = useState(false)
+  const [bulkUndo, setBulkUndo] = useState<{ subjectId: string; entries: BulkAdvanceEntry[] } | null>(null)
 
   useEffect(() => {
     const el = wrapRef.current
@@ -195,11 +205,34 @@ export function ClassBoard({
 
   async function handleAdvance(studentId: string, subjectId: string) {
     await advanceProgress(studentId, subjectId)
+    if (bulkUndo?.subjectId === subjectId) {
+      setBulkUndo(null)
+    }
   }
 
   async function handleToggleReview(studentId: string, subjectId: string) {
     const current = progressByKey.get(progressKey(studentId, subjectId))
     await upsertProgressReview(studentId, subjectId, !current?.review)
+    if (bulkUndo?.subjectId === subjectId) {
+      setBulkUndo(null)
+    }
+  }
+
+  async function handleBulkAdvance(subjectId: string) {
+    const entries = await bulkAdvanceProgress(
+      students.map((s) => s.id),
+      subjectId,
+    )
+    setBulkUndo(entries.length > 0 ? { subjectId, entries } : null)
+  }
+
+  async function handleUndoBulkAdvance() {
+    if (!bulkUndo) return
+    const { subjectId, entries } = bulkUndo
+    for (const entry of entries) {
+      await upsertProgressStep(entry.studentId, subjectId, entry.previous)
+    }
+    setBulkUndo(null)
   }
 
   if (subjects.length === 0) {
@@ -317,7 +350,30 @@ export function ClassBoard({
                   className="class-board__panel"
                   style={{ width: panelWidth, marginRight: PANEL_GAP, opacity: i === index ? 1 : 0.45 }}
                 >
-                  <div className="class-board__panel-header">{subject.name}</div>
+                  <div className="class-board__panel-header">
+                    <span>{subject.name}</span>
+                    {i === index && (
+                      <div className="class-board__bulk-advance-group">
+                        <button
+                          type="button"
+                          className="class-board__bulk-advance"
+                          onClick={() => void handleBulkAdvance(subject.id)}
+                          disabled={subjectLessons.length === 0 || students.length === 0}
+                        >
+                          Bulk Advance
+                        </button>
+                        {bulkUndo?.subjectId === subject.id && (
+                          <button
+                            type="button"
+                            className="class-board__bulk-advance-undo"
+                            onClick={() => void handleUndoBulkAdvance()}
+                          >
+                            Undo
+                          </button>
+                        )}
+                      </div>
+                    )}
+                  </div>
                   <div className="class-board__panel-body">
                     {subjectLessons.length === 0 ? (
                       <div className="class-board__panel-empty">

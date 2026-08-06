@@ -1,0 +1,7 @@
+# Bulk Advance is scoped to one subject, not "all classes" or "all subjects"
+
+For #43 (Bulk Advance), we considered an "all classes" option that would advance a student's progress in every class at once wherever a matching subject appears. We decided against it. Progress is tracked per `(student, subject)`, and subjects are per-class rows with no shared identity across classes -- there's no principled way to know that Class A's "Math" and Class B's "Math" are "the same subject" to advance together. That's a separate, harder feature for a later issue.
+
+Bulk Advance instead acts on exactly one subject at a time: whichever subject is currently in focus on the Class Board's carousel (the panel at full opacity). Students already on that subject's last lesson, or a subject with no lessons at all, are silently skipped -- the same behavior `advanceProgress` already has for the single-student advance button, so a batch action follows the same rule its single-cell counterpart does.
+
+Undo is a one-shot, whole-batch revert: each affected student's pre-batch position is captured in memory, and Undo writes every one of them back via a normal `upsertProgressStep` call (a fresh HLC-stamped write, same as any other edit, so it wins over any earlier value like every other last-write-wins progress edit in this app). It's cleared as soon as any other edit touches that subject's progress -- bulk or single-cell -- and lives only in component state, so it doesn't survive navigating away from the Class Board or a page refresh. No new Dexie table, no cross-device undo.
