@@ -11,14 +11,21 @@
   background: var(--bg);
   border-bottom: 1px solid var(--border);
 
-  h1 {
-    margin: 0 0 4px;
-    font-size: 20px;
-  }
   p {
     margin: 0;
     font-size: 14px;
     color: var(--text);
+  }
+}
+
+.curriculum__title-row {
+  display: flex;
+  align-items: center;
+  margin-bottom: 4px;
+
+  h1 {
+    margin: 0;
+    font-size: 20px;
   }
 }
 
@@ -35,6 +42,7 @@
 
 .curriculum__body {
   flex: 1;
+  min-height: 0;
   overflow-y: auto;
   padding: 24px;
   display: flex;
@@ -44,17 +52,22 @@
 
 .curriculum__units-wrap {
   position: relative;
+  flex: 1;
+  min-height: 0;
 }
 
 .curriculum__units {
   display: flex;
-  align-items: flex-start;
+  align-items: stretch;
+  height: 100%;
   gap: 16px;
 }
 
 .curriculum__unit-column {
   flex-shrink: 0;
   width: 280px;
+  display: flex;
+  flex-direction: column;
   border: 1px solid var(--border);
   border-radius: 12px;
   overflow: hidden;
@@ -116,6 +129,9 @@
   list-style: none;
   margin: 0;
   padding: 0;
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
   display: flex;
   flex-direction: column;
 }
