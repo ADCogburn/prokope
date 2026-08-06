@@ -52,6 +52,7 @@ function renderBoard(props: {
   activeSubjectId: string | undefined
   onSubjectChange?: (id: string) => void
   onCurriculumNavigate?: (id: string) => void
+  onReportNavigate?: () => void
 }) {
   return render(
     <ClassBoard
@@ -63,6 +64,7 @@ function renderBoard(props: {
       activeSubjectId={props.activeSubjectId}
       onSubjectChange={props.onSubjectChange ?? vi.fn()}
       onCurriculumNavigate={props.onCurriculumNavigate ?? vi.fn()}
+      onReportNavigate={props.onReportNavigate ?? vi.fn()}
     />,
   )
 }
@@ -407,5 +409,29 @@ describe('ClassBoard', () => {
 
     expect(onCurriculumNavigate).toHaveBeenCalledWith(subjectB.id)
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
+  })
+
+  it('wires up the book icon menu\'s "Generate report" item, closing the menu', async () => {
+    const classRow = await createClass({ user_id: 'user-1', name: 'Homeroom' })
+    const subject = await createSubject({ class_id: classRow.id, name: 'Math', position: 0 })
+    const onReportNavigate = vi.fn()
+
+    renderBoard({
+      classRow,
+      subjects: [subject],
+      students: [],
+      progress: [],
+      lessons: [],
+      activeSubjectId: subject.id,
+      onReportNavigate,
+    })
+
+    fireEvent.click(screen.getByRole('button', { name: 'Add lessons menu' }))
+    expect(screen.getByRole('button', { name: 'Generate report' })).toBeInTheDocument()
+
+    fireEvent.click(screen.getByRole('button', { name: 'Generate report' }))
+
+    expect(onReportNavigate).toHaveBeenCalledTimes(1)
+    expect(screen.queryByRole('button', { name: 'Generate report' })).not.toBeInTheDocument()
   })
 })

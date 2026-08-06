@@ -2,17 +2,17 @@ import { useMemo } from 'react'
 import { Navigate, useNavigate, useParams } from 'react-router-dom'
 import { useLiveQuery } from 'dexie-react-hooks'
 import { listLessonsForSubjects, listProgressForStudents, listStudentsForClass, listSubjectsForClass } from '../db'
-import { ClassBoard } from './ClassBoard'
+import { Reports } from './Reports'
 import { useClassLookup } from './useClassLookup'
 
 /**
- * `/class/:classId` and `/class/:classId/subject/:subjectId`, per #12/#22.
- * The subject segment is optional and canonicalized: with no subjects it's
- * dropped (empty-state board), otherwise it's redirected to the first
- * subject so the URL always names the subject actually shown.
+ * `/class/:classId/report`, per #23. Mirrors ClassBoardRoute's data-loading
+ * shape (same four collections, same loading/not-found handling) since
+ * both report types need the whole class's subjects/students/lessons/
+ * progress up front, not just one subject's.
  */
-export function ClassBoardRoute() {
-  const { classId = '', subjectId } = useParams<{ classId: string; subjectId?: string }>()
+export function ReportsRoute() {
+  const { classId = '' } = useParams<{ classId: string }>()
   const navigate = useNavigate()
 
   const { status: classStatus, classRow } = useClassLookup(classId)
@@ -46,24 +46,14 @@ export function ClassBoardRoute() {
     )
   }
 
-  if (subjects.length > 0) {
-    const activeSubject = subjects.find((s) => s.id === subjectId) ?? subjects[0]
-    if (activeSubject.id !== subjectId) {
-      return <Navigate to={`/class/${classId}/subject/${activeSubject.id}`} replace />
-    }
-  }
-
   return (
-    <ClassBoard
+    <Reports
       classRow={classRow!}
       subjects={subjects}
       students={students}
-      progress={progress}
       lessons={lessons}
-      activeSubjectId={subjectId}
-      onSubjectChange={(nextSubjectId) => navigate(`/class/${classId}/subject/${nextSubjectId}`, { replace: true })}
-      onCurriculumNavigate={(nextSubjectId) => navigate(`/class/${classId}/subject/${nextSubjectId}/curriculum`)}
-      onReportNavigate={() => navigate(`/class/${classId}/report`)}
+      progress={progress}
+      onBack={() => navigate(`/class/${classId}`)}
     />
   )
 }

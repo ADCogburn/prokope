@@ -113,6 +113,19 @@
   overflow-y: auto;
 }
 
+/*
+ * A printed page has no viewport to scroll -- #root's fixed height and
+ * overflow:auto (needed for the normal in-app scrolling layout) would
+ * otherwise clip a report to one screen's worth of content instead of
+ * flowing across print pages.
+ */
+@media print {
+  #root {
+    height: auto;
+    overflow: visible;
+  }
+}
+
 body {
   margin: 0;
 }

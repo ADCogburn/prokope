@@ -86,6 +86,7 @@ interface ClassBoardProps {
   activeSubjectId: string | undefined
   onSubjectChange: (subjectId: string) => void
   onCurriculumNavigate: (subjectId: string) => void
+  onReportNavigate: () => void
 }
 
 /**
@@ -104,6 +105,7 @@ export function ClassBoard({
   activeSubjectId,
   onSubjectChange,
   onCurriculumNavigate,
+  onReportNavigate,
 }: ClassBoardProps) {
   const wrapRef = useRef<HTMLDivElement>(null)
   const [panelWidth, setPanelWidth] = useState(420)
@@ -236,6 +238,16 @@ export function ClassBoard({
                   }}
                 >
                   Add lessons
+                </button>
+                <button
+                  type="button"
+                  className="class-board__book-menu-item"
+                  onClick={() => {
+                    setBookMenuOpen(false)
+                    onReportNavigate()
+                  }}
+                >
+                  Generate report
                 </button>
               </div>
             )}

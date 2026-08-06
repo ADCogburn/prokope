@@ -45,3 +45,9 @@
     opacity: 0.3;
   }
 }
+
+@media print {
+  .sync-status {
+    display: none;
+  }
+}
