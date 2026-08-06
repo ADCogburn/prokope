@@ -1,0 +1,17 @@
+.subject-name-label__pencil {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  margin-left: 6px;
+  border: none;
+  border-radius: 50%;
+  background: var(--accent-bg);
+  color: var(--text-h);
+  font-size: 12px;
+  line-height: 1;
+  cursor: pointer;
+  vertical-align: middle;
+}

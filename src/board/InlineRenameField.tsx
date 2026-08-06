@@ -26,12 +26,16 @@ interface InlineRenameFieldProps {
  */
 export function InlineRenameField({ ariaLabel, initialValue, onSubmit, onCancel }: InlineRenameFieldProps) {
   const [value, setValue] = useState(initialValue)
+  const [error, setError] = useState('')
   const committedRef = useRef(false)
 
   function commit() {
     if (committedRef.current) return
     const trimmed = value.trim()
-    if (trimmed === '') return
+    if (trimmed === '') {
+      setError('Name cannot be empty.')
+      return
+    }
     committedRef.current = true
     void onSubmit(trimmed)
   }
@@ -52,13 +56,17 @@ export function InlineRenameField({ ariaLabel, initialValue, onSubmit, onCancel 
       <input
         aria-label={ariaLabel}
         value={value}
-        onChange={(event) => setValue(event.target.value)}
+        onChange={(event) => {
+          setValue(event.target.value)
+          setError('')
+        }}
         onBlur={commit}
         onKeyDown={(event) => {
           if (event.key === 'Escape') cancel()
         }}
         autoFocus
       />
+      {error !== '' && <p className="inline-rename-field__error">{error}</p>}
     </form>
   )
 }

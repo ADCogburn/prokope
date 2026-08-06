@@ -3,11 +3,13 @@ import type { SubjectRow } from '../db/schema'
 import { renameSubject } from '../db'
 import { ContextMenu } from './ContextMenu'
 import { InlineRenameField } from './InlineRenameField'
+import './SubjectNameLabel.css'
 
 interface SubjectNameLabelProps {
   subject: SubjectRow
   tag?: 'h1' | 'span'
   className?: string
+  showPencil?: boolean
 }
 
 /**
@@ -24,8 +26,13 @@ interface SubjectNameLabelProps {
  * ContextMenu's block-level markup, so this returns a Fragment (matching
  * how ProgressCell/StudentRosterRow already render their menu as a sibling
  * of the element that triggers it).
+ *
+ * `showPencil` (per #102) adds a visible pencil-icon button next to the name
+ * as a second, discoverable way to reach the same edit mode -- for the
+ * Curriculum page header, where right-click's hidden affordance is easy to
+ * miss. It mirrors the pencil-toggle pattern used by SubjectReorder.
  */
-export function SubjectNameLabel({ subject, tag = 'span', className }: SubjectNameLabelProps) {
+export function SubjectNameLabel({ subject, tag = 'span', className, showPencil = false }: SubjectNameLabelProps) {
   const [menuPosition, setMenuPosition] = useState<{ x: number; y: number } | null>(null)
   const [editing, setEditing] = useState(false)
   const Tag = tag
@@ -54,6 +61,16 @@ export function SubjectNameLabel({ subject, tag = 'span', className }: SubjectNa
           subject.name
         )}
       </Tag>
+      {showPencil && !editing && (
+        <button
+          type="button"
+          aria-label="Rename subject"
+          className="subject-name-label__pencil"
+          onClick={() => setEditing(true)}
+        >
+          <span aria-hidden="true">✎</span>
+        </button>
+      )}
       {menuPosition && (
         <ContextMenu
           x={menuPosition.x}
