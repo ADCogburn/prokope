@@ -5,6 +5,7 @@ import {
   bulkAdvanceProgress,
   createSubject,
   findNextLesson,
+  jumpToLesson,
   positionOf,
   upsertProgressReview,
   upsertProgressStep,
@@ -15,6 +16,7 @@ import { ProgressCell } from './ProgressCell'
 import { InlineAddCard } from './InlineAddCard'
 import { SubjectReorder } from './SubjectReorder'
 import { SubjectPickerModal } from './SubjectPickerModal'
+import { LessonPickerModal } from './LessonPickerModal'
 import './ClassBoard.css'
 
 const PANEL_GAP = 24
@@ -124,6 +126,9 @@ export function ClassBoard({
   const [bookMenuOpen, setBookMenuOpen] = useState(false)
   const [pickerOpen, setPickerOpen] = useState(false)
   const [bulkUndo, setBulkUndo] = useState<{ subjectId: string; entries: BulkAdvanceEntry[] } | null>(null)
+  const [jumpPickerRequest, setJumpPickerRequest] = useState<{ studentId: string; subjectId: string } | null>(
+    null,
+  )
 
   useEffect(() => {
     const el = wrapRef.current
@@ -235,6 +240,14 @@ export function ClassBoard({
     setBulkUndo(null)
   }
 
+  async function handleJumpToLesson(studentId: string, subjectId: string, lesson: LessonRow) {
+    await jumpToLesson(studentId, subjectId, lesson)
+    if (bulkUndo?.subjectId === subjectId) {
+      setBulkUndo(null)
+    }
+    setJumpPickerRequest(null)
+  }
+
   if (subjects.length === 0) {
     return (
       <div className="class-board class-board--empty">
@@ -298,6 +311,23 @@ export function ClassBoard({
           onClose={() => setPickerOpen(false)}
         />
       )}
+      {jumpPickerRequest &&
+        (() => {
+          const student = students.find((s) => s.id === jumpPickerRequest.studentId)
+          const subject = subjects.find((s) => s.id === jumpPickerRequest.subjectId)
+          if (!student || !subject) return null
+          const subjectLessons = lessons.filter((l) => l.subject_id === subject.id)
+          const studentProgress = progressByKey.get(progressKey(student.id, subject.id))
+          return (
+            <LessonPickerModal
+              studentName={student.name}
+              lessons={subjectLessons}
+              currentPosition={positionOf(studentProgress)}
+              onSelectLesson={(lesson) => void handleJumpToLesson(student.id, subject.id, lesson)}
+              onClose={() => setJumpPickerRequest(null)}
+            />
+          )
+        })()}
       <div className="class-board__body">
         <div className="class-board__students">
           {students.map((student) => {
@@ -397,8 +427,12 @@ export function ClassBoard({
                             progress={studentProgress}
                             hasNextLesson={nextLesson !== undefined}
                             hasAnyLessons={subjectLessons.length > 0}
+                            subjectLessons={subjectLessons}
                             onAdvance={() => void handleAdvance(student.id, subject.id)}
                             onToggleReview={() => void handleToggleReview(student.id, subject.id)}
+                            onJumpToLesson={() =>
+                              setJumpPickerRequest({ studentId: student.id, subjectId: subject.id })
+                            }
                           />
                         )
                       })

@@ -4,6 +4,7 @@ import {
   advanceProgress,
   bulkAdvanceProgress,
   getProgress,
+  jumpToLesson,
   listProgressForStudents,
   upsertProgressReview,
   upsertProgressStep,
@@ -295,5 +296,61 @@ describe('bulkAdvanceProgress', () => {
     await createLesson(lessonInput({ title: 'Only lesson' }))
 
     expect(await bulkAdvanceProgress([], 'subject-1')).toEqual([])
+  })
+})
+
+describe('jumpToLesson', () => {
+  function lessonInput(overrides: Partial<Parameters<typeof createLesson>[0]> = {}) {
+    return {
+      subject_id: 'subject-1',
+      unit: 1,
+      lesson_in_unit: 1,
+      title: 'Untitled lesson',
+      description: '',
+      ...overrides,
+    }
+  }
+
+  it('jumps a student forward past their current lesson to the chosen one', async () => {
+    await createLesson(lessonInput({ title: 'Fractions' }))
+    const target = await createLesson(lessonInput({ unit: 3, title: 'Geometry' }))
+    await upsertProgressStep('student-1', 'subject-1', { unit: 1, lesson_in_unit: 1 })
+
+    const result = await jumpToLesson('student-1', 'subject-1', target)
+
+    expect(result).toMatchObject({ step_unit: 3, step_lesson_in_unit: 1 })
+    const progress = await getProgress('student-1', 'subject-1')
+    expect(progress).toMatchObject({ step_unit: 3, step_lesson_in_unit: 1 })
+  })
+
+  it('jumps a student backward to an earlier lesson', async () => {
+    const target = await createLesson(lessonInput({ title: 'Fractions' }))
+    await createLesson(lessonInput({ unit: 3, title: 'Geometry' }))
+    await upsertProgressStep('student-1', 'subject-1', { unit: 3, lesson_in_unit: 1 })
+
+    const result = await jumpToLesson('student-1', 'subject-1', target)
+
+    expect(result).toMatchObject({ step_unit: 1, step_lesson_in_unit: 1 })
+  })
+
+  it('creates a progress row at the chosen position when the student has none yet', async () => {
+    const target = await createLesson(lessonInput({ unit: 2, lesson_in_unit: 3, title: 'Decimals' }))
+
+    const result = await jumpToLesson('student-1', 'subject-1', target)
+
+    expect(result.id).toBeTruthy()
+    expect(result.step_unit).toBe(2)
+    expect(result.step_lesson_in_unit).toBe(3)
+  })
+
+  it('does not touch review/review_hlc/review_client_id on an existing row', async () => {
+    const target = await createLesson(lessonInput({ unit: 2, title: 'Decimals' }))
+    await upsertProgressStep('student-1', 'subject-1', { unit: 1, lesson_in_unit: 1 })
+    await upsertProgressReview('student-1', 'subject-1', true)
+
+    await jumpToLesson('student-1', 'subject-1', target)
+
+    const after = await getProgress('student-1', 'subject-1')
+    expect(after?.review).toBe(true)
   })
 })
