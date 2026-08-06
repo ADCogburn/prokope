@@ -134,6 +134,68 @@ describe('Curriculum', () => {
     expect(screen.getByLabelText('Lesson in unit')).toHaveValue(1)
   })
 
+  it('pre-fills Unit and Lesson to the last-used unit and next available lesson number when opened on a subject with existing lessons', async () => {
+    const classRow = await createClass({ user_id: 'user-1', name: 'Homeroom' })
+    const subject = await createSubject({ class_id: classRow.id, name: 'Math', position: 0 })
+    const l1 = await createLesson({ subject_id: subject.id, unit: 1, lesson_in_unit: 1, title: 'A', description: '' })
+    const l2 = await createLesson({ subject_id: subject.id, unit: 2, lesson_in_unit: 1, title: 'B', description: '' })
+    const l3 = await createLesson({ subject_id: subject.id, unit: 2, lesson_in_unit: 2, title: 'C', description: '' })
+
+    renderCurriculum({ classRow, subject, lessons: [l1, l2, l3] })
+
+    fireEvent.click(screen.getByRole('button', { name: '+ Add lesson' }))
+
+    expect(screen.getByLabelText('Unit')).toHaveValue(2)
+    expect(screen.getByLabelText('Lesson in unit')).toHaveValue(3)
+  })
+
+  it('pre-fills Unit 1, Lesson 1 when opened on a subject with zero lessons', async () => {
+    const classRow = await createClass({ user_id: 'user-1', name: 'Homeroom' })
+    const subject = await createSubject({ class_id: classRow.id, name: 'Math', position: 0 })
+
+    renderCurriculum({ classRow, subject, lessons: [] })
+
+    fireEvent.click(screen.getByRole('button', { name: '+ Add lesson' }))
+
+    expect(screen.getByLabelText('Unit')).toHaveValue(1)
+    expect(screen.getByLabelText('Lesson in unit')).toHaveValue(1)
+  })
+
+  it('still live-recomputes the suggested lesson number when the teacher types a different unit after the pre-filled form opens', async () => {
+    const classRow = await createClass({ user_id: 'user-1', name: 'Homeroom' })
+    const subject = await createSubject({ class_id: classRow.id, name: 'Math', position: 0 })
+    const l1 = await createLesson({ subject_id: subject.id, unit: 1, lesson_in_unit: 1, title: 'A', description: '' })
+
+    renderCurriculum({ classRow, subject, lessons: [l1] })
+
+    fireEvent.click(screen.getByRole('button', { name: '+ Add lesson' }))
+    expect(screen.getByLabelText('Unit')).toHaveValue(1)
+    expect(screen.getByLabelText('Lesson in unit')).toHaveValue(2)
+
+    fireEvent.change(screen.getByLabelText('Unit'), { target: { value: '5' } })
+    expect(screen.getByLabelText('Lesson in unit')).toHaveValue(1)
+  })
+
+  it('lets the teacher overwrite the pre-filled unit/lesson values and submit successfully', async () => {
+    const classRow = await createClass({ user_id: 'user-1', name: 'Homeroom' })
+    const subject = await createSubject({ class_id: classRow.id, name: 'Math', position: 0 })
+    const l1 = await createLesson({ subject_id: subject.id, unit: 1, lesson_in_unit: 1, title: 'A', description: '' })
+
+    renderCurriculum({ classRow, subject, lessons: [l1] })
+
+    fireEvent.click(screen.getByRole('button', { name: '+ Add lesson' }))
+    fireEvent.change(screen.getByLabelText('Title'), { target: { value: 'Decimals' } })
+    fireEvent.change(screen.getByLabelText('Unit'), { target: { value: '9' } })
+    fireEvent.change(screen.getByLabelText('Lesson in unit'), { target: { value: '4' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Add' }))
+
+    await waitFor(async () => {
+      const rows = await db.lesson.where('subject_id').equals(subject.id).toArray()
+      const created = rows.find((row) => row.title === 'Decimals')
+      expect(created).toMatchObject({ unit: 9, lesson_in_unit: 4 })
+    })
+  })
+
   it('deletes a lesson after confirmation', async () => {
     const classRow = await createClass({ user_id: 'user-1', name: 'Homeroom' })
     const subject = await createSubject({ class_id: classRow.id, name: 'Math', position: 0 })
