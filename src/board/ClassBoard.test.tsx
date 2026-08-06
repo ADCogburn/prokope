@@ -60,6 +60,7 @@ function renderBoard(props: {
   onSubjectChange?: (id: string) => void
   onCurriculumNavigate?: (id: string) => void
   onReportNavigate?: () => void
+  onStudentNavigate?: (id: string) => void
 }) {
   return render(
     <ClassBoard
@@ -72,6 +73,7 @@ function renderBoard(props: {
       onSubjectChange={props.onSubjectChange ?? vi.fn()}
       onCurriculumNavigate={props.onCurriculumNavigate ?? vi.fn()}
       onReportNavigate={props.onReportNavigate ?? vi.fn()}
+      onStudentNavigate={props.onStudentNavigate ?? vi.fn()}
     />,
   )
 }
@@ -745,6 +747,7 @@ describe('ClassBoard', () => {
         onSubjectChange={vi.fn()}
         onCurriculumNavigate={vi.fn()}
         onReportNavigate={vi.fn()}
+        onStudentNavigate={vi.fn()}
       />,
     )
 
@@ -923,6 +926,7 @@ describe('ClassBoard', () => {
         onSubjectChange={vi.fn()}
         onCurriculumNavigate={vi.fn()}
         onReportNavigate={vi.fn()}
+        onStudentNavigate={vi.fn()}
       />,
     )
 
@@ -1267,5 +1271,95 @@ describe('ClassBoard', () => {
     expect(screen.getByText('Emily', { selector: '.class-board__student-name' })).toBeInTheDocument()
     const row = await db.student.get(student.id)
     expect(row?.name).toBe('Emily')
+  })
+
+  it('clicking a student row calls onStudentNavigate with that student\'s id', async () => {
+    const classRow = await createClass({ user_id: 'user-1', name: 'Homeroom' })
+    const subject = await createSubject({ class_id: classRow.id, name: 'Math', position: 0 })
+    const student = await createStudent({ class_id: classRow.id, name: 'Emily', position: 0 })
+    const onStudentNavigate = vi.fn()
+
+    renderBoard({
+      classRow,
+      subjects: [subject],
+      students: [student],
+      progress: [],
+      lessons: [],
+      activeSubjectId: subject.id,
+      onStudentNavigate,
+    })
+
+    fireEvent.click(screen.getByText('Emily', { selector: '.class-board__student-name' }))
+
+    expect(onStudentNavigate).toHaveBeenCalledWith(student.id)
+  })
+
+  it('right-clicking a student row still opens its context menu instead of calling onStudentNavigate', async () => {
+    const classRow = await createClass({ user_id: 'user-1', name: 'Homeroom' })
+    const subject = await createSubject({ class_id: classRow.id, name: 'Math', position: 0 })
+    const student = await createStudent({ class_id: classRow.id, name: 'Emily', position: 0 })
+    const onStudentNavigate = vi.fn()
+
+    renderBoard({
+      classRow,
+      subjects: [subject],
+      students: [student],
+      progress: [],
+      lessons: [],
+      activeSubjectId: subject.id,
+      onStudentNavigate,
+    })
+
+    fireEvent.contextMenu(screen.getByText('Emily', { selector: '.class-board__student-name' }))
+
+    expect(screen.getByRole('menuitem', { name: 'Rename student' })).toBeInTheDocument()
+    expect(onStudentNavigate).not.toHaveBeenCalled()
+  })
+
+  it('selecting "Remove student" from the row menu does not also call onStudentNavigate', async () => {
+    const classRow = await createClass({ user_id: 'user-1', name: 'Homeroom' })
+    const subject = await createSubject({ class_id: classRow.id, name: 'Math', position: 0 })
+    const student = await createStudent({ class_id: classRow.id, name: 'Emily', position: 0 })
+    const onStudentNavigate = vi.fn()
+
+    renderBoard({
+      classRow,
+      subjects: [subject],
+      students: [student],
+      progress: [],
+      lessons: [],
+      activeSubjectId: subject.id,
+      onStudentNavigate,
+    })
+
+    fireEvent.contextMenu(screen.getByText('Emily', { selector: '.class-board__student-name' }))
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Remove student' }))
+
+    expect(onStudentNavigate).not.toHaveBeenCalled()
+  })
+
+  it('clicking the student name while the row is in inline-rename mode does not call onStudentNavigate', async () => {
+    const classRow = await createClass({ user_id: 'user-1', name: 'Homeroom' })
+    const subject = await createSubject({ class_id: classRow.id, name: 'Math', position: 0 })
+    const student = await createStudent({ class_id: classRow.id, name: 'Emily', position: 0 })
+    const onStudentNavigate = vi.fn()
+
+    renderBoard({
+      classRow,
+      subjects: [subject],
+      students: [student],
+      progress: [],
+      lessons: [],
+      activeSubjectId: subject.id,
+      onStudentNavigate,
+    })
+
+    fireEvent.contextMenu(screen.getByText('Emily', { selector: '.class-board__student-name' }))
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Rename student' }))
+    const input = screen.getByLabelText('Student name')
+
+    fireEvent.click(input)
+
+    expect(onStudentNavigate).not.toHaveBeenCalled()
   })
 })

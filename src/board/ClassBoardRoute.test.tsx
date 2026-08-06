@@ -17,6 +17,7 @@ function renderRoute(initialPath: string) {
         <Route path="/class/:classId" element={<ClassBoardRoute />} />
         <Route path="/class/:classId/subject/:subjectId" element={<ClassBoardRoute />} />
         <Route path="/class/:classId/subject/:subjectId/curriculum" element={<div>Curriculum stub</div>} />
+        <Route path="/class/:classId/student/:studentId" element={<div>Student summary stub</div>} />
       </Routes>
     </MemoryRouter>,
   )
@@ -79,5 +80,18 @@ describe('ClassBoardRoute', () => {
     fireEvent.click(screen.getByRole('button', { name: '+ Add lessons' }))
 
     await waitFor(() => expect(screen.getByText('Curriculum stub')).toBeInTheDocument())
+  })
+
+  it("navigates to that student's Student Summary route when their roster row is clicked", async () => {
+    const classRow = await createClass({ user_id: 'user-1', name: 'Homeroom' })
+    const subject = await createSubject({ class_id: classRow.id, name: 'Math', position: 0 })
+    await createStudent({ class_id: classRow.id, name: 'Emily', position: 0 })
+
+    renderRoute(`/class/${classRow.id}/subject/${subject.id}`)
+
+    await waitFor(() => expect(screen.getByText('Emily', { selector: '.class-board__student-name' })).toBeInTheDocument())
+    fireEvent.click(screen.getByText('Emily', { selector: '.class-board__student-name' }))
+
+    await waitFor(() => expect(screen.getByText('Student summary stub')).toBeInTheDocument())
   })
 })
