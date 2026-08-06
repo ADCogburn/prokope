@@ -128,6 +128,26 @@ describe('Reports', () => {
     expect(window.print).toHaveBeenCalledTimes(1)
   })
 
+  it('renders Print before the Student selector in per-student mode', () => {
+    render(<Reports {...baseProps} students={[studentRow()]} onBack={vi.fn()} />)
+
+    const print = screen.getByRole('button', { name: 'Print' })
+    const studentSelect = screen.getByRole('combobox', { name: 'Student' })
+
+    expect(print.compareDocumentPosition(studentSelect) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+  })
+
+  it('renders Print before Skip in weekly-plan mode', () => {
+    render(<Reports {...baseProps} students={[studentRow()]} onBack={vi.fn()} />)
+
+    fireEvent.change(screen.getByRole('combobox', { name: 'Report type' }), { target: { value: 'weekly-plan' } })
+
+    const print = screen.getByRole('button', { name: 'Print' })
+    const skip = screen.getByRole('button', { name: '+ Skip' })
+
+    expect(print.compareDocumentPosition(skip) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+  })
+
   it('shows the Skip control only for the weekly lesson plan report, per #84', () => {
     render(<Reports {...baseProps} students={[studentRow()]} onBack={vi.fn()} />)
 
