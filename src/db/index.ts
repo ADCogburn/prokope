@@ -23,7 +23,14 @@ export {
 } from './lessons'
 export type { CreateLessonInput, LessonPosition, UpdateLessonContentInput } from './lessons'
 
-export { createStudent, listStudentsForClass, reorderStudents, deleteStudent, renameStudent } from './students'
+export {
+  createStudent,
+  getStudent,
+  listStudentsForClass,
+  reorderStudents,
+  deleteStudent,
+  renameStudent,
+} from './students'
 export type { CreateStudentInput } from './students'
 
 export {
