@@ -1,4 +1,4 @@
-import { useState, type FormEvent } from 'react'
+import { useEffect, useRef, useState, type FormEvent } from 'react'
 import type { ClassRow, LessonRow, SubjectRow } from '../db/schema'
 import {
   createLesson,
@@ -10,7 +10,21 @@ import {
 import { InlineAddCard } from './InlineAddCard'
 import { ContextMenu } from './ContextMenu'
 import { SubjectNameLabel } from './SubjectNameLabel'
+import { groupLessonsByUnit } from './groupLessonsByUnit'
+import { useUnitWindow } from './useUnitWindow'
+import { countVisibleUnitColumns } from './countVisibleUnitColumns'
 import './Curriculum.css'
+
+const UNIT_COLUMN_WIDTH = 280
+const UNIT_COLUMN_GAP = 16
+
+function ChevronIcon({ direction }: { direction: 'left' | 'right' }) {
+  return (
+    <svg viewBox="0 0 24 24" aria-hidden="true">
+      <path d={direction === 'left' ? 'M15 4 L7 12 L15 20' : 'M9 4 L17 12 L9 20'} />
+    </svg>
+  )
+}
 
 interface AddLessonCardProps {
   subjectId: string
@@ -286,9 +300,7 @@ function LessonListItem({ lesson, lessons }: LessonListItemProps) {
       }}
     >
       <div className="curriculum__lesson-main">
-        <span className="curriculum__lesson-position">
-          Unit {lesson.unit} · Lesson {lesson.lesson_in_unit}
-        </span>
+        <span className="curriculum__lesson-position">Lesson {lesson.lesson_in_unit}</span>
         <span className="curriculum__lesson-title">{lesson.title}</span>
         {lesson.description !== '' && <p className="curriculum__lesson-description">{lesson.description}</p>}
       </div>
@@ -326,6 +338,26 @@ function LessonListItem({ lesson, lessons }: LessonListItemProps) {
   )
 }
 
+interface UnitColumnProps {
+  unit: number
+  unitLessons: LessonRow[]
+  allLessons: LessonRow[]
+}
+
+/** One unit's lessons as their own column, per #114/#106: the column header carries "Unit N" so each row inside only needs its own lesson label. */
+function UnitColumn({ unit, unitLessons, allLessons }: UnitColumnProps) {
+  return (
+    <div className="curriculum__unit-column">
+      <h2 className="curriculum__unit-header">Unit {unit}</h2>
+      <ul className="curriculum__lesson-list">
+        {unitLessons.map((lesson) => (
+          <LessonListItem key={lesson.id} lesson={lesson} lessons={allLessons} />
+        ))}
+      </ul>
+    </div>
+  )
+}
+
 interface CurriculumProps {
   classRow: ClassRow
   subject: SubjectRow
@@ -339,8 +371,36 @@ interface CurriculumProps {
  * reached from that subject's empty-lessons board panel. Lessons are shown
  * in unit/lesson_in_unit order; `lessons` is expected pre-filtered to this
  * subject and pre-sorted (mirrors ClassBoard's data-down pattern).
+ *
+ * Per #114/#106: lessons render as one column per unit (groupLessonsByUnit,
+ * #109) rather than one flat list. The number of unit columns visible at
+ * once is however many fit the measured wrap width (countVisibleUnitColumns,
+ * #109) -- the same responsive-width-measurement approach ClassBoard already
+ * uses for its Subject-card sizing. useUnitWindow (#109) tracks which
+ * contiguous slice of units is in view and exposes prev/next to slide that
+ * window one unit at a time; the arrows themselves are only rendered when
+ * there's somewhere left to go in that direction.
  */
 export function Curriculum({ classRow, subject, lessons, onBack }: CurriculumProps) {
+  const wrapRef = useRef<HTMLDivElement>(null)
+  const [containerWidth, setContainerWidth] = useState<number | null>(null)
+
+  useEffect(() => {
+    const el = wrapRef.current
+    if (!el) return
+    const observer = new ResizeObserver(([entry]) => setContainerWidth(entry.contentRect.width))
+    observer.observe(el)
+    return () => observer.disconnect()
+  }, [])
+
+  const unitGroups = groupLessonsByUnit(lessons)
+  // Before the wrap has actually been measured, show every unit rather than
+  // guessing a width and potentially hiding lessons that do fit.
+  const visibleCount =
+    containerWidth === null ? unitGroups.length : countVisibleUnitColumns(containerWidth, UNIT_COLUMN_WIDTH + UNIT_COLUMN_GAP)
+  const { startIndex, endIndex, canGoPrev, canGoNext, next, prev } = useUnitWindow(unitGroups.length, visibleCount)
+  const visibleUnitGroups = unitGroups.slice(startIndex, endIndex)
+
   return (
     <div className="curriculum">
       <header className="curriculum__header">
@@ -355,11 +415,33 @@ export function Curriculum({ classRow, subject, lessons, onBack }: CurriculumPro
           <AddLessonCard subjectId={subject.id} lessons={lessons} />
         ) : (
           <>
-            <ul className="curriculum__lesson-list">
-              {lessons.map((lesson) => (
-                <LessonListItem key={lesson.id} lesson={lesson} lessons={lessons} />
-              ))}
-            </ul>
+            <div className="curriculum__units-wrap" ref={wrapRef}>
+              {canGoPrev && (
+                <button
+                  type="button"
+                  aria-label="Previous unit"
+                  className="curriculum__unit-arrow curriculum__unit-arrow--prev"
+                  onClick={prev}
+                >
+                  <ChevronIcon direction="left" />
+                </button>
+              )}
+              <div className="curriculum__units">
+                {visibleUnitGroups.map((group) => (
+                  <UnitColumn key={group.unit} unit={group.unit} unitLessons={group.lessons} allLessons={lessons} />
+                ))}
+              </div>
+              {canGoNext && (
+                <button
+                  type="button"
+                  aria-label="Next unit"
+                  className="curriculum__unit-arrow curriculum__unit-arrow--next"
+                  onClick={next}
+                >
+                  <ChevronIcon direction="right" />
+                </button>
+              )}
+            </div>
             <AddLessonCard subjectId={subject.id} lessons={lessons} />
           </>
         )}

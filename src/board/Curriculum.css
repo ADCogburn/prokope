@@ -40,7 +40,76 @@
   display: flex;
   flex-direction: column;
   gap: 16px;
-  max-width: 640px;
+}
+
+.curriculum__units-wrap {
+  position: relative;
+}
+
+.curriculum__units {
+  display: flex;
+  align-items: flex-start;
+  gap: 16px;
+}
+
+.curriculum__unit-column {
+  flex-shrink: 0;
+  width: 280px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  overflow: hidden;
+  background: var(--bg);
+}
+
+.curriculum__unit-header {
+  margin: 0;
+  padding: 10px 16px;
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--text-h);
+  background: var(--accent-bg);
+  border-bottom: 1px solid var(--border);
+}
+
+.curriculum__unit-arrow {
+  position: absolute;
+  top: 50%;
+  z-index: 2;
+  transform: translateY(-50%);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  padding: 0;
+  border: none;
+  border-radius: 50%;
+  background: var(--bg);
+  box-shadow: var(--shadow);
+  color: var(--text-h);
+  cursor: pointer;
+
+  svg {
+    width: 20px;
+    height: 20px;
+    display: block;
+  }
+
+  path {
+    fill: none;
+    stroke: currentColor;
+    stroke-width: 2;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+  }
+}
+
+.curriculum__unit-arrow--prev {
+  left: 8px;
+}
+
+.curriculum__unit-arrow--next {
+  right: 8px;
 }
 
 .curriculum__lesson-list {
@@ -49,10 +118,6 @@
   padding: 0;
   display: flex;
   flex-direction: column;
-  border: 1px solid var(--border);
-  border-radius: 12px;
-  overflow: hidden;
-  background: var(--bg);
 }
 
 .curriculum__lesson {
