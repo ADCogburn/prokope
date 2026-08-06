@@ -172,6 +172,28 @@ describe('SkipLessonsPanel', () => {
     ])
   })
 
+  it('renders the Subjects and Days fieldsets side by side as two columns, each still a single vertical checkbox list', () => {
+    render(
+      <SkipLessonsPanel
+        subjects={[subjectRow({ id: 's1', name: 'Math' }), subjectRow({ id: 's2', name: 'Reading' })]}
+        weekDates={weekDates}
+        entries={[]}
+        onAdd={vi.fn()}
+        onRemove={vi.fn()}
+      />,
+    )
+
+    expandPanel()
+
+    const subjectsFieldset = screen.getByRole('group', { name: 'Subjects' })
+    const daysFieldset = screen.getByRole('group', { name: 'Days' })
+
+    expect(subjectsFieldset.parentElement).toBe(daysFieldset.parentElement)
+    expect(subjectsFieldset.parentElement).toHaveClass('skip-lessons__fieldsets')
+    expect(subjectsFieldset.className).toContain('skip-lessons__fieldset')
+    expect(daysFieldset.className).toContain('skip-lessons__fieldset')
+  })
+
   it('lists already-added entries and removes one when its Remove button is clicked', () => {
     const onRemove = vi.fn()
     const entries: SkipEntry[] = [

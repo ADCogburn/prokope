@@ -13,7 +13,14 @@
   color: var(--text-h);
 }
 
+.skip-lessons__fieldsets {
+  display: flex;
+  gap: 12px;
+}
+
 .skip-lessons__fieldset {
+  flex: 1;
+  min-width: 0;
   display: flex;
   flex-direction: column;
   gap: 6px;

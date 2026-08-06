@@ -86,35 +86,37 @@ export function SkipLessonsPanel({ subjects, weekDates, entries, onAdd, onRemove
               <option value="day">Skip Day(s)</option>
             </select>
 
-            {mode === 'individual' && (
+            <div className="skip-lessons__fieldsets">
+              {mode === 'individual' && (
+                <fieldset className="skip-lessons__fieldset">
+                  <legend>Subjects</legend>
+                  {subjects.map((subject) => (
+                    <label key={subject.id} className="skip-lessons__checkbox">
+                      <input
+                        type="checkbox"
+                        checked={subjectIds.includes(subject.id)}
+                        onChange={() => toggleSubject(subject.id)}
+                      />
+                      {subject.name}
+                    </label>
+                  ))}
+                </fieldset>
+              )}
+
               <fieldset className="skip-lessons__fieldset">
-                <legend>Subjects</legend>
-                {subjects.map((subject) => (
-                  <label key={subject.id} className="skip-lessons__checkbox">
+                <legend>Days</legend>
+                {weekDates.map((date) => (
+                  <label key={date.toISOString()} className="skip-lessons__checkbox">
                     <input
                       type="checkbox"
-                      checked={subjectIds.includes(subject.id)}
-                      onChange={() => toggleSubject(subject.id)}
+                      checked={dayTimes.includes(date.getTime())}
+                      onChange={() => toggleDay(date.getTime())}
                     />
-                    {subject.name}
+                    {formatDayHeader(date)}
                   </label>
                 ))}
               </fieldset>
-            )}
-
-            <fieldset className="skip-lessons__fieldset">
-              <legend>Days</legend>
-              {weekDates.map((date) => (
-                <label key={date.toISOString()} className="skip-lessons__checkbox">
-                  <input
-                    type="checkbox"
-                    checked={dayTimes.includes(date.getTime())}
-                    onChange={() => toggleDay(date.getTime())}
-                  />
-                  {formatDayHeader(date)}
-                </label>
-              ))}
-            </fieldset>
+            </div>
 
             <label htmlFor="skip-reason">Reason</label>
             <input
