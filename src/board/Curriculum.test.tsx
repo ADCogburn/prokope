@@ -317,6 +317,76 @@ describe('Curriculum', () => {
     expect(row?.name).toBe('Math')
   })
 
+  it('shows a pencil-icon rename control next to the subject name in the curriculum header', async () => {
+    const classRow = await createClass({ user_id: 'user-1', name: 'Homeroom' })
+    const subject = await createSubject({ class_id: classRow.id, name: 'Math', position: 0 })
+
+    renderCurriculum({ classRow, subject, lessons: [] })
+
+    expect(screen.getByRole('button', { name: 'Rename subject' })).toBeInTheDocument()
+  })
+
+  it('clicking the pencil icon turns the subject name into an editable field pre-filled with the current name', async () => {
+    const classRow = await createClass({ user_id: 'user-1', name: 'Homeroom' })
+    const subject = await createSubject({ class_id: classRow.id, name: 'Math', position: 0 })
+
+    renderCurriculum({ classRow, subject, lessons: [] })
+
+    fireEvent.click(screen.getByRole('button', { name: 'Rename subject' }))
+
+    expect(screen.getByLabelText('Subject name')).toHaveValue('Math')
+  })
+
+  it('saving a valid new name from the pencil control calls renameSubject and persists it', async () => {
+    const classRow = await createClass({ user_id: 'user-1', name: 'Homeroom' })
+    const subject = await createSubject({ class_id: classRow.id, name: 'Math', position: 0 })
+
+    renderCurriculum({ classRow, subject, lessons: [] })
+
+    fireEvent.click(screen.getByRole('button', { name: 'Rename subject' }))
+    const input = screen.getByLabelText('Subject name')
+    fireEvent.change(input, { target: { value: 'Algebra' } })
+    fireEvent.submit(input.closest('form')!)
+
+    await waitFor(async () => {
+      const row = await db.subject.get(subject.id)
+      expect(row?.name).toBe('Algebra')
+    })
+  })
+
+  it('saving an empty or whitespace-only name from the pencil control shows an inline validation error and does not call renameSubject', async () => {
+    const classRow = await createClass({ user_id: 'user-1', name: 'Homeroom' })
+    const subject = await createSubject({ class_id: classRow.id, name: 'Math', position: 0 })
+
+    renderCurriculum({ classRow, subject, lessons: [] })
+
+    fireEvent.click(screen.getByRole('button', { name: 'Rename subject' }))
+    const input = screen.getByLabelText('Subject name')
+    fireEvent.change(input, { target: { value: '   ' } })
+    fireEvent.submit(input.closest('form')!)
+
+    expect(screen.getByText('Name cannot be empty.')).toBeInTheDocument()
+    const row = await db.subject.get(subject.id)
+    expect(row?.name).toBe('Math')
+  })
+
+  it('pressing Escape after opening the pencil control discards the edit and restores the original name without calling renameSubject', async () => {
+    const classRow = await createClass({ user_id: 'user-1', name: 'Homeroom' })
+    const subject = await createSubject({ class_id: classRow.id, name: 'Math', position: 0 })
+
+    renderCurriculum({ classRow, subject, lessons: [] })
+
+    fireEvent.click(screen.getByRole('button', { name: 'Rename subject' }))
+    const input = screen.getByLabelText('Subject name')
+    fireEvent.change(input, { target: { value: 'Algebra' } })
+    fireEvent.keyDown(input, { key: 'Escape' })
+
+    expect(screen.queryByLabelText('Subject name')).not.toBeInTheDocument()
+    expect(screen.getByText('Math')).toBeInTheDocument()
+    const row = await db.subject.get(subject.id)
+    expect(row?.name).toBe('Math')
+  })
+
   it('right-clicking a lesson row opens the menu with "Edit lesson"', async () => {
     const classRow = await createClass({ user_id: 'user-1', name: 'Homeroom' })
     const subject = await createSubject({ class_id: classRow.id, name: 'Math', position: 0 })

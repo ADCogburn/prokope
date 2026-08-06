@@ -280,7 +280,7 @@ export function Curriculum({ classRow, subject, lessons, onBack }: CurriculumPro
         <button type="button" className="curriculum__back" onClick={onBack}>
           ← Back to board
         </button>
-        <SubjectNameLabel subject={subject} tag="h1" />
+        <SubjectNameLabel subject={subject} tag="h1" showPencil />
         <p>{classRow.name}</p>
       </header>
       <div className="curriculum__body">
