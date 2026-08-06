@@ -9,6 +9,7 @@ import {
   getNextLessonInSubject,
   listLessonsForSubject,
   listLessonsForSubjects,
+  updateLessonContent,
 } from './lessons'
 
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
@@ -216,6 +217,21 @@ describe('deleteLesson', () => {
     const raw = await db.lesson.get(created.id)
     expect(raw).toBeDefined()
     expect(raw?.deleted_at).not.toBeNull()
+  })
+})
+
+describe('updateLessonContent', () => {
+  it('updates title and description without touching position fields', async () => {
+    const created = await createLesson(lessonInput())
+
+    await updateLessonContent(created.id, { title: 'Adding fractions', description: 'Common denominators' })
+
+    const raw = await db.lesson.get(created.id)
+    expect(raw?.title).toBe('Adding fractions')
+    expect(raw?.description).toBe('Common denominators')
+    expect(raw?.unit).toBe(created.unit)
+    expect(raw?.lesson_in_unit).toBe(created.lesson_in_unit)
+    expect(raw?.subject_id).toBe(created.subject_id)
   })
 })
 

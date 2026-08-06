@@ -98,6 +98,17 @@ export async function deleteLesson(id: string): Promise<void> {
   await db.lesson.update(id, { deleted_at: now, updated_at: now })
 }
 
+export interface UpdateLessonContentInput {
+  title: string
+  description: string
+}
+
+/** Edits a lesson's title/description. unit/lesson_in_unit stay immutable here -- repositioning is a different operation with different invariants (see #73). */
+export async function updateLessonContent(id: string, input: UpdateLessonContentInput): Promise<void> {
+  const now = new Date().toISOString()
+  await db.lesson.update(id, { title: input.title, description: input.description, updated_at: now })
+}
+
 /** "1.2 - Fractions": a lesson's {unit, lesson_in_unit} position alongside its title, for reports where the raw title alone doesn't tell a teacher where it falls in the curriculum. */
 export function formatLessonLabel(lesson: LessonRow): string {
   return `${lesson.unit}.${lesson.lesson_in_unit} - ${lesson.title}`
