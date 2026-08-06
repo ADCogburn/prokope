@@ -6,6 +6,7 @@ import {
   getProgress,
   jumpToLesson,
   listProgressForStudents,
+  unAdvanceProgress,
   upsertProgressReview,
   upsertProgressStep,
 } from './progress'
@@ -207,6 +208,83 @@ describe('advanceProgress', () => {
     await upsertProgressReview('student-1', 'subject-1', true)
 
     await advanceProgress('student-1', 'subject-1')
+
+    const after = await getProgress('student-1', 'subject-1')
+    expect(after?.review).toBe(true)
+  })
+})
+
+describe('unAdvanceProgress', () => {
+  function lessonInput(overrides: Partial<Parameters<typeof createLesson>[0]> = {}) {
+    return {
+      subject_id: 'subject-1',
+      unit: 1,
+      lesson_in_unit: 1,
+      title: 'Untitled lesson',
+      description: '',
+      ...overrides,
+    }
+  }
+
+  it('steps a student back to the previous lesson before their current step', async () => {
+    const first = await createLesson(lessonInput({ title: 'Fractions' }))
+    await createLesson(lessonInput({ lesson_in_unit: 2, title: 'Decimals' }))
+    await upsertProgressStep('student-1', 'subject-1', { unit: 1, lesson_in_unit: 2 })
+
+    const result = await unAdvanceProgress('student-1', 'subject-1')
+
+    expect(result).toEqual({ unit: first.unit, lesson_in_unit: first.lesson_in_unit })
+    const progress = await getProgress('student-1', 'subject-1')
+    expect(progress?.step_unit).toBe(1)
+    expect(progress?.step_lesson_in_unit).toBe(1)
+  })
+
+  it('crosses a unit boundary the same way getPreviousLessonInSubject does', async () => {
+    const lastOfUnit1 = await createLesson(lessonInput({ lesson_in_unit: 9, title: 'Last of unit 1' }))
+    await createLesson(lessonInput({ unit: 2, title: 'First of unit 2' }))
+    await upsertProgressStep('student-1', 'subject-1', { unit: 2, lesson_in_unit: 1 })
+
+    const result = await unAdvanceProgress('student-1', 'subject-1')
+
+    expect(result).toEqual({ unit: lastOfUnit1.unit, lesson_in_unit: lastOfUnit1.lesson_in_unit })
+  })
+
+  it('lands on {0, 0} "Not started" when un-advancing from the first lesson', async () => {
+    await createLesson(lessonInput({ title: 'Only lesson' }))
+    await upsertProgressStep('student-1', 'subject-1', { unit: 1, lesson_in_unit: 1 })
+
+    const result = await unAdvanceProgress('student-1', 'subject-1')
+
+    expect(result).toEqual({ unit: 0, lesson_in_unit: 0 })
+    const progress = await getProgress('student-1', 'subject-1')
+    expect(progress?.step_unit).toBe(0)
+    expect(progress?.step_lesson_in_unit).toBe(0)
+  })
+
+  it('returns undefined and leaves progress untouched when already at {0, 0} with no progress row', async () => {
+    const result = await unAdvanceProgress('student-1', 'subject-1')
+
+    expect(result).toBeUndefined()
+    expect(await getProgress('student-1', 'subject-1')).toBeUndefined()
+  })
+
+  it('returns undefined and leaves progress untouched when already at {0, 0} with an explicit row', async () => {
+    const before = await upsertProgressStep('student-1', 'subject-1', { unit: 0, lesson_in_unit: 0 })
+
+    const result = await unAdvanceProgress('student-1', 'subject-1')
+
+    expect(result).toBeUndefined()
+    const after = await getProgress('student-1', 'subject-1')
+    expect(after).toEqual(before)
+  })
+
+  it('does not touch review/review_hlc/review_client_id when un-advancing', async () => {
+    await createLesson(lessonInput({ title: 'Fractions' }))
+    await createLesson(lessonInput({ lesson_in_unit: 2, title: 'Decimals' }))
+    await upsertProgressStep('student-1', 'subject-1', { unit: 1, lesson_in_unit: 2 })
+    await upsertProgressReview('student-1', 'subject-1', true)
+
+    await unAdvanceProgress('student-1', 'subject-1')
 
     const after = await getProgress('student-1', 'subject-1')
     expect(after?.review).toBe(true)

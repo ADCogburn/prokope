@@ -7,6 +7,7 @@ import {
   findNextLesson,
   jumpToLesson,
   positionOf,
+  unAdvanceProgress,
   upsertProgressReview,
   upsertProgressStep,
   type BulkAdvanceEntry,
@@ -210,6 +211,13 @@ export function ClassBoard({
 
   async function handleAdvance(studentId: string, subjectId: string) {
     await advanceProgress(studentId, subjectId)
+    if (bulkUndo?.subjectId === subjectId) {
+      setBulkUndo(null)
+    }
+  }
+
+  async function handleUnAdvance(studentId: string, subjectId: string) {
+    await unAdvanceProgress(studentId, subjectId)
     if (bulkUndo?.subjectId === subjectId) {
       setBulkUndo(null)
     }
@@ -433,6 +441,7 @@ export function ClassBoard({
                             onJumpToLesson={() =>
                               setJumpPickerRequest({ studentId: student.id, subjectId: subject.id })
                             }
+                            onUnAdvance={() => void handleUnAdvance(student.id, subject.id)}
                           />
                         )
                       })

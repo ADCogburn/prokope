@@ -1,7 +1,7 @@
 import { db, type LessonRow, type ProgressRow } from './schema'
 import { getClientId } from './clientId'
 import { nextHlc } from './hlc'
-import { getNextLessonInSubject } from './lessons'
+import { getNextLessonInSubject, getPreviousLessonInSubject } from './lessons'
 
 export interface ProgressStep {
   unit: number
@@ -153,6 +153,36 @@ export async function advanceProgress(
 
   await upsertProgressStep(studentId, subjectId, { unit: next.unit, lesson_in_unit: next.lesson_in_unit })
   return next
+}
+
+/**
+ * Steps a student back one lesson in a subject (#77's "Un-advance") -- the
+ * inverse of advanceProgress. Symmetric to advanceProgress: "previous" is
+ * whatever getPreviousLessonInSubject resolves to from the student's current
+ * step (or {0, 0} if they have no progress row yet). When there's no earlier
+ * lesson, lands on the {0, 0} "Not started" sentinel rather than leaving
+ * progress untouched -- unless the student is already there, in which case
+ * this is a no-op and returns undefined (the UI disables Un-advance at that
+ * point, mirroring how Advance disables at the last lesson).
+ */
+export async function unAdvanceProgress(
+  studentId: string,
+  subjectId: string,
+): Promise<ProgressStep | undefined> {
+  const current = await findProgressRow(studentId, subjectId)
+  const before = positionOf(current)
+
+  if (before.unit === 0 && before.lesson_in_unit === 0) {
+    return undefined
+  }
+
+  const previous = await getPreviousLessonInSubject(subjectId, before)
+  const target: ProgressStep = previous
+    ? { unit: previous.unit, lesson_in_unit: previous.lesson_in_unit }
+    : { unit: 0, lesson_in_unit: 0 }
+
+  await upsertProgressStep(studentId, subjectId, target)
+  return target
 }
 
 /**
