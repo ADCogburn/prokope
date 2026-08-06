@@ -2,6 +2,7 @@ import { useMemo, useState } from 'react'
 import type { ClassRow, LessonRow, ProgressRow, StudentRow, SubjectRow } from '../db/schema'
 import { buildStudentReport } from './studentReportData'
 import { buildWeeklyLessonPlan } from './weeklyLessonPlan'
+import { SkipLessonsPanel, type SkipEntry } from './SkipLessonsPanel'
 import { StudentReport } from './StudentReport'
 import { WeeklyLessonPlanReport } from './WeeklyLessonPlanReport'
 import './Reports.css'
@@ -29,15 +30,26 @@ interface ReportsProps {
 export function Reports({ classRow, subjects, students, lessons, progress, onBack }: ReportsProps) {
   const [reportType, setReportType] = useState<ReportType>('per-student')
   const [studentSelection, setStudentSelection] = useState<string>(ALL_STUDENTS)
+  const [skipEntries, setSkipEntries] = useState<SkipEntry[]>([])
 
   const selectedStudents = useMemo(() => {
     if (studentSelection === ALL_STUDENTS) return students
     return students.filter((student) => student.id === studentSelection)
   }, [studentSelection, students])
 
+  const skipExceptions = useMemo(() => skipEntries.flatMap((entry) => entry.exceptions), [skipEntries])
+
   const weeklyPlan = useMemo(
-    () => buildWeeklyLessonPlan(subjects, lessons, progress, students.map((student) => student.id), new Date()),
-    [subjects, lessons, progress, students],
+    () =>
+      buildWeeklyLessonPlan(
+        subjects,
+        lessons,
+        progress,
+        students.map((student) => student.id),
+        new Date(),
+        skipExceptions,
+      ),
+    [subjects, lessons, progress, students, skipExceptions],
   )
 
   return (
@@ -79,6 +91,16 @@ export function Reports({ classRow, subjects, students, lessons, progress, onBac
               ))}
             </select>
           </div>
+        )}
+
+        {reportType === 'weekly-plan' && (
+          <SkipLessonsPanel
+            subjects={subjects}
+            weekDates={weeklyPlan.weekDates}
+            entries={skipEntries}
+            onAdd={(entry) => setSkipEntries((prev) => [...prev, entry])}
+            onRemove={(id) => setSkipEntries((prev) => prev.filter((entry) => entry.id !== id))}
+          />
         )}
 
         <button type="button" className="reports__print" onClick={() => window.print()}>
