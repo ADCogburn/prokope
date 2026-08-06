@@ -75,6 +75,10 @@ export function Reports({ classRow, subjects, students, lessons, progress, onBac
           </select>
         </div>
 
+        <button type="button" className="reports__print" onClick={() => window.print()}>
+          Print
+        </button>
+
         {reportType === 'per-student' && (
           <div className="reports__field">
             <label htmlFor="report-student">Student</label>
@@ -102,10 +106,6 @@ export function Reports({ classRow, subjects, students, lessons, progress, onBac
             onRemove={(id) => setSkipEntries((prev) => prev.filter((entry) => entry.id !== id))}
           />
         )}
-
-        <button type="button" className="reports__print" onClick={() => window.print()}>
-          Print
-        </button>
       </div>
 
       <div className="reports__pages">
