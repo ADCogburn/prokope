@@ -273,13 +273,22 @@ export function Curriculum({ classRow, subject, lessons, onBack }: CurriculumPro
   return (
     <div className="curriculum">
       <header className="curriculum__header">
-        <button type="button" className="curriculum__back" onClick={onBack}>
-          ← Back to board
-        </button>
-        <div className="curriculum__title-row">
-          <SubjectNameLabel subject={subject} tag="h1" showPencil />
+        <div className="curriculum__header-main">
+          <button type="button" className="curriculum__back" onClick={onBack}>
+            ← Back to board
+          </button>
+          <div className="curriculum__title-row">
+            <SubjectNameLabel subject={subject} tag="h1" showPencil />
+          </div>
+          <p>{classRow.name}</p>
         </div>
-        <p>{classRow.name}</p>
+        <button
+          type="button"
+          className="inline-add-card curriculum__header-add"
+          onClick={() => setAddLessonModalOpen(true)}
+        >
+          + Add lesson
+        </button>
       </header>
       <div className="curriculum__body">
         {lessons.length > 0 && (
@@ -311,13 +320,6 @@ export function Curriculum({ classRow, subject, lessons, onBack }: CurriculumPro
             )}
           </div>
         )}
-        <button
-          type="button"
-          className="inline-add-card curriculum__add-card"
-          onClick={() => setAddLessonModalOpen(true)}
-        >
-          + Add lesson
-        </button>
       </div>
       {addLessonModalOpen && (
         <AddLessonModal subjectId={subject.id} lessons={lessons} onClose={() => setAddLessonModalOpen(false)} />

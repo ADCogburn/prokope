@@ -7,15 +7,30 @@
 }
 
 .curriculum__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
   padding: 16px 24px;
   background: var(--bg);
   border-bottom: 1px solid var(--border);
+}
+
+.curriculum__header-main {
+  min-width: 0;
 
   p {
     margin: 0;
     font-size: 14px;
     color: var(--text);
   }
+}
+
+.curriculum__header-add {
+  flex-shrink: 0;
+  min-height: 40px;
+  min-width: 0;
+  padding: 0 16px;
 }
 
 .curriculum__title-row {
@@ -207,11 +222,6 @@
   margin: 4px 0 0;
   font-size: 13px;
   color: var(--text);
-}
-
-.curriculum__add-card {
-  align-self: flex-start;
-  min-width: 280px;
 }
 
 .curriculum__add-card-error {
