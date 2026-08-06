@@ -44,3 +44,8 @@ export async function deleteClass(id: string): Promise<void> {
   const now = new Date().toISOString()
   await db.class.update(id, { deleted_at: now, updated_at: now })
 }
+
+export async function renameClass(id: string, name: string): Promise<void> {
+  const now = new Date().toISOString()
+  await db.class.update(id, { name, updated_at: now })
+}

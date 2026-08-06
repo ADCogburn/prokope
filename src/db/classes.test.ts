@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { db } from './schema'
-import { createClass, deleteClass, getClass, getClassForUser } from './classes'
+import { createClass, deleteClass, getClass, getClassForUser, renameClass } from './classes'
 
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 
@@ -93,5 +93,18 @@ describe('deleteClass', () => {
     const raw = await db.class.get(created.id)
     expect(raw).toBeDefined()
     expect(raw?.deleted_at).not.toBeNull()
+  })
+})
+
+describe('renameClass', () => {
+  it('updates the name without touching other fields', async () => {
+    const created = await createClass({ user_id: 'user-1', name: 'Homeroom' })
+
+    await renameClass(created.id, 'Room 12')
+
+    const raw = await db.class.get(created.id)
+    expect(raw?.name).toBe('Room 12')
+    expect(raw?.user_id).toBe(created.user_id)
+    expect(raw?.id).toBe(created.id)
   })
 })

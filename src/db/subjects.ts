@@ -40,3 +40,8 @@ export async function deleteSubject(id: string): Promise<void> {
   const now = new Date().toISOString()
   await db.subject.update(id, { deleted_at: now, updated_at: now })
 }
+
+export async function renameSubject(id: string, name: string): Promise<void> {
+  const now = new Date().toISOString()
+  await db.subject.update(id, { name, updated_at: now })
+}
