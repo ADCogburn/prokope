@@ -154,3 +154,38 @@ export async function advanceProgress(
   await upsertProgressStep(studentId, subjectId, { unit: next.unit, lesson_in_unit: next.lesson_in_unit })
   return next
 }
+
+/** One student's pre-advance position, captured so a bulk advance can be undone. */
+export interface BulkAdvanceEntry {
+  studentId: string
+  previous: ProgressStep
+}
+
+/**
+ * Advances every given student one lesson in one subject (#43's "Bulk
+ * Advance"). Reuses advanceProgress's own next-lesson rule per student, so a
+ * student already on the subject's last lesson (or a subject with no
+ * lessons) is silently skipped -- same as the single-student advance
+ * button. Returns only the students actually advanced, each paired with
+ * their pre-advance position, so the caller can undo the whole batch by
+ * writing each entry's `previous` back via upsertProgressStep.
+ */
+export async function bulkAdvanceProgress(
+  studentIds: string[],
+  subjectId: string,
+): Promise<BulkAdvanceEntry[]> {
+  const advanced: BulkAdvanceEntry[] = []
+  for (const studentId of studentIds) {
+    const current = await findProgressRow(studentId, subjectId)
+    const previous = positionOf(current)
+
+    const next = await getNextLessonInSubject(subjectId, previous)
+    if (!next) {
+      continue
+    }
+
+    await upsertProgressStep(studentId, subjectId, { unit: next.unit, lesson_in_unit: next.lesson_in_unit })
+    advanced.push({ studentId, previous })
+  }
+  return advanced
+}
