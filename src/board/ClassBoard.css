@@ -227,11 +227,51 @@
 }
 
 .class-board__panel-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
   padding: 12px 16px;
   color: var(--text-h);
   font-weight: 600;
   background: var(--accent-bg);
   border-bottom: 1px solid var(--border);
+}
+
+.class-board__panel-title {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.class-board__bulk-advance {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 0;
+}
+
+.class-board__bulk-advance-button,
+.class-board__bulk-advance-undo {
+  font: inherit;
+  font-size: 12px;
+  font-weight: 600;
+  padding: 4px 10px;
+  border-radius: 6px;
+  cursor: pointer;
+}
+
+.class-board__bulk-advance-button {
+  border: 1px solid var(--accent-border);
+  background: var(--bg);
+  color: var(--text-h);
+}
+
+.class-board__bulk-advance-undo {
+  border: 1px solid transparent;
+  background: none;
+  color: var(--accent);
 }
 
 .class-board__panel-body {

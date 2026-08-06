@@ -28,8 +28,9 @@ export {
   upsertProgressReview,
   listProgressForStudents,
   advanceProgress,
+  bulkAdvanceProgress,
   positionOf,
 } from './progress'
-export type { ProgressStep } from './progress'
+export type { ProgressStep, BulkAdvanceRecord } from './progress'
 
 export { getClientId } from './clientId'

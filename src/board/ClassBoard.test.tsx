@@ -434,4 +434,171 @@ describe('ClassBoard', () => {
     expect(onReportNavigate).toHaveBeenCalledTimes(1)
     expect(screen.queryByRole('button', { name: 'Generate report' })).not.toBeInTheDocument()
   })
+
+  describe('Bulk Advance (#43)', () => {
+    async function seedClassWithTwoStudentsTwoLessons() {
+      const classRow = await createClass({ user_id: 'user-1', name: 'Homeroom' })
+      const subject = await createSubject({ class_id: classRow.id, name: 'Math', position: 0 })
+      const studentA = await createStudent({ class_id: classRow.id, name: 'Emily', position: 0 })
+      const studentB = await createStudent({ class_id: classRow.id, name: 'Noah', position: 1 })
+      const lesson1 = await createLesson({
+        subject_id: subject.id,
+        unit: 1,
+        lesson_in_unit: 1,
+        title: 'Fractions',
+        description: '',
+      })
+      const lesson2 = await createLesson({
+        subject_id: subject.id,
+        unit: 1,
+        lesson_in_unit: 2,
+        title: 'Decimals',
+        description: '',
+      })
+      return { classRow, subject, studentA, studentB, lesson1, lesson2 }
+    }
+
+    it('does not show a Bulk Advance control when the active subject has no lessons', async () => {
+      const classRow = await createClass({ user_id: 'user-1', name: 'Homeroom' })
+      const subject = await createSubject({ class_id: classRow.id, name: 'Math', position: 0 })
+
+      renderBoard({
+        classRow,
+        subjects: [subject],
+        students: [],
+        progress: [],
+        lessons: [],
+        activeSubjectId: subject.id,
+      })
+
+      expect(screen.queryByRole('button', { name: 'Bulk Advance' })).not.toBeInTheDocument()
+    })
+
+    it('clicking Bulk Advance advances every student one lesson in the active subject and shows Undo', async () => {
+      const { classRow, subject, studentA, studentB, lesson1, lesson2 } =
+        await seedClassWithTwoStudentsTwoLessons()
+
+      renderBoard({
+        classRow,
+        subjects: [subject],
+        students: [studentA, studentB],
+        progress: [],
+        lessons: [lesson1, lesson2],
+        activeSubjectId: subject.id,
+      })
+
+      fireEvent.click(screen.getByRole('button', { name: 'Bulk Advance' }))
+
+      await waitFor(async () => {
+        const rowA = await db.progress
+          .where('[student_id+subject_id]')
+          .equals([studentA.id, subject.id])
+          .first()
+        const rowB = await db.progress
+          .where('[student_id+subject_id]')
+          .equals([studentB.id, subject.id])
+          .first()
+        expect(rowA).toMatchObject({ step_unit: 1, step_lesson_in_unit: 1 })
+        expect(rowB).toMatchObject({ step_unit: 1, step_lesson_in_unit: 1 })
+      })
+
+      expect(screen.getByRole('button', { name: 'Undo' })).toBeInTheDocument()
+    })
+
+    it('silently skips a student already on the last lesson and does not show Undo when nothing advanced', async () => {
+      const classRow = await createClass({ user_id: 'user-1', name: 'Homeroom' })
+      const subject = await createSubject({ class_id: classRow.id, name: 'Math', position: 0 })
+      const student = await createStudent({ class_id: classRow.id, name: 'Emily', position: 0 })
+      const lesson = await createLesson({
+        subject_id: subject.id,
+        unit: 1,
+        lesson_in_unit: 1,
+        title: 'Only lesson',
+        description: '',
+      })
+      const progress = await upsertProgressStep(student.id, subject.id, {
+        unit: lesson.unit,
+        lesson_in_unit: lesson.lesson_in_unit,
+      })
+
+      renderBoard({
+        classRow,
+        subjects: [subject],
+        students: [student],
+        progress: [progress],
+        lessons: [lesson],
+        activeSubjectId: subject.id,
+      })
+
+      fireEvent.click(screen.getByRole('button', { name: 'Bulk Advance' }))
+
+      await waitFor(() => {
+        expect(screen.queryByRole('button', { name: 'Undo' })).not.toBeInTheDocument()
+      })
+      const row = await db.progress
+        .where('[student_id+subject_id]')
+        .equals([student.id, subject.id])
+        .first()
+      expect(row).toMatchObject({ step_unit: 1, step_lesson_in_unit: 1 })
+    })
+
+    it('clicking Undo after a Bulk Advance reverts every affected student to their pre-batch step', async () => {
+      const { classRow, subject, studentA, studentB, lesson1, lesson2 } =
+        await seedClassWithTwoStudentsTwoLessons()
+
+      renderBoard({
+        classRow,
+        subjects: [subject],
+        students: [studentA, studentB],
+        progress: [],
+        lessons: [lesson1, lesson2],
+        activeSubjectId: subject.id,
+      })
+
+      fireEvent.click(screen.getByRole('button', { name: 'Bulk Advance' }))
+      await waitFor(() => expect(screen.getByRole('button', { name: 'Undo' })).toBeInTheDocument())
+
+      fireEvent.click(screen.getByRole('button', { name: 'Undo' }))
+
+      await waitFor(async () => {
+        const rowA = await db.progress
+          .where('[student_id+subject_id]')
+          .equals([studentA.id, subject.id])
+          .first()
+        const rowB = await db.progress
+          .where('[student_id+subject_id]')
+          .equals([studentB.id, subject.id])
+          .first()
+        expect(rowA).toMatchObject({ step_unit: 0, step_lesson_in_unit: 0 })
+        expect(rowB).toMatchObject({ step_unit: 0, step_lesson_in_unit: 0 })
+      })
+      expect(screen.queryByRole('button', { name: 'Undo' })).not.toBeInTheDocument()
+    })
+
+    it('clears the pending Undo once a single-cell advance touches that same subject', async () => {
+      const { classRow, subject, studentA, studentB, lesson1, lesson2 } =
+        await seedClassWithTwoStudentsTwoLessons()
+
+      renderBoard({
+        classRow,
+        subjects: [subject],
+        students: [studentA, studentB],
+        progress: [],
+        lessons: [lesson1, lesson2],
+        activeSubjectId: subject.id,
+      })
+
+      fireEvent.click(screen.getByRole('button', { name: 'Bulk Advance' }))
+      await waitFor(() => expect(screen.getByRole('button', { name: 'Undo' })).toBeInTheDocument())
+
+      // The review toggle is always enabled (unlike the advance control,
+      // which is disabled once a student's on the subject's last lesson) --
+      // any single-cell progress edit should clear the pending bulk Undo.
+      fireEvent.click(screen.getAllByRole('button', { name: 'Flag for review' })[0])
+
+      await waitFor(() => {
+        expect(screen.queryByRole('button', { name: 'Undo' })).not.toBeInTheDocument()
+      })
+    })
+  })
 })

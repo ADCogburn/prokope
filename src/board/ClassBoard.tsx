@@ -1,6 +1,15 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, type FormEvent } from 'react'
 import type { ClassRow, ProgressRow, StudentRow, SubjectRow, LessonRow } from '../db/schema'
-import { advanceProgress, createSubject, findNextLesson, positionOf, upsertProgressReview } from '../db'
+import type { BulkAdvanceRecord } from '../db'
+import {
+  advanceProgress,
+  bulkAdvanceProgress,
+  createSubject,
+  findNextLesson,
+  positionOf,
+  upsertProgressReview,
+  upsertProgressStep,
+} from '../db'
 import { useCarouselDrag } from './useCarouselDrag'
 import { ProgressCell } from './ProgressCell'
 import { InlineAddCard } from './InlineAddCard'
@@ -114,6 +123,14 @@ export function ClassBoard({
   const panelRects = useRef(new Map<string, DOMRect>())
   const [bookMenuOpen, setBookMenuOpen] = useState(false)
   const [pickerOpen, setPickerOpen] = useState(false)
+  // One-shot whole-batch Undo for Bulk Advance, per #43/ADR-0005: in-memory
+  // component state only (no Dexie table, no cross-device undo). Naturally
+  // cleared on navigating away from the Class Board or a page refresh since
+  // this component unmounts; also cleared below whenever any other edit
+  // (bulk or single-cell) touches that same subject's progress.
+  const [bulkUndo, setBulkUndo] = useState<
+    { subjectId: string; records: BulkAdvanceRecord[] } | undefined
+  >(undefined)
 
   useEffect(() => {
     const el = wrapRef.current
@@ -195,11 +212,32 @@ export function ClassBoard({
 
   async function handleAdvance(studentId: string, subjectId: string) {
     await advanceProgress(studentId, subjectId)
+    setBulkUndo((prev) => (prev?.subjectId === subjectId ? undefined : prev))
   }
 
   async function handleToggleReview(studentId: string, subjectId: string) {
     const current = progressByKey.get(progressKey(studentId, subjectId))
     await upsertProgressReview(studentId, subjectId, !current?.review)
+    setBulkUndo((prev) => (prev?.subjectId === subjectId ? undefined : prev))
+  }
+
+  /** Bulk Advance, per #43: advances every student on the board one lesson in the given subject. Skipping already-last-lesson students is handled by bulkAdvanceProgress itself. */
+  async function handleBulkAdvance(subjectId: string) {
+    const records = await bulkAdvanceProgress(
+      subjectId,
+      students.map((student) => student.id),
+    )
+    setBulkUndo(records.length > 0 ? { subjectId, records } : undefined)
+  }
+
+  /** Reverts the last Bulk Advance by writing each captured pre-batch step back via the normal single-step upsert path -- a fresh HLC-stamped write, same as any other edit (see ADR-0005/#43 spec). */
+  async function handleUndoBulkAdvance() {
+    if (!bulkUndo) return
+    const { subjectId, records } = bulkUndo
+    for (const record of records) {
+      await upsertProgressStep(record.studentId, subjectId, record.previousStep)
+    }
+    setBulkUndo(undefined)
   }
 
   if (subjects.length === 0) {
@@ -307,6 +345,7 @@ export function ClassBoard({
           >
             {subjects.map((subject, i) => {
               const subjectLessons = lessons.filter((l) => l.subject_id === subject.id)
+              const isActive = i === index
               return (
                 <div
                   key={subject.id}
@@ -315,9 +354,31 @@ export function ClassBoard({
                     else panelRefs.current.delete(subject.id)
                   }}
                   className="class-board__panel"
-                  style={{ width: panelWidth, marginRight: PANEL_GAP, opacity: i === index ? 1 : 0.45 }}
+                  style={{ width: panelWidth, marginRight: PANEL_GAP, opacity: isActive ? 1 : 0.45 }}
                 >
-                  <div className="class-board__panel-header">{subject.name}</div>
+                  <div className="class-board__panel-header">
+                    <span className="class-board__panel-title">{subject.name}</span>
+                    {isActive && subjectLessons.length > 0 && (
+                      <div className="class-board__bulk-advance">
+                        <button
+                          type="button"
+                          className="class-board__bulk-advance-button"
+                          onClick={() => void handleBulkAdvance(subject.id)}
+                        >
+                          Bulk Advance
+                        </button>
+                        {bulkUndo?.subjectId === subject.id && (
+                          <button
+                            type="button"
+                            className="class-board__bulk-advance-undo"
+                            onClick={() => void handleUndoBulkAdvance()}
+                          >
+                            Undo
+                          </button>
+                        )}
+                      </div>
+                    )}
+                  </div>
                   <div className="class-board__panel-body">
                     {subjectLessons.length === 0 ? (
                       <div className="class-board__panel-empty">

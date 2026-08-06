@@ -1,7 +1,7 @@
 import { db, type LessonRow, type ProgressRow } from './schema'
 import { getClientId } from './clientId'
 import { nextHlc } from './hlc'
-import { getNextLessonInSubject } from './lessons'
+import { findNextLesson, getNextLessonInSubject, listLessonsForSubject } from './lessons'
 
 export interface ProgressStep {
   unit: number
@@ -153,4 +153,53 @@ export async function advanceProgress(
 
   await upsertProgressStep(studentId, subjectId, { unit: next.unit, lesson_in_unit: next.lesson_in_unit })
   return next
+}
+
+/** One student's pre-batch step, captured by bulkAdvanceProgress so a caller can offer a one-shot Undo. */
+export interface BulkAdvanceRecord {
+  studentId: string
+  previousStep: ProgressStep
+}
+
+/**
+ * Advances every listed student one lesson in a subject, per #43 (Bulk
+ * Advance). Applies advanceProgress's per-student "next lesson" rule
+ * (getNextLessonInSubject from the student's current step, or {0, 0} if
+ * they have no progress row yet) across a whole class's students in one
+ * call. A student already on the subject's last lesson -- or a subject
+ * with no lessons at all -- is silently skipped, same as advanceProgress
+ * returning undefined for a single student.
+ *
+ * Returns a record per student actually advanced, carrying their step from
+ * just before this batch ran. That's exactly what a caller needs to offer
+ * a one-shot whole-batch Undo: write each entry's previousStep back via
+ * upsertProgressStep.
+ */
+export async function bulkAdvanceProgress(
+  subjectId: string,
+  studentIds: string[],
+): Promise<BulkAdvanceRecord[]> {
+  if (studentIds.length === 0) {
+    return []
+  }
+
+  const [lessons, progressRows] = await Promise.all([
+    listLessonsForSubject(subjectId),
+    listProgressForStudents(studentIds),
+  ])
+  const progressByStudent = new Map(
+    progressRows.filter((row) => row.subject_id === subjectId).map((row) => [row.student_id, row]),
+  )
+
+  const records: BulkAdvanceRecord[] = []
+  for (const studentId of studentIds) {
+    const previousStep = positionOf(progressByStudent.get(studentId))
+    const next = findNextLesson(lessons, subjectId, previousStep)
+    if (!next) {
+      continue
+    }
+    await upsertProgressStep(studentId, subjectId, { unit: next.unit, lesson_in_unit: next.lesson_in_unit })
+    records.push({ studentId, previousStep })
+  }
+  return records
 }

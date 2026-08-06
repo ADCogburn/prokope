@@ -2,6 +2,7 @@ import { afterEach, describe, expect, it } from 'vitest'
 import { db } from './schema'
 import {
   advanceProgress,
+  bulkAdvanceProgress,
   getProgress,
   listProgressForStudents,
   upsertProgressReview,
@@ -208,5 +209,97 @@ describe('advanceProgress', () => {
 
     const after = await getProgress('student-1', 'subject-1')
     expect(after?.review).toBe(true)
+  })
+})
+
+describe('bulkAdvanceProgress', () => {
+  function lessonInput(overrides: Partial<Parameters<typeof createLesson>[0]> = {}) {
+    return {
+      subject_id: 'subject-1',
+      unit: 1,
+      lesson_in_unit: 1,
+      title: 'Untitled lesson',
+      description: '',
+      ...overrides,
+    }
+  }
+
+  it('advances every listed student one lesson, including those with no progress row yet', async () => {
+    await createLesson(lessonInput({ title: 'Fractions' }))
+    const second = await createLesson(lessonInput({ lesson_in_unit: 2, title: 'Decimals' }))
+    await upsertProgressStep('student-1', 'subject-1', { unit: 1, lesson_in_unit: 1 })
+
+    await bulkAdvanceProgress('subject-1', ['student-1', 'student-2'])
+
+    const p1 = await getProgress('student-1', 'subject-1')
+    expect(p1?.step_unit).toBe(second.unit)
+    expect(p1?.step_lesson_in_unit).toBe(second.lesson_in_unit)
+
+    const p2 = await getProgress('student-2', 'subject-1')
+    expect(p2?.step_unit).toBe(1)
+    expect(p2?.step_lesson_in_unit).toBe(1)
+  })
+
+  it('silently skips a student already on the subject\'s last lesson', async () => {
+    await createLesson(lessonInput({ title: 'Only lesson' }))
+    const before = await upsertProgressStep('student-1', 'subject-1', { unit: 1, lesson_in_unit: 1 })
+    await upsertProgressStep('student-2', 'subject-1', { unit: 0, lesson_in_unit: 0 })
+
+    const records = await bulkAdvanceProgress('subject-1', ['student-1', 'student-2'])
+
+    expect(records.map((r) => r.studentId)).toEqual(['student-2'])
+    const after1 = await getProgress('student-1', 'subject-1')
+    expect(after1).toEqual(before)
+  })
+
+  it('silently skips every student when the subject has no lessons', async () => {
+    const records = await bulkAdvanceProgress('subject-1', ['student-1', 'student-2'])
+
+    expect(records).toEqual([])
+    expect(await getProgress('student-1', 'subject-1')).toBeUndefined()
+  })
+
+  it('returns an empty array for an empty student list', async () => {
+    await createLesson(lessonInput())
+
+    expect(await bulkAdvanceProgress('subject-1', [])).toEqual([])
+  })
+
+  it('returns a record per advanced student carrying their pre-batch step, for Undo', async () => {
+    await createLesson(lessonInput({ title: 'Fractions' }))
+    await createLesson(lessonInput({ lesson_in_unit: 2, title: 'Decimals' }))
+    await upsertProgressStep('student-1', 'subject-1', { unit: 1, lesson_in_unit: 1 })
+
+    const records = await bulkAdvanceProgress('subject-1', ['student-1', 'student-2'])
+
+    expect(records).toEqual(
+      expect.arrayContaining([
+        { studentId: 'student-1', previousStep: { unit: 1, lesson_in_unit: 1 } },
+        { studentId: 'student-2', previousStep: { unit: 0, lesson_in_unit: 0 } },
+      ]),
+    )
+  })
+
+  it('does not touch review/review_hlc/review_client_id when bulk advancing', async () => {
+    await createLesson(lessonInput({ title: 'Fractions' }))
+    await createLesson(lessonInput({ lesson_in_unit: 2, title: 'Decimals' }))
+    await upsertProgressStep('student-1', 'subject-1', { unit: 1, lesson_in_unit: 1 })
+    await upsertProgressReview('student-1', 'subject-1', true)
+
+    await bulkAdvanceProgress('subject-1', ['student-1'])
+
+    const after = await getProgress('student-1', 'subject-1')
+    expect(after?.review).toBe(true)
+  })
+
+  it('only advances students in the given subject, leaving other subjects\' progress untouched', async () => {
+    await createLesson(lessonInput({ title: 'Fractions' }))
+    await createLesson({ ...lessonInput(), subject_id: 'subject-2', title: 'Other subject lesson' })
+    const otherBefore = await upsertProgressStep('student-1', 'subject-2', { unit: 0, lesson_in_unit: 0 })
+
+    await bulkAdvanceProgress('subject-1', ['student-1'])
+
+    const otherAfter = await getProgress('student-1', 'subject-2')
+    expect(otherAfter).toEqual(otherBefore)
   })
 })
