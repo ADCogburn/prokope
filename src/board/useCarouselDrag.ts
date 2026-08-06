@@ -13,6 +13,7 @@ export function useCarouselDrag(panelWidth: number, itemCount: number, initialIn
   const startX = useRef(0)
 
   const onPointerDown = useCallback((e: ReactPointerEvent) => {
+    if (e.button !== 0) return
     ;(e.target as HTMLElement).setPointerCapture(e.pointerId)
     startX.current = e.clientX
     setDragging(true)

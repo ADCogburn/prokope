@@ -29,4 +29,34 @@ describe('useCarouselDrag', () => {
     act(() => result.current.goTo(2))
     expect(result.current.offset).toBe(-800)
   })
+
+  it('a primary-button pointer-down engages dragging state', () => {
+    const { result } = renderHook(() => useCarouselDrag(400, 3))
+
+    act(() =>
+      result.current.bind.onPointerDown({
+        button: 0,
+        clientX: 0,
+        pointerId: 1,
+        target: { setPointerCapture: () => {} },
+      } as unknown as Parameters<typeof result.current.bind.onPointerDown>[0]),
+    )
+
+    expect(result.current.dragging).toBe(true)
+  })
+
+  it('a non-primary-button pointer-down (e.g. right-click) does not engage dragging state', () => {
+    const { result } = renderHook(() => useCarouselDrag(400, 3))
+
+    act(() =>
+      result.current.bind.onPointerDown({
+        button: 2,
+        clientX: 0,
+        pointerId: 1,
+        target: { setPointerCapture: () => {} },
+      } as unknown as Parameters<typeof result.current.bind.onPointerDown>[0]),
+    )
+
+    expect(result.current.dragging).toBe(false)
+  })
 })

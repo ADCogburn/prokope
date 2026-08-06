@@ -523,6 +523,27 @@ describe('ClassBoard', () => {
     expect(screen.getByRole('menuitem', { name: 'Un-advance' })).toBeDisabled()
   })
 
+  it('a real right-click sequence (pointer-down with the right button, then contextmenu) on a Progress Cell opens its menu without engaging the carousel drag state', async () => {
+    const { classRow, subject, student, lesson } = await seedClassWithOneSubjectOneStudent()
+
+    renderBoard({
+      classRow,
+      subjects: [subject],
+      students: [student],
+      progress: [],
+      lessons: [lesson],
+      activeSubjectId: subject.id,
+    })
+
+    const studentName = screen.getByText('Emily', { selector: '.progress-cell__student' })
+
+    fireEvent.pointerDown(studentName, { button: 2, pointerId: 1, clientX: 100 })
+    fireEvent.contextMenu(studentName)
+
+    expect(screen.getByRole('menuitem', { name: 'Jump to lesson...' })).toBeInTheDocument()
+    expect(document.querySelector('.class-board__carousel--dragging')).not.toBeInTheDocument()
+  })
+
   it('clicking Bulk Advance advances every student in the active subject and skips one already on the last lesson', async () => {
     const classRow = await createClass({ user_id: 'user-1', name: 'Homeroom' })
     const subject = await createSubject({ class_id: classRow.id, name: 'Math', position: 0 })
