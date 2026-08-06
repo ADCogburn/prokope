@@ -236,7 +236,7 @@ describe('Curriculum', () => {
     })
   })
 
-  it('deletes a lesson after confirmation', async () => {
+  it('deletes a lesson after confirming in RemoveLessonDialog', async () => {
     const classRow = await createClass({ user_id: 'user-1', name: 'Homeroom' })
     const subject = await createSubject({ class_id: classRow.id, name: 'Math', position: 0 })
     const lesson = await createLesson({
@@ -246,11 +246,11 @@ describe('Curriculum', () => {
       title: 'Fractions',
       description: '',
     })
-    vi.spyOn(window, 'confirm').mockReturnValue(true)
 
     renderCurriculum({ classRow, subject, lessons: [lesson] })
 
-    fireEvent.click(screen.getByRole('button', { name: 'Delete Fractions' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Remove Fractions' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Remove lesson' }))
 
     await waitFor(async () => {
       const row = await db.lesson.get(lesson.id)
@@ -258,7 +258,7 @@ describe('Curriculum', () => {
     })
   })
 
-  it('does not delete a lesson when the confirmation is declined', async () => {
+  it('does not delete a lesson when RemoveLessonDialog is cancelled', async () => {
     const classRow = await createClass({ user_id: 'user-1', name: 'Homeroom' })
     const subject = await createSubject({ class_id: classRow.id, name: 'Math', position: 0 })
     const lesson = await createLesson({
@@ -268,12 +268,13 @@ describe('Curriculum', () => {
       title: 'Fractions',
       description: '',
     })
-    vi.spyOn(window, 'confirm').mockReturnValue(false)
 
     renderCurriculum({ classRow, subject, lessons: [lesson] })
 
-    fireEvent.click(screen.getByRole('button', { name: 'Delete Fractions' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Remove Fractions' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Cancel' }))
 
+    expect(screen.queryByRole('dialog', { name: 'Remove lesson' })).not.toBeInTheDocument()
     const row = await db.lesson.get(lesson.id)
     expect(row?.deleted_at).toBeNull()
   })
@@ -650,7 +651,7 @@ describe('Curriculum', () => {
     expect(row?.title).toBe('Fractions')
   })
 
-  it('shows a visible Edit control next to Delete on each lesson row', async () => {
+  it('shows a visible Edit control next to Remove on each lesson row', async () => {
     const classRow = await createClass({ user_id: 'user-1', name: 'Homeroom' })
     const subject = await createSubject({ class_id: classRow.id, name: 'Math', position: 0 })
     const lesson = await createLesson({
@@ -664,7 +665,7 @@ describe('Curriculum', () => {
     renderCurriculum({ classRow, subject, lessons: [lesson] })
 
     expect(screen.getByRole('button', { name: 'Edit Fractions' })).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: 'Delete Fractions' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Remove Fractions' })).toBeInTheDocument()
   })
 
   it('clicking Edit pre-fills the form with the lesson\'s current unit, lesson number, title, and description', async () => {

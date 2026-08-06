@@ -4,6 +4,7 @@ import { deleteLesson, updateLessonContent } from '../db'
 import { ContextMenu } from './ContextMenu'
 import { SubjectNameLabel } from './SubjectNameLabel'
 import { AddLessonModal } from './AddLessonModal'
+import { RemoveLessonDialog } from './RemoveLessonDialog'
 import { groupLessonsByUnit } from './groupLessonsByUnit'
 import { useUnitWindow } from './useUnitWindow'
 import { countVisibleUnitColumns } from './countVisibleUnitColumns'
@@ -27,9 +28,10 @@ interface LessonListItemProps {
 }
 
 /**
- * One lesson row: position, title, description, the existing Delete
- * control (#74), a visible Edit control, and (per #33, ADR-0006) a
- * right-click menu offering the same "Edit lesson" action. Editing swaps the
+ * One lesson row: position, title, description, a Remove control (#74,
+ * confirmed via RemoveLessonDialog per #136 rather than a native confirm()
+ * popup), a visible Edit control, and (per #33, ADR-0006) a right-click menu
+ * offering the same "Edit lesson" action. Editing swaps the
  * row for an inline unit/lesson-number/title/description form -- mirroring
  * AddLessonCard's own form markup/classes rather than a modal, per ADR-0003
  * -- since four fields don't fit InlineRenameField's single-input swap.
@@ -49,6 +51,7 @@ function LessonListItem({ lesson, lessons }: LessonListItemProps) {
   const [description, setDescription] = useState(lesson.description)
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState('')
+  const [removeRequested, setRemoveRequested] = useState(false)
 
   function startEditing() {
     setUnit(String(lesson.unit))
@@ -183,15 +186,11 @@ function LessonListItem({ lesson, lessons }: LessonListItemProps) {
         </button>
         <button
           type="button"
-          className="curriculum__lesson-delete"
-          aria-label={`Delete ${lesson.title}`}
-          onClick={() => {
-            if (window.confirm(`Delete "${lesson.title}"?`)) {
-              void deleteLesson(lesson.id)
-            }
-          }}
+          className="curriculum__lesson-remove"
+          aria-label={`Remove ${lesson.title}`}
+          onClick={() => setRemoveRequested(true)}
         >
-          Delete
+          Remove
         </button>
       </div>
       {menuPosition && (
@@ -200,6 +199,16 @@ function LessonListItem({ lesson, lessons }: LessonListItemProps) {
           y={menuPosition.y}
           onClose={() => setMenuPosition(null)}
           items={[{ label: 'Edit lesson', onSelect: startEditing }]}
+        />
+      )}
+      {removeRequested && (
+        <RemoveLessonDialog
+          lesson={lesson}
+          onConfirm={() => {
+            void deleteLesson(lesson.id)
+            setRemoveRequested(false)
+          }}
+          onClose={() => setRemoveRequested(false)}
         />
       )}
     </li>
