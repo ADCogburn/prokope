@@ -1,18 +1,13 @@
 import { useEffect, useRef, useState, type FormEvent } from 'react'
 import type { ClassRow, LessonRow, SubjectRow } from '../db/schema'
-import {
-  createLesson,
-  deleteLesson,
-  getNextLessonPosition,
-  getSuggestedNewLessonPosition,
-  updateLessonContent,
-} from '../db'
-import { InlineAddCard } from './InlineAddCard'
+import { deleteLesson, updateLessonContent } from '../db'
 import { ContextMenu } from './ContextMenu'
 import { SubjectNameLabel } from './SubjectNameLabel'
+import { AddLessonModal } from './AddLessonModal'
 import { groupLessonsByUnit } from './groupLessonsByUnit'
 import { useUnitWindow } from './useUnitWindow'
 import { countVisibleUnitColumns } from './countVisibleUnitColumns'
+import './InlineAddCard.css'
 import './Curriculum.css'
 
 const UNIT_COLUMN_WIDTH = 280
@@ -23,133 +18,6 @@ function ChevronIcon({ direction }: { direction: 'left' | 'right' }) {
     <svg viewBox="0 0 24 24" aria-hidden="true">
       <path d={direction === 'left' ? 'M15 4 L7 12 L15 20' : 'M9 4 L17 12 L9 20'} />
     </svg>
-  )
-}
-
-interface AddLessonCardProps {
-  subjectId: string
-  lessons: LessonRow[]
-}
-
-/** Trailing/alone "+" card for adding a lesson, per #60. Reuses InlineAddCard from #58; validates the (unit, lesson_in_unit) pair against the already-loaded lesson list before calling createLesson, rather than relying on the underlying Dexie constraint to fail the write. */
-function AddLessonCard({ subjectId, lessons }: AddLessonCardProps) {
-  const [title, setTitle] = useState('')
-  const [unit, setUnit] = useState('')
-  const [lessonInUnit, setLessonInUnit] = useState('')
-  const [description, setDescription] = useState('')
-  const [submitting, setSubmitting] = useState(false)
-  const [error, setError] = useState('')
-
-  const canSubmit = title.trim() !== '' && unit.trim() !== '' && lessonInUnit.trim() !== ''
-
-  return (
-    <InlineAddCard
-      addLabel="Add lesson"
-      className="curriculum__add-card"
-      onExpand={() => {
-        const suggestion = getSuggestedNewLessonPosition(lessons, subjectId)
-        setUnit(String(suggestion.unit))
-        setLessonInUnit(String(suggestion.lesson_in_unit))
-      }}
-    >
-      {({ collapse }) => {
-        function reset() {
-          setTitle('')
-          setUnit('')
-          setLessonInUnit('')
-          setDescription('')
-          setError('')
-        }
-
-        async function handleSubmit(event: FormEvent) {
-          event.preventDefault()
-          if (!canSubmit || submitting) return
-
-          const unitNum = Number(unit)
-          const lessonInUnitNum = Number(lessonInUnit)
-          const duplicate = lessons.some(
-            (lesson) => lesson.unit === unitNum && lesson.lesson_in_unit === lessonInUnitNum,
-          )
-          if (duplicate) {
-            setError(`Unit ${unitNum}, Lesson ${lessonInUnitNum} already exists.`)
-            return
-          }
-
-          setSubmitting(true)
-          await createLesson({
-            subject_id: subjectId,
-            unit: unitNum,
-            lesson_in_unit: lessonInUnitNum,
-            title: title.trim(),
-            description: description.trim(),
-          })
-          setSubmitting(false)
-          reset()
-          collapse()
-        }
-
-        return (
-          <form className="inline-add-card__form" onSubmit={handleSubmit}>
-            <label htmlFor="new-lesson-title">Title</label>
-            <input
-              id="new-lesson-title"
-              value={title}
-              onChange={(event) => setTitle(event.target.value)}
-              placeholder="e.g. Fractions"
-              autoFocus
-            />
-            <label htmlFor="new-lesson-unit">Unit</label>
-            <input
-              id="new-lesson-unit"
-              type="number"
-              value={unit}
-              onChange={(event) => {
-                const value = event.target.value
-                setUnit(value)
-                setError('')
-
-                const unitNum = Number(value)
-                if (value.trim() !== '' && Number.isFinite(unitNum)) {
-                  const suggestion = getNextLessonPosition(lessons, subjectId, unitNum)
-                  setLessonInUnit(String(suggestion.lesson_in_unit))
-                }
-              }}
-            />
-            <label htmlFor="new-lesson-lesson-in-unit">Lesson in unit</label>
-            <input
-              id="new-lesson-lesson-in-unit"
-              type="number"
-              value={lessonInUnit}
-              onChange={(event) => {
-                setLessonInUnit(event.target.value)
-                setError('')
-              }}
-            />
-            <label htmlFor="new-lesson-description">Description</label>
-            <textarea
-              id="new-lesson-description"
-              value={description}
-              onChange={(event) => setDescription(event.target.value)}
-            />
-            {error !== '' && <p className="curriculum__add-card-error">{error}</p>}
-            <div className="inline-add-card__actions">
-              <button
-                type="button"
-                onClick={() => {
-                  reset()
-                  collapse()
-                }}
-              >
-                Cancel
-              </button>
-              <button type="submit" disabled={submitting || !canSubmit}>
-                Add
-              </button>
-            </div>
-          </form>
-        )
-      }}
-    </InlineAddCard>
   )
 }
 
@@ -384,6 +252,7 @@ interface CurriculumProps {
 export function Curriculum({ classRow, subject, lessons, onBack }: CurriculumProps) {
   const wrapRef = useRef<HTMLDivElement>(null)
   const [containerWidth, setContainerWidth] = useState<number | null>(null)
+  const [addLessonModalOpen, setAddLessonModalOpen] = useState(false)
 
   useEffect(() => {
     const el = wrapRef.current
@@ -411,41 +280,46 @@ export function Curriculum({ classRow, subject, lessons, onBack }: CurriculumPro
         <p>{classRow.name}</p>
       </header>
       <div className="curriculum__body">
-        {lessons.length === 0 ? (
-          <AddLessonCard subjectId={subject.id} lessons={lessons} />
-        ) : (
-          <>
-            <div className="curriculum__units-wrap" ref={wrapRef}>
-              {canGoPrev && (
-                <button
-                  type="button"
-                  aria-label="Previous unit"
-                  className="curriculum__unit-arrow curriculum__unit-arrow--prev"
-                  onClick={prev}
-                >
-                  <ChevronIcon direction="left" />
-                </button>
-              )}
-              <div className="curriculum__units">
-                {visibleUnitGroups.map((group) => (
-                  <UnitColumn key={group.unit} unit={group.unit} unitLessons={group.lessons} allLessons={lessons} />
-                ))}
-              </div>
-              {canGoNext && (
-                <button
-                  type="button"
-                  aria-label="Next unit"
-                  className="curriculum__unit-arrow curriculum__unit-arrow--next"
-                  onClick={next}
-                >
-                  <ChevronIcon direction="right" />
-                </button>
-              )}
+        {lessons.length > 0 && (
+          <div className="curriculum__units-wrap" ref={wrapRef}>
+            {canGoPrev && (
+              <button
+                type="button"
+                aria-label="Previous unit"
+                className="curriculum__unit-arrow curriculum__unit-arrow--prev"
+                onClick={prev}
+              >
+                <ChevronIcon direction="left" />
+              </button>
+            )}
+            <div className="curriculum__units">
+              {visibleUnitGroups.map((group) => (
+                <UnitColumn key={group.unit} unit={group.unit} unitLessons={group.lessons} allLessons={lessons} />
+              ))}
             </div>
-            <AddLessonCard subjectId={subject.id} lessons={lessons} />
-          </>
+            {canGoNext && (
+              <button
+                type="button"
+                aria-label="Next unit"
+                className="curriculum__unit-arrow curriculum__unit-arrow--next"
+                onClick={next}
+              >
+                <ChevronIcon direction="right" />
+              </button>
+            )}
+          </div>
         )}
+        <button
+          type="button"
+          className="inline-add-card curriculum__add-card"
+          onClick={() => setAddLessonModalOpen(true)}
+        >
+          + Add lesson
+        </button>
       </div>
+      {addLessonModalOpen && (
+        <AddLessonModal subjectId={subject.id} lessons={lessons} onClose={() => setAddLessonModalOpen(false)} />
+      )}
     </div>
   )
 }

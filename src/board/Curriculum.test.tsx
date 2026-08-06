@@ -269,7 +269,7 @@ describe('Curriculum', () => {
     expect(row?.deleted_at).toBeNull()
   })
 
-  it('cancelling the add-lesson form collapses it back to the "+" card without creating a lesson', async () => {
+  it('cancelling the add-lesson modal closes it without creating a lesson', async () => {
     const classRow = await createClass({ user_id: 'user-1', name: 'Homeroom' })
     const subject = await createSubject({ class_id: classRow.id, name: 'Math', position: 0 })
 
@@ -279,9 +279,94 @@ describe('Curriculum', () => {
     fireEvent.change(screen.getByLabelText('Title'), { target: { value: 'Fractions' } })
     fireEvent.click(screen.getByRole('button', { name: 'Cancel' }))
 
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
     expect(screen.getByRole('button', { name: '+ Add lesson' })).toBeInTheDocument()
     const rows = await db.lesson.where('subject_id').equals(subject.id).toArray()
     expect(rows).toHaveLength(0)
+  })
+
+  it('opens the add-lesson form as a modal (dialog role) instead of an inline-expanding card', async () => {
+    const classRow = await createClass({ user_id: 'user-1', name: 'Homeroom' })
+    const subject = await createSubject({ class_id: classRow.id, name: 'Math', position: 0 })
+
+    renderCurriculum({ classRow, subject, lessons: [] })
+
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
+
+    fireEvent.click(screen.getByRole('button', { name: '+ Add lesson' }))
+
+    expect(screen.getByRole('dialog')).toBeInTheDocument()
+  })
+
+  it('closes the add-lesson modal on backdrop click, without creating a lesson', async () => {
+    const classRow = await createClass({ user_id: 'user-1', name: 'Homeroom' })
+    const subject = await createSubject({ class_id: classRow.id, name: 'Math', position: 0 })
+
+    renderCurriculum({ classRow, subject, lessons: [] })
+
+    fireEvent.click(screen.getByRole('button', { name: '+ Add lesson' }))
+    fireEvent.change(screen.getByLabelText('Title'), { target: { value: 'Fractions' } })
+    fireEvent.click(screen.getByRole('dialog').parentElement!)
+
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
+    const rows = await db.lesson.where('subject_id').equals(subject.id).toArray()
+    expect(rows).toHaveLength(0)
+  })
+
+  it('closes the add-lesson modal via its Close button, without creating a lesson', async () => {
+    const classRow = await createClass({ user_id: 'user-1', name: 'Homeroom' })
+    const subject = await createSubject({ class_id: classRow.id, name: 'Math', position: 0 })
+
+    renderCurriculum({ classRow, subject, lessons: [] })
+
+    fireEvent.click(screen.getByRole('button', { name: '+ Add lesson' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Close' }))
+
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
+    const rows = await db.lesson.where('subject_id').equals(subject.id).toArray()
+    expect(rows).toHaveLength(0)
+  })
+
+  it('does not close the add-lesson modal when the dialog content itself is clicked', async () => {
+    const classRow = await createClass({ user_id: 'user-1', name: 'Homeroom' })
+    const subject = await createSubject({ class_id: classRow.id, name: 'Math', position: 0 })
+
+    renderCurriculum({ classRow, subject, lessons: [] })
+
+    fireEvent.click(screen.getByRole('button', { name: '+ Add lesson' }))
+    fireEvent.click(screen.getByRole('dialog'))
+
+    expect(screen.getByRole('dialog')).toBeInTheDocument()
+  })
+
+  it('submitting the add-lesson modal closes it and persists the lesson', async () => {
+    const classRow = await createClass({ user_id: 'user-1', name: 'Homeroom' })
+    const subject = await createSubject({ class_id: classRow.id, name: 'Math', position: 0 })
+
+    renderCurriculum({ classRow, subject, lessons: [] })
+
+    fireEvent.click(screen.getByRole('button', { name: '+ Add lesson' }))
+    fireEvent.change(screen.getByLabelText('Title'), { target: { value: 'Fractions' } })
+    fireEvent.change(screen.getByLabelText('Unit'), { target: { value: '1' } })
+    fireEvent.change(screen.getByLabelText('Lesson in unit'), { target: { value: '1' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Add' }))
+
+    await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument())
+    const rows = await db.lesson.where('subject_id').equals(subject.id).toArray()
+    expect(rows).toHaveLength(1)
+  })
+
+  it('keeps exactly one lesson-creation entry point even when multiple unit columns are visible', async () => {
+    const classRow = await createClass({ user_id: 'user-1', name: 'Homeroom' })
+    const subject = await createSubject({ class_id: classRow.id, name: 'Math', position: 0 })
+    const l1 = await createLesson({ subject_id: subject.id, unit: 1, lesson_in_unit: 1, title: 'A', description: '' })
+    const l2 = await createLesson({ subject_id: subject.id, unit: 2, lesson_in_unit: 1, title: 'B', description: '' })
+    const l3 = await createLesson({ subject_id: subject.id, unit: 3, lesson_in_unit: 1, title: 'C', description: '' })
+
+    renderCurriculum({ classRow, subject, lessons: [l1, l2, l3] })
+
+    expect(document.querySelectorAll('.curriculum__unit-column')).toHaveLength(3)
+    expect(screen.getAllByRole('button', { name: '+ Add lesson' })).toHaveLength(1)
   })
 
   it('right-clicking the subject name header opens the menu with "Rename subject"', async () => {

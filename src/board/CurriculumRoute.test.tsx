@@ -83,4 +83,24 @@ describe('CurriculumRoute', () => {
 
     await waitFor(() => expect(screen.getByText('Subject board stub')).toBeInTheDocument())
   })
+
+  it('adding a lesson through the modal shows it in the correct unit column immediately, with no navigation', async () => {
+    const classRow = await createClass({ user_id: 'user-1', name: 'Homeroom' })
+    const subject = await createSubject({ class_id: classRow.id, name: 'Math', position: 0 })
+    await createLesson({ subject_id: subject.id, unit: 1, lesson_in_unit: 1, title: 'Fractions', description: '' })
+
+    renderRoute(`/class/${classRow.id}/subject/${subject.id}/curriculum`)
+
+    await waitFor(() => expect(screen.getByRole('button', { name: '+ Add lesson' })).toBeInTheDocument())
+    fireEvent.click(screen.getByRole('button', { name: '+ Add lesson' }))
+    fireEvent.change(screen.getByLabelText('Title'), { target: { value: 'Decimals' } })
+    fireEvent.change(screen.getByLabelText('Unit'), { target: { value: '2' } })
+    fireEvent.change(screen.getByLabelText('Lesson in unit'), { target: { value: '1' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Add' }))
+
+    await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument())
+    await waitFor(() => expect(screen.getByText('Unit 2')).toBeInTheDocument())
+    expect(screen.getByText('Decimals')).toBeInTheDocument()
+    expect(screen.getByText('Math')).toBeInTheDocument()
+  })
 })
