@@ -61,7 +61,7 @@ function progressRow(overrides: Partial<ProgressRow> = {}): ProgressRow {
 }
 
 describe('buildStudentReport', () => {
-  it("shows the current lesson's title (not the raw unit/lesson_in_unit id) for a subject the student has progress in", () => {
+  it("shows the current lesson's unit/lesson number and title for a subject the student has progress in", () => {
     const student = studentRow()
     const subjects = [subjectRow({ id: 'subj1', name: 'Math' })]
     const lessons = [lessonRow({ id: 'l1', subject_id: 'subj1', unit: 1, lesson_in_unit: 1, title: 'Fractions' })]
@@ -73,11 +73,11 @@ describe('buildStudentReport', () => {
 
     expect(report.student).toBe(student)
     expect(report.subjectRows).toEqual([
-      { subject: subjects[0], lessonTitle: 'Fractions', hasLessons: true, reviewFlagged: false },
+      { subject: subjects[0], lessonLabel: '1.1 - Fractions', hasLessons: true, reviewFlagged: false },
     ])
   })
 
-  it('reports "not started" (no lesson title) for a subject with lessons but no progress row yet', () => {
+  it('reports "not started" (no lesson label) for a subject with lessons but no progress row yet', () => {
     const student = studentRow()
     const subjects = [subjectRow({ id: 'subj1', name: 'Math' })]
     const lessons = [lessonRow({ id: 'l1', subject_id: 'subj1' })]
@@ -86,7 +86,7 @@ describe('buildStudentReport', () => {
 
     expect(report.subjectRows[0]).toEqual({
       subject: subjects[0],
-      lessonTitle: undefined,
+      lessonLabel: undefined,
       hasLessons: true,
       reviewFlagged: false,
     })
@@ -100,7 +100,7 @@ describe('buildStudentReport', () => {
 
     expect(report.subjectRows[0]).toEqual({
       subject: subjects[0],
-      lessonTitle: undefined,
+      lessonLabel: undefined,
       hasLessons: false,
       reviewFlagged: false,
     })
@@ -141,7 +141,7 @@ describe('buildStudentReport', () => {
 
     const report = buildStudentReport(student, subjects, lessons, progress)
 
-    expect(report.subjectRows[0].lessonTitle).toBeUndefined()
+    expect(report.subjectRows[0].lessonLabel).toBeUndefined()
     expect(report.subjectRows[0].reviewFlagged).toBe(false)
   })
 

@@ -39,25 +39,25 @@ describe('StudentReport', () => {
     expect(screen.getByRole('heading', { name: 'Emily' })).toBeInTheDocument()
   })
 
-  it("shows each subject's current lesson title", () => {
+  it("shows each subject's current lesson label", () => {
     const data: StudentReportData = {
       student: studentRow(),
       subjectRows: [
-        { subject: subjectRow({ id: 's1', name: 'Math' }), lessonTitle: 'Fractions', hasLessons: true, reviewFlagged: false },
+        { subject: subjectRow({ id: 's1', name: 'Math' }), lessonLabel: '1.1 - Fractions', hasLessons: true, reviewFlagged: false },
       ],
     }
 
     render(<StudentReport data={data} />)
 
-    const row = screen.getByText('Math').closest('li')!
-    expect(within(row).getByText('Fractions')).toBeInTheDocument()
+    const row = screen.getByRole('row', { name: /Math/ })
+    expect(within(row).getByText('1.1 - Fractions')).toBeInTheDocument()
   })
 
   it('shows "Not started" for a subject with lessons but no progress yet', () => {
     const data: StudentReportData = {
       student: studentRow(),
       subjectRows: [
-        { subject: subjectRow({ id: 's1', name: 'Math' }), lessonTitle: undefined, hasLessons: true, reviewFlagged: false },
+        { subject: subjectRow({ id: 's1', name: 'Math' }), lessonLabel: undefined, hasLessons: true, reviewFlagged: false },
       ],
     }
 
@@ -70,7 +70,7 @@ describe('StudentReport', () => {
     const data: StudentReportData = {
       student: studentRow(),
       subjectRows: [
-        { subject: subjectRow({ id: 's1', name: 'Math' }), lessonTitle: undefined, hasLessons: false, reviewFlagged: false },
+        { subject: subjectRow({ id: 's1', name: 'Math' }), lessonLabel: undefined, hasLessons: false, reviewFlagged: false },
       ],
     }
 
@@ -83,15 +83,15 @@ describe('StudentReport', () => {
     const data: StudentReportData = {
       student: studentRow(),
       subjectRows: [
-        { subject: subjectRow({ id: 's1', name: 'Math' }), lessonTitle: 'Fractions', hasLessons: true, reviewFlagged: true },
-        { subject: subjectRow({ id: 's2', name: 'Reading' }), lessonTitle: 'Sight Words', hasLessons: true, reviewFlagged: false },
+        { subject: subjectRow({ id: 's1', name: 'Math' }), lessonLabel: '1.1 - Fractions', hasLessons: true, reviewFlagged: true },
+        { subject: subjectRow({ id: 's2', name: 'Reading' }), lessonLabel: '1.1 - Sight Words', hasLessons: true, reviewFlagged: false },
       ],
     }
 
     render(<StudentReport data={data} />)
 
-    const mathRow = screen.getByText('Math').closest('li')!
-    const readingRow = screen.getByText('Reading').closest('li')!
+    const mathRow = screen.getByRole('row', { name: /Math/ })
+    const readingRow = screen.getByRole('row', { name: /Reading/ })
     expect(within(mathRow).getByText('Flagged for review')).toBeInTheDocument()
     expect(within(readingRow).queryByText('Flagged for review')).not.toBeInTheDocument()
   })

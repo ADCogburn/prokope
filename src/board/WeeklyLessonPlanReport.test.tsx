@@ -89,7 +89,7 @@ describe('WeeklyLessonPlanReport', () => {
     render(<WeeklyLessonPlanReport weekDates={weekDates} rows={rows} />)
 
     const row = screen.getByRole('row', { name: /Math/ })
-    expect(within(row).getByText('Lesson: Fractions')).toBeInTheDocument()
+    expect(within(row).getByText('Lesson: 1.1 - Fractions')).toBeInTheDocument()
     expect(within(row).getByText('Notes: Add and subtract fractions.')).toBeInTheDocument()
   })
 

@@ -4,6 +4,7 @@ import {
   createLesson,
   deleteLesson,
   findNextLesson,
+  formatLessonLabel,
   getLessonByPosition,
   getNextLessonInSubject,
   listLessonsForSubject,
@@ -215,5 +216,23 @@ describe('deleteLesson', () => {
     const raw = await db.lesson.get(created.id)
     expect(raw).toBeDefined()
     expect(raw?.deleted_at).not.toBeNull()
+  })
+})
+
+describe('formatLessonLabel', () => {
+  it('renders as "<unit>.<lesson_in_unit> - <title>"', () => {
+    const label = formatLessonLabel({
+      id: 'l1',
+      subject_id: 'subject-1',
+      unit: 1,
+      lesson_in_unit: 1,
+      title: 'Practicing addition',
+      description: '',
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+      deleted_at: null,
+    })
+
+    expect(label).toBe('1.1 - Practicing addition')
   })
 })
