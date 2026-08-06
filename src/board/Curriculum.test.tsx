@@ -67,6 +67,15 @@ describe('Curriculum', () => {
     expect(screen.queryByRole('list')).not.toBeInTheDocument()
   })
 
+  it('renders + Add lesson inside the page header landmark', async () => {
+    const classRow = await createClass({ user_id: 'user-1', name: 'Homeroom' })
+    const subject = await createSubject({ class_id: classRow.id, name: 'Math', position: 0 })
+
+    renderCurriculum({ classRow, subject, lessons: [] })
+
+    expect(screen.getByRole('banner')).toContainElement(screen.getByRole('button', { name: '+ Add lesson' }))
+  })
+
   it('lists lessons in unit/lesson_in_unit order', async () => {
     const classRow = await createClass({ user_id: 'user-1', name: 'Homeroom' })
     const subject = await createSubject({ class_id: classRow.id, name: 'Math', position: 0 })
