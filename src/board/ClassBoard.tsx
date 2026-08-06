@@ -9,6 +9,8 @@ import {
   findNextLesson,
   jumpToLesson,
   positionOf,
+  renameClass,
+  renameStudent,
   unAdvanceProgress,
   upsertProgressReview,
   upsertProgressStep,
@@ -17,7 +19,9 @@ import {
 import { useCarouselDrag } from './useCarouselDrag'
 import { ProgressCell } from './ProgressCell'
 import { InlineAddCard } from './InlineAddCard'
+import { InlineRenameField } from './InlineRenameField'
 import { ContextMenu } from './ContextMenu'
+import { SubjectNameLabel } from './SubjectNameLabel'
 import { SubjectReorder } from './SubjectReorder'
 import { SubjectPickerModal } from './SubjectPickerModal'
 import { LessonPickerModal } from './LessonPickerModal'
@@ -156,25 +160,43 @@ interface StudentRosterRowProps {
 
 /**
  * One roster row: avatar, name, review-flag count, and (per #78, ADR-0006) a
- * right-click menu offering "Remove student". Owns its own menu
- * open/closed + position state independently, the same way each
+ * right-click menu offering "Remove student", now joined by "Rename
+ * student" (#33) -> InlineRenameField, per ADR-0003. Owns its own menu
+ * open/closed + edit-mode state independently, the same way each
  * ProgressCell scopes its own menu state -- the row only reports the
- * removal request up to ClassBoard, which owns the confirmation dialog.
+ * removal request up to ClassBoard, which owns the confirmation dialog;
+ * renaming, being non-destructive, is handled entirely within the row.
  */
 function StudentRosterRow({ student, reviewCount, onRequestRemove }: StudentRosterRowProps) {
   const [menuPosition, setMenuPosition] = useState<{ x: number; y: number } | null>(null)
+  const [editing, setEditing] = useState(false)
 
   return (
     <div
       className="class-board__student"
       onContextMenu={(event) => {
+        if (editing) return
         event.preventDefault()
         setMenuPosition({ x: event.clientX, y: event.clientY })
       }}
     >
       <span className="class-board__student-avatar">{student.name[0]}</span>
       <div>
-        <div className="class-board__student-name">{student.name}</div>
+        <div className="class-board__student-name">
+          {editing ? (
+            <InlineRenameField
+              ariaLabel="Student name"
+              initialValue={student.name}
+              onSubmit={async (trimmed) => {
+                await renameStudent(student.id, trimmed)
+                setEditing(false)
+              }}
+              onCancel={() => setEditing(false)}
+            />
+          ) : (
+            student.name
+          )}
+        </div>
         {reviewCount > 0 && <div className="class-board__review-count">{reviewCount} flagged for review</div>}
       </div>
       {menuPosition && (
@@ -184,6 +206,10 @@ function StudentRosterRow({ student, reviewCount, onRequestRemove }: StudentRost
           onClose={() => setMenuPosition(null)}
           items={[
             {
+              label: 'Rename student',
+              onSelect: () => setEditing(true),
+            },
+            {
               label: 'Remove student',
               onSelect: () => onRequestRemove(student),
             },
@@ -191,6 +217,53 @@ function StudentRosterRow({ student, reviewCount, onRequestRemove }: StudentRost
         />
       )}
     </div>
+  )
+}
+
+/**
+ * The class-board header's class-name heading -- right-click -> "Rename
+ * class" -> InlineRenameField, per #33/ADR-0006/ADR-0003. Owns its own
+ * menu/edit state, the same per-element pattern as StudentRosterRow and
+ * ProgressCell. Used in both the zero-subjects empty state and the full
+ * board header, so renaming works regardless of whether any subject exists
+ * yet.
+ */
+function ClassNameHeading({ classRow }: { classRow: ClassRow }) {
+  const [menuPosition, setMenuPosition] = useState<{ x: number; y: number } | null>(null)
+  const [editing, setEditing] = useState(false)
+
+  return (
+    <>
+      <h1
+        onContextMenu={(event) => {
+          if (editing) return
+          event.preventDefault()
+          setMenuPosition({ x: event.clientX, y: event.clientY })
+        }}
+      >
+        {editing ? (
+          <InlineRenameField
+            ariaLabel="Class name"
+            initialValue={classRow.name}
+            onSubmit={async (trimmed) => {
+              await renameClass(classRow.id, trimmed)
+              setEditing(false)
+            }}
+            onCancel={() => setEditing(false)}
+          />
+        ) : (
+          classRow.name
+        )}
+      </h1>
+      {menuPosition && (
+        <ContextMenu
+          x={menuPosition.x}
+          y={menuPosition.y}
+          onClose={() => setMenuPosition(null)}
+          items={[{ label: 'Rename class', onSelect: () => setEditing(true) }]}
+        />
+      )}
+    </>
   )
 }
 
@@ -402,7 +475,7 @@ export function ClassBoard({
     return (
       <div className="class-board class-board--empty">
         <header className="class-board__header">
-          <h1>{classRow.name}</h1>
+          <ClassNameHeading classRow={classRow} />
         </header>
         <div className="class-board__empty-body">
           {studentsPanel}
@@ -417,7 +490,7 @@ export function ClassBoard({
     <div className="class-board">
       <header className="class-board__header">
         <div className="class-board__header-row">
-          <h1>{classRow.name}</h1>
+          <ClassNameHeading classRow={classRow} />
           <div className="class-board__book">
             <button
               type="button"
@@ -518,7 +591,7 @@ export function ClassBoard({
                   style={{ width: panelWidth, marginRight: PANEL_GAP, opacity: i === index ? 1 : 0.45 }}
                 >
                   <div className="class-board__panel-header">
-                    <span>{subject.name}</span>
+                    <SubjectNameLabel subject={subject} />
                     {i === index && (
                       <div className="class-board__bulk-advance-group">
                         <button

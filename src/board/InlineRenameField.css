@@ -1,0 +1,22 @@
+.inline-rename-field {
+  display: inline-flex;
+  min-width: 0;
+  max-width: 100%;
+  vertical-align: bottom;
+}
+
+.inline-rename-field input {
+  width: 100%;
+  min-width: 8ch;
+  font: inherit;
+  color: inherit;
+  padding: 2px 8px;
+  border-radius: 6px;
+  border: 1px solid var(--border);
+  background: var(--bg);
+
+  &:focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: 2px;
+  }
+}
