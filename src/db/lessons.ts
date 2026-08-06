@@ -161,14 +161,30 @@ export async function deleteLesson(id: string): Promise<void> {
 }
 
 export interface UpdateLessonContentInput {
+  unit: number
+  lesson_in_unit: number
   title: string
   description: string
 }
 
-/** Edits a lesson's title/description. unit/lesson_in_unit stay immutable here -- repositioning is a different operation with different invariants (see #73). */
+/**
+ * Edits a lesson's unit, lesson number, title, and description in one write,
+ * per #103. Widened from a title/description-only version (#33) now that
+ * unit/lesson_in_unit have their first UI consumer -- callers are
+ * responsible for guarding against a duplicate (subject_id, unit,
+ * lesson_in_unit) position among the subject's other lessons before calling
+ * this, the same check createLesson's caller already performs, since this
+ * function itself doesn't have the sibling-lesson list to check against.
+ */
 export async function updateLessonContent(id: string, input: UpdateLessonContentInput): Promise<void> {
   const now = new Date().toISOString()
-  await db.lesson.update(id, { title: input.title, description: input.description, updated_at: now })
+  await db.lesson.update(id, {
+    unit: input.unit,
+    lesson_in_unit: input.lesson_in_unit,
+    title: input.title,
+    description: input.description,
+    updated_at: now,
+  })
 }
 
 /** "1.2 - Fractions": a lesson's {unit, lesson_in_unit} position alongside its title, for reports where the raw title alone doesn't tell a teacher where it falls in the curriculum. */

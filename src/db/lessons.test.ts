@@ -411,10 +411,15 @@ describe('deleteLesson', () => {
 })
 
 describe('updateLessonContent', () => {
-  it('updates title and description without touching position fields', async () => {
+  it('updates title and description, keeping the same unit/lesson_in_unit', async () => {
     const created = await createLesson(lessonInput())
 
-    await updateLessonContent(created.id, { title: 'Adding fractions', description: 'Common denominators' })
+    await updateLessonContent(created.id, {
+      unit: created.unit,
+      lesson_in_unit: created.lesson_in_unit,
+      title: 'Adding fractions',
+      description: 'Common denominators',
+    })
 
     const raw = await db.lesson.get(created.id)
     expect(raw?.title).toBe('Adding fractions')
@@ -422,6 +427,37 @@ describe('updateLessonContent', () => {
     expect(raw?.unit).toBe(created.unit)
     expect(raw?.lesson_in_unit).toBe(created.lesson_in_unit)
     expect(raw?.subject_id).toBe(created.subject_id)
+  })
+
+  it('updates unit and lesson_in_unit along with title/description in one write', async () => {
+    const created = await createLesson(lessonInput({ unit: 1, lesson_in_unit: 1 }))
+
+    await updateLessonContent(created.id, {
+      unit: 2,
+      lesson_in_unit: 3,
+      title: 'Adding fractions',
+      description: 'Common denominators',
+    })
+
+    const raw = await db.lesson.get(created.id)
+    expect(raw?.unit).toBe(2)
+    expect(raw?.lesson_in_unit).toBe(3)
+    expect(raw?.title).toBe('Adding fractions')
+    expect(raw?.description).toBe('Common denominators')
+  })
+
+  it('leaves the id unchanged by an edit', async () => {
+    const created = await createLesson(lessonInput())
+
+    await updateLessonContent(created.id, {
+      unit: 5,
+      lesson_in_unit: 5,
+      title: 'New title',
+      description: '',
+    })
+
+    const raw = await db.lesson.get(created.id)
+    expect(raw?.id).toBe(created.id)
   })
 })
 

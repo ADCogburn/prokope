@@ -449,7 +449,7 @@ describe('Curriculum', () => {
       expect(row?.title).toBe('Fractions II')
       expect(row?.description).toBe('Advanced fractions')
     })
-    // unit/lesson_in_unit stay immutable via this form.
+    // unit/lesson_in_unit weren't touched by this test, so they stay as-is.
     const row = await db.lesson.get(lesson.id)
     expect(row?.unit).toBe(1)
     expect(row?.lesson_in_unit).toBe(1)
@@ -523,5 +523,175 @@ describe('Curriculum', () => {
     expect(screen.queryByLabelText('Title')).not.toBeInTheDocument()
     const row = await db.lesson.get(lesson.id)
     expect(row?.title).toBe('Fractions')
+  })
+
+  it('shows a visible Edit control next to Delete on each lesson row', async () => {
+    const classRow = await createClass({ user_id: 'user-1', name: 'Homeroom' })
+    const subject = await createSubject({ class_id: classRow.id, name: 'Math', position: 0 })
+    const lesson = await createLesson({
+      subject_id: subject.id,
+      unit: 1,
+      lesson_in_unit: 1,
+      title: 'Fractions',
+      description: 'Intro to fractions',
+    })
+
+    renderCurriculum({ classRow, subject, lessons: [lesson] })
+
+    expect(screen.getByRole('button', { name: 'Edit Fractions' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Delete Fractions' })).toBeInTheDocument()
+  })
+
+  it('clicking Edit pre-fills the form with the lesson\'s current unit, lesson number, title, and description', async () => {
+    const classRow = await createClass({ user_id: 'user-1', name: 'Homeroom' })
+    const subject = await createSubject({ class_id: classRow.id, name: 'Math', position: 0 })
+    const lesson = await createLesson({
+      subject_id: subject.id,
+      unit: 2,
+      lesson_in_unit: 3,
+      title: 'Fractions',
+      description: 'Intro to fractions',
+    })
+
+    renderCurriculum({ classRow, subject, lessons: [lesson] })
+
+    fireEvent.click(screen.getByRole('button', { name: 'Edit Fractions' }))
+
+    expect(screen.getByLabelText('Unit')).toHaveValue(2)
+    expect(screen.getByLabelText('Lesson in unit')).toHaveValue(3)
+    expect(screen.getByLabelText('Title')).toHaveValue('Fractions')
+    expect(screen.getByLabelText('Description')).toHaveValue('Intro to fractions')
+  })
+
+  it('saving a valid unit/lesson-number/title/description change updates all four fields in one write', async () => {
+    const classRow = await createClass({ user_id: 'user-1', name: 'Homeroom' })
+    const subject = await createSubject({ class_id: classRow.id, name: 'Math', position: 0 })
+    const lesson = await createLesson({
+      subject_id: subject.id,
+      unit: 1,
+      lesson_in_unit: 1,
+      title: 'Fractions',
+      description: 'Intro to fractions',
+    })
+
+    renderCurriculum({ classRow, subject, lessons: [lesson] })
+
+    fireEvent.click(screen.getByRole('button', { name: 'Edit Fractions' }))
+    fireEvent.change(screen.getByLabelText('Unit'), { target: { value: '3' } })
+    fireEvent.change(screen.getByLabelText('Lesson in unit'), { target: { value: '2' } })
+    fireEvent.change(screen.getByLabelText('Title'), { target: { value: 'Fractions II' } })
+    fireEvent.change(screen.getByLabelText('Description'), { target: { value: 'Advanced fractions' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Save' }))
+
+    await waitFor(async () => {
+      const row = await db.lesson.get(lesson.id)
+      expect(row).toMatchObject({
+        unit: 3,
+        lesson_in_unit: 2,
+        title: 'Fractions II',
+        description: 'Advanced fractions',
+      })
+    })
+  })
+
+  it('rejects saving a unit/lesson-number combination that collides with another existing lesson in the subject', async () => {
+    const classRow = await createClass({ user_id: 'user-1', name: 'Homeroom' })
+    const subject = await createSubject({ class_id: classRow.id, name: 'Math', position: 0 })
+    const lessonA = await createLesson({
+      subject_id: subject.id,
+      unit: 1,
+      lesson_in_unit: 1,
+      title: 'Fractions',
+      description: '',
+    })
+    const lessonB = await createLesson({
+      subject_id: subject.id,
+      unit: 2,
+      lesson_in_unit: 1,
+      title: 'Decimals',
+      description: '',
+    })
+
+    renderCurriculum({ classRow, subject, lessons: [lessonA, lessonB] })
+
+    fireEvent.click(screen.getByRole('button', { name: 'Edit Decimals' }))
+    fireEvent.change(screen.getByLabelText('Unit'), { target: { value: '1' } })
+    fireEvent.change(screen.getByLabelText('Lesson in unit'), { target: { value: '1' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Save' }))
+
+    expect(await screen.findByText('Unit 1, Lesson 1 already exists.')).toBeInTheDocument()
+    const row = await db.lesson.get(lessonB.id)
+    expect(row).toMatchObject({ unit: 2, lesson_in_unit: 1 })
+  })
+
+  it('allows saving the lesson\'s own unchanged unit/lesson-number position', async () => {
+    const classRow = await createClass({ user_id: 'user-1', name: 'Homeroom' })
+    const subject = await createSubject({ class_id: classRow.id, name: 'Math', position: 0 })
+    const lesson = await createLesson({
+      subject_id: subject.id,
+      unit: 1,
+      lesson_in_unit: 1,
+      title: 'Fractions',
+      description: '',
+    })
+
+    renderCurriculum({ classRow, subject, lessons: [lesson] })
+
+    fireEvent.click(screen.getByRole('button', { name: 'Edit Fractions' }))
+    fireEvent.change(screen.getByLabelText('Title'), { target: { value: 'Fractions (revised)' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Save' }))
+
+    await waitFor(async () => {
+      const row = await db.lesson.get(lesson.id)
+      expect(row).toMatchObject({ unit: 1, lesson_in_unit: 1, title: 'Fractions (revised)' })
+    })
+  })
+
+  it('cancelling the Edit form discards changes and restores the original row without writing', async () => {
+    const classRow = await createClass({ user_id: 'user-1', name: 'Homeroom' })
+    const subject = await createSubject({ class_id: classRow.id, name: 'Math', position: 0 })
+    const lesson = await createLesson({
+      subject_id: subject.id,
+      unit: 1,
+      lesson_in_unit: 1,
+      title: 'Fractions',
+      description: 'Intro to fractions',
+    })
+
+    renderCurriculum({ classRow, subject, lessons: [lesson] })
+
+    fireEvent.click(screen.getByRole('button', { name: 'Edit Fractions' }))
+    fireEvent.change(screen.getByLabelText('Unit'), { target: { value: '9' } })
+    fireEvent.change(screen.getByLabelText('Title'), { target: { value: 'Changed' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Cancel' }))
+
+    expect(screen.queryByLabelText('Unit')).not.toBeInTheDocument()
+    expect(screen.getByText('Fractions', { selector: '.curriculum__lesson-title' })).toBeInTheDocument()
+    const row = await db.lesson.get(lesson.id)
+    expect(row).toMatchObject({ unit: 1, lesson_in_unit: 1, title: 'Fractions' })
+  })
+
+  it("keeps the lesson's id unchanged across an edit", async () => {
+    const classRow = await createClass({ user_id: 'user-1', name: 'Homeroom' })
+    const subject = await createSubject({ class_id: classRow.id, name: 'Math', position: 0 })
+    const lesson = await createLesson({
+      subject_id: subject.id,
+      unit: 1,
+      lesson_in_unit: 1,
+      title: 'Fractions',
+      description: '',
+    })
+
+    renderCurriculum({ classRow, subject, lessons: [lesson] })
+
+    fireEvent.click(screen.getByRole('button', { name: 'Edit Fractions' }))
+    fireEvent.change(screen.getByLabelText('Unit'), { target: { value: '5' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Save' }))
+
+    await waitFor(async () => {
+      const row = await db.lesson.get(lesson.id)
+      expect(row?.id).toBe(lesson.id)
+      expect(row?.unit).toBe(5)
+    })
   })
 })
