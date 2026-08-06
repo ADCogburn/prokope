@@ -1,4 +1,5 @@
 import { useEffect, useRef } from 'react'
+import { createPortal } from 'react-dom'
 import './ContextMenu.css'
 
 export interface ContextMenuItem {
@@ -20,6 +21,11 @@ interface ContextMenuProps {
  * options (e.g. Un-advance, #77) can be added without changing this
  * component. Closes itself on: selecting an item, clicking outside, or
  * pressing Escape -- the caller owns whether it's rendered at all.
+ *
+ * Rendered via a portal into `document.body` (#133): some triggers (e.g.
+ * the Class Board carousel's transformed panels) are transformed ancestors,
+ * which would otherwise reinterpret this menu's `position: fixed` x/y as
+ * relative to that ancestor instead of the viewport.
  */
 export function ContextMenu({ items, x, y, onClose }: ContextMenuProps) {
   const ref = useRef<HTMLDivElement>(null)
@@ -44,7 +50,7 @@ export function ContextMenu({ items, x, y, onClose }: ContextMenuProps) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
-  return (
+  return createPortal(
     <div ref={ref} role="menu" className="context-menu" style={{ left: x, top: y }}>
       {items.map((item) => (
         <button
@@ -61,6 +67,7 @@ export function ContextMenu({ items, x, y, onClose }: ContextMenuProps) {
           {item.label}
         </button>
       ))}
-    </div>
+    </div>,
+    document.body,
   )
 }
