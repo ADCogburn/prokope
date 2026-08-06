@@ -13,7 +13,18 @@ export interface CreateLessonInput {
   description: string
 }
 
+/**
+ * DB-level uniqueness on this position isn't viable (#135/ADR-0010:
+ * IndexedDB drops a record from a compound index entirely when any key-path
+ * component is null, so the live rows this must protect -- deleted_at: null
+ * -- would never be indexed), so this checks the position against live rows
+ * itself before inserting.
+ */
 export async function createLesson(input: CreateLessonInput): Promise<LessonRow> {
+  const existing = await getLessonByPosition(input.subject_id, input.unit, input.lesson_in_unit)
+  if (existing) {
+    throw new Error(`A lesson already exists at unit ${input.unit}, lesson ${input.lesson_in_unit}.`)
+  }
   const now = new Date().toISOString()
   const row: LessonRow = {
     id: crypto.randomUUID(),
@@ -53,11 +64,14 @@ export async function getLessonByPosition(
   unit: number,
   lessonInUnit: number,
 ): Promise<LessonRow | undefined> {
-  const row = await db.lesson
+  // Not unique (#135/ADR-0010): a soft-deleted lesson can share this
+  // position with the live one, so this must check every match rather than
+  // taking .first().
+  const rows = await db.lesson
     .where('[subject_id+unit+lesson_in_unit]')
     .equals([subjectId, unit, lessonInUnit])
-    .first()
-  return row && row.deleted_at === null ? row : undefined
+    .toArray()
+  return rows.find((row) => row.deleted_at === null)
 }
 
 /**
