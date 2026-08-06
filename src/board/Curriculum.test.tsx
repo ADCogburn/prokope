@@ -1,11 +1,42 @@
-import { afterEach, describe, expect, it, vi } from 'vitest'
-import { fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { Curriculum } from './Curriculum'
 import { db } from '../db/schema'
 import { createClass, createLesson, createSubject } from '../db'
 import type { ClassRow, LessonRow, SubjectRow } from '../db/schema'
 
+let mockWrapWidth = 2000
+const resizeCallbacks: ResizeObserverCallback[] = []
+
+class MockResizeObserver {
+  callback: ResizeObserverCallback
+  constructor(callback: ResizeObserverCallback) {
+    this.callback = callback
+    resizeCallbacks.push(callback)
+  }
+  observe() {
+    this.callback([{ contentRect: { width: mockWrapWidth } } as ResizeObserverEntry], this as unknown as ResizeObserver)
+  }
+  unobserve() {}
+  disconnect() {}
+}
+
+function triggerResize(width: number) {
+  act(() => {
+    resizeCallbacks.forEach((callback) =>
+      callback([{ contentRect: { width } } as ResizeObserverEntry], {} as ResizeObserver),
+    )
+  })
+}
+
+beforeEach(() => {
+  mockWrapWidth = 2000
+  resizeCallbacks.length = 0
+  vi.stubGlobal('ResizeObserver', MockResizeObserver)
+})
+
 afterEach(async () => {
+  vi.unstubAllGlobals()
   await Promise.all(db.tables.map((table) => table.clear()))
 })
 
@@ -693,5 +724,148 @@ describe('Curriculum', () => {
       expect(row?.id).toBe(lesson.id)
       expect(row?.unit).toBe(5)
     })
+  })
+
+  it('renders lessons grouped into one column per unit, in unit order', async () => {
+    const classRow = await createClass({ user_id: 'user-1', name: 'Homeroom' })
+    const subject = await createSubject({ class_id: classRow.id, name: 'Math', position: 0 })
+    const l1 = await createLesson({ subject_id: subject.id, unit: 1, lesson_in_unit: 1, title: 'A', description: '' })
+    const l2 = await createLesson({ subject_id: subject.id, unit: 1, lesson_in_unit: 2, title: 'B', description: '' })
+    const l3 = await createLesson({ subject_id: subject.id, unit: 2, lesson_in_unit: 1, title: 'C', description: '' })
+
+    renderCurriculum({ classRow, subject, lessons: [l1, l2, l3] })
+
+    const headers = document.querySelectorAll('.curriculum__unit-header')
+    expect([...headers].map((el) => el.textContent)).toEqual(['Unit 1', 'Unit 2'])
+
+    const columns = document.querySelectorAll('.curriculum__unit-column')
+    expect(columns[0].querySelectorAll('.curriculum__lesson-title')).toHaveLength(2)
+    expect(columns[1].querySelectorAll('.curriculum__lesson-title')).toHaveLength(1)
+    expect(columns[1].textContent).toContain('C')
+  })
+
+  it('shows only the lesson label on each row, without a "Unit N ·" prefix', async () => {
+    const classRow = await createClass({ user_id: 'user-1', name: 'Homeroom' })
+    const subject = await createSubject({ class_id: classRow.id, name: 'Math', position: 0 })
+    const lesson = await createLesson({
+      subject_id: subject.id,
+      unit: 3,
+      lesson_in_unit: 2,
+      title: 'Fractions',
+      description: '',
+    })
+
+    renderCurriculum({ classRow, subject, lessons: [lesson] })
+
+    const position = document.querySelector('.curriculum__lesson-position')
+    expect(position?.textContent).toBe('Lesson 2')
+    expect(position?.textContent).not.toContain('Unit')
+  })
+
+  it('shows only as many unit columns as fit the measured wrap width, with a right arrow to reveal the rest', async () => {
+    mockWrapWidth = 300
+    const classRow = await createClass({ user_id: 'user-1', name: 'Homeroom' })
+    const subject = await createSubject({ class_id: classRow.id, name: 'Math', position: 0 })
+    const l1 = await createLesson({ subject_id: subject.id, unit: 1, lesson_in_unit: 1, title: 'A', description: '' })
+    const l2 = await createLesson({ subject_id: subject.id, unit: 2, lesson_in_unit: 1, title: 'B', description: '' })
+
+    renderCurriculum({ classRow, subject, lessons: [l1, l2] })
+
+    expect(document.querySelectorAll('.curriculum__unit-column')).toHaveLength(1)
+    expect(screen.getByText('Unit 1')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Next unit' })).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Previous unit' })).not.toBeInTheDocument()
+  })
+
+  it('clicking the right arrow reveals exactly one additional unit and hides exactly one from the left edge', async () => {
+    mockWrapWidth = 600
+    const classRow = await createClass({ user_id: 'user-1', name: 'Homeroom' })
+    const subject = await createSubject({ class_id: classRow.id, name: 'Math', position: 0 })
+    const l1 = await createLesson({ subject_id: subject.id, unit: 1, lesson_in_unit: 1, title: 'A', description: '' })
+    const l2 = await createLesson({ subject_id: subject.id, unit: 2, lesson_in_unit: 1, title: 'B', description: '' })
+    const l3 = await createLesson({ subject_id: subject.id, unit: 3, lesson_in_unit: 1, title: 'C', description: '' })
+    const l4 = await createLesson({ subject_id: subject.id, unit: 4, lesson_in_unit: 1, title: 'D', description: '' })
+
+    renderCurriculum({ classRow, subject, lessons: [l1, l2, l3, l4] })
+
+    expect([...document.querySelectorAll('.curriculum__unit-header')].map((el) => el.textContent)).toEqual([
+      'Unit 1',
+      'Unit 2',
+    ])
+
+    fireEvent.click(screen.getByRole('button', { name: 'Next unit' }))
+
+    expect([...document.querySelectorAll('.curriculum__unit-header')].map((el) => el.textContent)).toEqual([
+      'Unit 2',
+      'Unit 3',
+    ])
+  })
+
+  it('the left arrow does the mirror operation of the right arrow', async () => {
+    mockWrapWidth = 600
+    const classRow = await createClass({ user_id: 'user-1', name: 'Homeroom' })
+    const subject = await createSubject({ class_id: classRow.id, name: 'Math', position: 0 })
+    const l1 = await createLesson({ subject_id: subject.id, unit: 1, lesson_in_unit: 1, title: 'A', description: '' })
+    const l2 = await createLesson({ subject_id: subject.id, unit: 2, lesson_in_unit: 1, title: 'B', description: '' })
+    const l3 = await createLesson({ subject_id: subject.id, unit: 3, lesson_in_unit: 1, title: 'C', description: '' })
+    const l4 = await createLesson({ subject_id: subject.id, unit: 4, lesson_in_unit: 1, title: 'D', description: '' })
+
+    renderCurriculum({ classRow, subject, lessons: [l1, l2, l3, l4] })
+
+    fireEvent.click(screen.getByRole('button', { name: 'Next unit' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Previous unit' }))
+
+    expect([...document.querySelectorAll('.curriculum__unit-header')].map((el) => el.textContent)).toEqual([
+      'Unit 1',
+      'Unit 2',
+    ])
+  })
+
+  it('shows no left arrow at the first visible unit and no right arrow at the last visible unit', async () => {
+    mockWrapWidth = 300
+    const classRow = await createClass({ user_id: 'user-1', name: 'Homeroom' })
+    const subject = await createSubject({ class_id: classRow.id, name: 'Math', position: 0 })
+    const l1 = await createLesson({ subject_id: subject.id, unit: 1, lesson_in_unit: 1, title: 'A', description: '' })
+    const l2 = await createLesson({ subject_id: subject.id, unit: 2, lesson_in_unit: 1, title: 'B', description: '' })
+
+    renderCurriculum({ classRow, subject, lessons: [l1, l2] })
+
+    expect(screen.queryByRole('button', { name: 'Previous unit' })).not.toBeInTheDocument()
+
+    fireEvent.click(screen.getByRole('button', { name: 'Next unit' }))
+
+    expect(screen.queryByRole('button', { name: 'Next unit' })).not.toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Previous unit' })).toBeInTheDocument()
+  })
+
+  it('shows neither arrow when every unit already fits without scrolling', async () => {
+    mockWrapWidth = 2000
+    const classRow = await createClass({ user_id: 'user-1', name: 'Homeroom' })
+    const subject = await createSubject({ class_id: classRow.id, name: 'Math', position: 0 })
+    const l1 = await createLesson({ subject_id: subject.id, unit: 1, lesson_in_unit: 1, title: 'A', description: '' })
+    const l2 = await createLesson({ subject_id: subject.id, unit: 2, lesson_in_unit: 1, title: 'B', description: '' })
+
+    renderCurriculum({ classRow, subject, lessons: [l1, l2] })
+
+    expect(screen.queryByRole('button', { name: 'Previous unit' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Next unit' })).not.toBeInTheDocument()
+    expect(document.querySelectorAll('.curriculum__unit-column')).toHaveLength(2)
+  })
+
+  it('recomputes the visible unit-column count when the wrap is resized', async () => {
+    mockWrapWidth = 300
+    const classRow = await createClass({ user_id: 'user-1', name: 'Homeroom' })
+    const subject = await createSubject({ class_id: classRow.id, name: 'Math', position: 0 })
+    const l1 = await createLesson({ subject_id: subject.id, unit: 1, lesson_in_unit: 1, title: 'A', description: '' })
+    const l2 = await createLesson({ subject_id: subject.id, unit: 2, lesson_in_unit: 1, title: 'B', description: '' })
+
+    renderCurriculum({ classRow, subject, lessons: [l1, l2] })
+
+    expect(document.querySelectorAll('.curriculum__unit-column')).toHaveLength(1)
+
+    triggerResize(2000)
+
+    expect(document.querySelectorAll('.curriculum__unit-column')).toHaveLength(2)
+    expect(screen.queryByRole('button', { name: 'Next unit' })).not.toBeInTheDocument()
   })
 })
