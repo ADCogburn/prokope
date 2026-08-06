@@ -86,6 +86,30 @@ export function findNextLesson(
 }
 
 /**
+ * "Previous lesson" -- the inverse of findNextLesson, for #77's "Un-advance":
+ * the lesson with the largest (unit, lesson_in_unit) tuple, lexicographically,
+ * strictly less than `before`. Same reasoning as findNextLesson applies in
+ * reverse -- no `units` table means this can't be computed by decrementing
+ * lesson_in_unit and checking a bound, so it naturally crosses a unit
+ * boundary backward with no special-casing either.
+ *
+ * Pure/sync so the board UI can also use it against an already-loaded batch
+ * of lessons, same as findNextLesson.
+ */
+export function findPreviousLesson(
+  lessons: LessonRow[],
+  subjectId: string,
+  before: LessonPosition,
+): LessonRow | undefined {
+  return lessons
+    .filter((row) => row.subject_id === subjectId && row.deleted_at === null)
+    .sort((a, b) => b.unit - a.unit || b.lesson_in_unit - a.lesson_in_unit)
+    .find(
+      (row) => row.unit < before.unit || (row.unit === before.unit && row.lesson_in_unit < before.lesson_in_unit),
+    )
+}
+
+/**
  * Auto-suggest helper for the add-lesson form, per #74: one more than the
  * highest lesson_in_unit already used within `requestedUnit` for this
  * subject, or 1 if that unit has no lessons yet. Purely a convenience
@@ -109,6 +133,14 @@ export async function getNextLessonInSubject(
 ): Promise<LessonRow | undefined> {
   const rows = await listLessonsForSubject(subjectId)
   return findNextLesson(rows, subjectId, after)
+}
+
+export async function getPreviousLessonInSubject(
+  subjectId: string,
+  before: LessonPosition,
+): Promise<LessonRow | undefined> {
+  const rows = await listLessonsForSubject(subjectId)
+  return findPreviousLesson(rows, subjectId, before)
 }
 
 export async function deleteLesson(id: string): Promise<void> {

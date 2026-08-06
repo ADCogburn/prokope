@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import type { LessonRow, ProgressRow } from '../db/schema'
+import { positionOf } from '../db'
 import { formatStep } from './formatStep'
 import { ContextMenu } from './ContextMenu'
 
@@ -21,15 +22,17 @@ interface ProgressCellProps {
   onAdvance: () => void
   onToggleReview: () => void
   onJumpToLesson: () => void
+  onUnAdvance: () => void
 }
 
 /**
  * One subject x student cell on the class board: current step, a
  * progress-advance control (per #22's addendum), a review-flag toggle, and
- * (per #44, ADR-0006) a right-click menu offering "Jump to lesson...".
- * onJumpToLesson only reports the request up to the caller -- ProgressCell
- * doesn't know which lesson was picked, since the picker itself is a single
- * modal instance owned by the board, not one per cell.
+ * (per #44, ADR-0006) a right-click menu offering "Jump to lesson..." and
+ * (per #77) "Un-advance". onJumpToLesson only reports the request up to the
+ * caller -- ProgressCell doesn't know which lesson was picked, since the
+ * picker itself is a single modal instance owned by the board, not one per
+ * cell. onUnAdvance, by contrast, needs no picker and is invoked directly.
  */
 export function ProgressCell({
   studentName,
@@ -40,10 +43,13 @@ export function ProgressCell({
   onAdvance,
   onToggleReview,
   onJumpToLesson,
+  onUnAdvance,
 }: ProgressCellProps) {
   const advanceLabel = !hasAnyLessons ? 'No lessons yet' : hasNextLesson ? 'Next lesson' : 'Complete'
   const isFlagged = Boolean(progress?.review)
   const [menuPosition, setMenuPosition] = useState<{ x: number; y: number } | null>(null)
+  const position = positionOf(progress)
+  const isNotStarted = position.unit === 0 && position.lesson_in_unit === 0
 
   return (
     <div
@@ -83,6 +89,11 @@ export function ProgressCell({
               label: 'Jump to lesson...',
               onSelect: onJumpToLesson,
               disabled: subjectLessons.length === 0,
+            },
+            {
+              label: 'Un-advance',
+              onSelect: onUnAdvance,
+              disabled: isNotStarted,
             },
           ]}
         />

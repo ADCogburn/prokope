@@ -47,6 +47,7 @@ describe('ProgressCell', () => {
         onAdvance={vi.fn()}
         onToggleReview={vi.fn()}
         onJumpToLesson={vi.fn()}
+        onUnAdvance={vi.fn()}
       />,
     )
 
@@ -64,6 +65,7 @@ describe('ProgressCell', () => {
         onAdvance={vi.fn()}
         onToggleReview={vi.fn()}
         onJumpToLesson={vi.fn()}
+        onUnAdvance={vi.fn()}
       />,
     )
 
@@ -81,6 +83,7 @@ describe('ProgressCell', () => {
         onAdvance={vi.fn()}
         onToggleReview={vi.fn()}
         onJumpToLesson={vi.fn()}
+        onUnAdvance={vi.fn()}
       />,
     )
 
@@ -99,6 +102,7 @@ describe('ProgressCell', () => {
         onAdvance={onAdvance}
         onToggleReview={vi.fn()}
         onJumpToLesson={vi.fn()}
+        onUnAdvance={vi.fn()}
       />,
     )
 
@@ -118,6 +122,7 @@ describe('ProgressCell', () => {
         onAdvance={vi.fn()}
         onToggleReview={onToggleReview}
         onJumpToLesson={vi.fn()}
+        onUnAdvance={vi.fn()}
       />,
     )
 
@@ -137,6 +142,7 @@ describe('ProgressCell', () => {
         onAdvance={vi.fn()}
         onToggleReview={vi.fn()}
         onJumpToLesson={vi.fn()}
+        onUnAdvance={vi.fn()}
       />,
     )
 
@@ -155,6 +161,7 @@ describe('ProgressCell', () => {
         onAdvance={vi.fn()}
         onToggleReview={vi.fn()}
         onJumpToLesson={vi.fn()}
+        onUnAdvance={vi.fn()}
       />,
     )
 
@@ -173,6 +180,7 @@ describe('ProgressCell', () => {
         onAdvance={vi.fn()}
         onToggleReview={vi.fn()}
         onJumpToLesson={vi.fn()}
+        onUnAdvance={vi.fn()}
       />,
     )
 
@@ -194,6 +202,7 @@ describe('ProgressCell', () => {
         onAdvance={vi.fn()}
         onToggleReview={vi.fn()}
         onJumpToLesson={vi.fn()}
+        onUnAdvance={vi.fn()}
       />,
     )
 
@@ -214,6 +223,7 @@ describe('ProgressCell', () => {
         onAdvance={vi.fn()}
         onToggleReview={vi.fn()}
         onJumpToLesson={onJumpToLesson}
+        onUnAdvance={vi.fn()}
       />,
     )
 
@@ -221,5 +231,87 @@ describe('ProgressCell', () => {
     fireEvent.click(screen.getByRole('menuitem', { name: 'Jump to lesson...' }))
 
     expect(onJumpToLesson).toHaveBeenCalledTimes(1)
+  })
+
+  it('right-click opens a context menu with an enabled "Un-advance" item when progress is underway', () => {
+    render(
+      <ProgressCell
+        studentName="Emily"
+        progress={progressRow({ step_unit: 1, step_lesson_in_unit: 2 })}
+        hasNextLesson
+        hasAnyLessons
+        subjectLessons={[lessonRow()]}
+        onAdvance={vi.fn()}
+        onToggleReview={vi.fn()}
+        onJumpToLesson={vi.fn()}
+        onUnAdvance={vi.fn()}
+      />,
+    )
+
+    fireEvent.contextMenu(screen.getByText('Emily'))
+
+    expect(screen.getByRole('menuitem', { name: 'Un-advance' })).toBeEnabled()
+  })
+
+  it('disables "Un-advance" when the student has no progress yet (at {0, 0} "Not started")', () => {
+    render(
+      <ProgressCell
+        studentName="Emily"
+        progress={undefined}
+        hasNextLesson
+        hasAnyLessons
+        subjectLessons={[lessonRow()]}
+        onAdvance={vi.fn()}
+        onToggleReview={vi.fn()}
+        onJumpToLesson={vi.fn()}
+        onUnAdvance={vi.fn()}
+      />,
+    )
+
+    fireEvent.contextMenu(screen.getByText('Emily'))
+
+    expect(screen.getByRole('menuitem', { name: 'Un-advance' })).toBeDisabled()
+  })
+
+  it('disables "Un-advance" when progress is explicitly at {0, 0} "Not started"', () => {
+    render(
+      <ProgressCell
+        studentName="Emily"
+        progress={progressRow({ step_unit: 0, step_lesson_in_unit: 0 })}
+        hasNextLesson
+        hasAnyLessons
+        subjectLessons={[lessonRow()]}
+        onAdvance={vi.fn()}
+        onToggleReview={vi.fn()}
+        onJumpToLesson={vi.fn()}
+        onUnAdvance={vi.fn()}
+      />,
+    )
+
+    fireEvent.contextMenu(screen.getByText('Emily'))
+
+    expect(screen.getByRole('menuitem', { name: 'Un-advance' })).toBeDisabled()
+  })
+
+  it('calls onUnAdvance when "Un-advance" is selected', () => {
+    const onUnAdvance = vi.fn()
+    render(
+      <ProgressCell
+        studentName="Emily"
+        progress={progressRow({ step_unit: 1, step_lesson_in_unit: 2 })}
+        hasNextLesson
+        hasAnyLessons
+        subjectLessons={[lessonRow()]}
+        onAdvance={vi.fn()}
+        onToggleReview={vi.fn()}
+        onJumpToLesson={vi.fn()}
+        onUnAdvance={onUnAdvance}
+      />,
+    )
+
+    fireEvent.contextMenu(screen.getByText('Emily'))
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Un-advance' }))
+
+    expect(onUnAdvance).toHaveBeenCalledTimes(1)
   })
 })
