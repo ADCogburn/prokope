@@ -127,6 +127,18 @@ export function getNextLessonPosition(
   return { unit: requestedUnit, lesson_in_unit: maxLessonInUnit + 1 }
 }
 
+/**
+ * Auto-suggest helper for opening the add-lesson form, per #101: the last
+ * unit used in this subject (or 1 if the subject has no lessons yet), paired
+ * with the next available lesson number in that unit via getNextLessonPosition.
+ */
+export function getSuggestedNewLessonPosition(lessons: LessonRow[], subjectId: string): LessonPosition {
+  const lastUnit = lessons
+    .filter((row) => row.subject_id === subjectId && row.deleted_at === null)
+    .reduce((max, row) => Math.max(max, row.unit), 0)
+  return getNextLessonPosition(lessons, subjectId, lastUnit === 0 ? 1 : lastUnit)
+}
+
 export async function getNextLessonInSubject(
   subjectId: string,
   after: LessonPosition,

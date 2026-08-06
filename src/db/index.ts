@@ -16,6 +16,7 @@ export {
   findNextLesson,
   findPreviousLesson,
   getNextLessonPosition,
+  getSuggestedNewLessonPosition,
   deleteLesson,
   updateLessonContent,
   formatLessonLabel,

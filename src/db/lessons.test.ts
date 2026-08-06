@@ -10,6 +10,7 @@ import {
   getNextLessonInSubject,
   getNextLessonPosition,
   getPreviousLessonInSubject,
+  getSuggestedNewLessonPosition,
   listLessonsForSubject,
   listLessonsForSubjects,
   updateLessonContent,
@@ -354,6 +355,46 @@ describe('getNextLessonPosition', () => {
     const suggestion = getNextLessonPosition(all, 'subject-1', 1)
 
     expect(suggestion).toEqual({ unit: 1, lesson_in_unit: 1 })
+  })
+})
+
+describe('getSuggestedNewLessonPosition', () => {
+  it('suggests the last-used unit paired with its next available lesson number', async () => {
+    await createLesson(lessonInput({ unit: 1, lesson_in_unit: 1 }))
+    await createLesson(lessonInput({ unit: 2, lesson_in_unit: 1 }))
+    await createLesson(lessonInput({ unit: 2, lesson_in_unit: 2 }))
+    const all = await listLessonsForSubject('subject-1')
+
+    const suggestion = getSuggestedNewLessonPosition(all, 'subject-1')
+
+    expect(suggestion).toEqual({ unit: 2, lesson_in_unit: 3 })
+  })
+
+  it('suggests Unit 1, Lesson 1 for a subject with no lessons yet', async () => {
+    const suggestion = getSuggestedNewLessonPosition([], 'subject-1')
+
+    expect(suggestion).toEqual({ unit: 1, lesson_in_unit: 1 })
+  })
+
+  it('ignores a soft-deleted lesson in the highest-unit subject', async () => {
+    await createLesson(lessonInput({ unit: 1, lesson_in_unit: 1 }))
+    const deleted = await createLesson(lessonInput({ unit: 2, lesson_in_unit: 1 }))
+    await deleteLesson(deleted.id)
+    const all = await db.lesson.where('subject_id').equals('subject-1').toArray()
+
+    const suggestion = getSuggestedNewLessonPosition(all, 'subject-1')
+
+    expect(suggestion).toEqual({ unit: 1, lesson_in_unit: 2 })
+  })
+
+  it('scopes to the given subject, ignoring lessons in other subjects', async () => {
+    await createLesson(lessonInput({ subject_id: 'subject-2', unit: 5, lesson_in_unit: 1 }))
+    await createLesson(lessonInput({ subject_id: 'subject-1', unit: 1, lesson_in_unit: 1 }))
+    const all = await listLessonsForSubjects(['subject-1', 'subject-2'])
+
+    const suggestion = getSuggestedNewLessonPosition(all, 'subject-1')
+
+    expect(suggestion).toEqual({ unit: 1, lesson_in_unit: 2 })
   })
 })
 

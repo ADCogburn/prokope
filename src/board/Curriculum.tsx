@@ -1,6 +1,12 @@
 import { useState, type FormEvent } from 'react'
 import type { ClassRow, LessonRow, SubjectRow } from '../db/schema'
-import { createLesson, deleteLesson, getNextLessonPosition, updateLessonContent } from '../db'
+import {
+  createLesson,
+  deleteLesson,
+  getNextLessonPosition,
+  getSuggestedNewLessonPosition,
+  updateLessonContent,
+} from '../db'
 import { InlineAddCard } from './InlineAddCard'
 import { ContextMenu } from './ContextMenu'
 import { SubjectNameLabel } from './SubjectNameLabel'
@@ -23,7 +29,15 @@ function AddLessonCard({ subjectId, lessons }: AddLessonCardProps) {
   const canSubmit = title.trim() !== '' && unit.trim() !== '' && lessonInUnit.trim() !== ''
 
   return (
-    <InlineAddCard addLabel="Add lesson" className="curriculum__add-card">
+    <InlineAddCard
+      addLabel="Add lesson"
+      className="curriculum__add-card"
+      onExpand={() => {
+        const suggestion = getSuggestedNewLessonPosition(lessons, subjectId)
+        setUnit(String(suggestion.unit))
+        setLessonInUnit(String(suggestion.lesson_in_unit))
+      }}
+    >
       {({ collapse }) => {
         function reset() {
           setTitle('')
