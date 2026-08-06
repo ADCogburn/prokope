@@ -411,6 +411,50 @@ describe('ClassBoard', () => {
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
   })
 
+  it('right-click -> "Jump to lesson..." -> picking a lesson moves the student directly to it in the real db', async () => {
+    const classRow = await createClass({ user_id: 'user-1', name: 'Homeroom' })
+    const subject = await createSubject({ class_id: classRow.id, name: 'Math', position: 0 })
+    const student = await createStudent({ class_id: classRow.id, name: 'Emily', position: 0 })
+    const first = await createLesson({
+      subject_id: subject.id,
+      unit: 1,
+      lesson_in_unit: 1,
+      title: 'Fractions',
+      description: '',
+    })
+    const second = await createLesson({
+      subject_id: subject.id,
+      unit: 1,
+      lesson_in_unit: 2,
+      title: 'Decimals',
+      description: '',
+    })
+    const progress = await upsertProgressStep(student.id, subject.id, {
+      unit: second.unit,
+      lesson_in_unit: second.lesson_in_unit,
+    })
+
+    renderBoard({
+      classRow,
+      subjects: [subject],
+      students: [student],
+      progress: [progress],
+      lessons: [first, second],
+      activeSubjectId: subject.id,
+    })
+
+    fireEvent.contextMenu(screen.getByText('Emily', { selector: '.progress-cell__student' }))
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Jump to lesson...' }))
+    fireEvent.click(screen.getByRole('button', { name: '1.1 - Fractions' }))
+
+    await waitFor(async () => {
+      const row = await db.progress.where('[student_id+subject_id]').equals([student.id, subject.id]).first()
+      expect(row?.step_unit).toBe(1)
+      expect(row?.step_lesson_in_unit).toBe(1)
+    })
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
+  })
+
   it('clicking Bulk Advance advances every student in the active subject and skips one already on the last lesson', async () => {
     const classRow = await createClass({ user_id: 'user-1', name: 'Homeroom' })
     const subject = await createSubject({ class_id: classRow.id, name: 'Math', position: 0 })

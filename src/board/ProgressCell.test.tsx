@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from 'vitest'
-import { render, screen } from '@testing-library/react'
+import { fireEvent, render, screen } from '@testing-library/react'
 import { ProgressCell } from './ProgressCell'
-import type { ProgressRow } from '../db/schema'
+import type { LessonRow, ProgressRow } from '../db/schema'
 
 function progressRow(overrides: Partial<ProgressRow> = {}): ProgressRow {
   return {
@@ -20,6 +20,21 @@ function progressRow(overrides: Partial<ProgressRow> = {}): ProgressRow {
   }
 }
 
+function lessonRow(overrides: Partial<LessonRow> = {}): LessonRow {
+  return {
+    id: 'l1',
+    subject_id: 'subj1',
+    unit: 1,
+    lesson_in_unit: 1,
+    title: 'Fractions',
+    description: '',
+    created_at: new Date().toISOString(),
+    updated_at: new Date().toISOString(),
+    deleted_at: null,
+    ...overrides,
+  }
+}
+
 describe('ProgressCell', () => {
   it('shows "Next lesson" and an enabled advance button when a next lesson exists', () => {
     render(
@@ -28,8 +43,10 @@ describe('ProgressCell', () => {
         progress={undefined}
         hasNextLesson
         hasAnyLessons
+        subjectLessons={[lessonRow()]}
         onAdvance={vi.fn()}
         onToggleReview={vi.fn()}
+        onJumpToLesson={vi.fn()}
       />,
     )
 
@@ -43,8 +60,10 @@ describe('ProgressCell', () => {
         progress={progressRow()}
         hasNextLesson={false}
         hasAnyLessons
+        subjectLessons={[lessonRow()]}
         onAdvance={vi.fn()}
         onToggleReview={vi.fn()}
+        onJumpToLesson={vi.fn()}
       />,
     )
 
@@ -58,8 +77,10 @@ describe('ProgressCell', () => {
         progress={undefined}
         hasNextLesson={false}
         hasAnyLessons={false}
+        subjectLessons={[]}
         onAdvance={vi.fn()}
         onToggleReview={vi.fn()}
+        onJumpToLesson={vi.fn()}
       />,
     )
 
@@ -74,8 +95,10 @@ describe('ProgressCell', () => {
         progress={undefined}
         hasNextLesson
         hasAnyLessons
+        subjectLessons={[lessonRow()]}
         onAdvance={onAdvance}
         onToggleReview={vi.fn()}
+        onJumpToLesson={vi.fn()}
       />,
     )
 
@@ -91,8 +114,10 @@ describe('ProgressCell', () => {
         progress={progressRow({ review: true })}
         hasNextLesson
         hasAnyLessons
+        subjectLessons={[lessonRow()]}
         onAdvance={vi.fn()}
         onToggleReview={onToggleReview}
+        onJumpToLesson={vi.fn()}
       />,
     )
 
@@ -108,8 +133,10 @@ describe('ProgressCell', () => {
         progress={progressRow({ review: false })}
         hasNextLesson
         hasAnyLessons
+        subjectLessons={[lessonRow()]}
         onAdvance={vi.fn()}
         onToggleReview={vi.fn()}
+        onJumpToLesson={vi.fn()}
       />,
     )
 
@@ -124,12 +151,75 @@ describe('ProgressCell', () => {
         progress={progressRow({ review: true })}
         hasNextLesson
         hasAnyLessons
+        subjectLessons={[lessonRow()]}
         onAdvance={vi.fn()}
         onToggleReview={vi.fn()}
+        onJumpToLesson={vi.fn()}
       />,
     )
 
     const button = screen.getByRole('button', { name: 'Remove review flag' })
     expect(button.className).toContain('progress-cell__review-toggle--active')
+  })
+
+  it('right-click opens a context menu with a "Jump to lesson..." item', () => {
+    render(
+      <ProgressCell
+        studentName="Emily"
+        progress={undefined}
+        hasNextLesson
+        hasAnyLessons
+        subjectLessons={[lessonRow()]}
+        onAdvance={vi.fn()}
+        onToggleReview={vi.fn()}
+        onJumpToLesson={vi.fn()}
+      />,
+    )
+
+    expect(screen.queryByRole('menuitem', { name: 'Jump to lesson...' })).not.toBeInTheDocument()
+
+    fireEvent.contextMenu(screen.getByText('Emily'))
+
+    expect(screen.getByRole('menuitem', { name: 'Jump to lesson...' })).toBeInTheDocument()
+  })
+
+  it('disables "Jump to lesson..." when the subject has no lessons', () => {
+    render(
+      <ProgressCell
+        studentName="Emily"
+        progress={undefined}
+        hasNextLesson={false}
+        hasAnyLessons={false}
+        subjectLessons={[]}
+        onAdvance={vi.fn()}
+        onToggleReview={vi.fn()}
+        onJumpToLesson={vi.fn()}
+      />,
+    )
+
+    fireEvent.contextMenu(screen.getByText('Emily'))
+
+    expect(screen.getByRole('menuitem', { name: 'Jump to lesson...' })).toBeDisabled()
+  })
+
+  it('calls onJumpToLesson when "Jump to lesson..." is selected', () => {
+    const onJumpToLesson = vi.fn()
+    render(
+      <ProgressCell
+        studentName="Emily"
+        progress={undefined}
+        hasNextLesson
+        hasAnyLessons
+        subjectLessons={[lessonRow()]}
+        onAdvance={vi.fn()}
+        onToggleReview={vi.fn()}
+        onJumpToLesson={onJumpToLesson}
+      />,
+    )
+
+    fireEvent.contextMenu(screen.getByText('Emily'))
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Jump to lesson...' }))
+
+    expect(onJumpToLesson).toHaveBeenCalledTimes(1)
   })
 })

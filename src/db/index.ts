@@ -29,6 +29,7 @@ export {
   listProgressForStudents,
   advanceProgress,
   bulkAdvanceProgress,
+  jumpToLesson,
   positionOf,
 } from './progress'
 export type { ProgressStep, BulkAdvanceEntry } from './progress'

@@ -155,6 +155,23 @@ export async function advanceProgress(
   return next
 }
 
+/**
+ * Moves a student directly to an arbitrary lesson in a subject (#44's
+ * "Jump to lesson..."), forward or backward, regardless of how many lessons
+ * away it is from their current position. A thin wrapper around
+ * upsertProgressStep, which already accepts any {unit, lesson_in_unit} pair
+ * with no directional constraint and already leaves
+ * review/review_hlc/review_client_id untouched -- mirrors how
+ * advanceProgress wraps the same primitive.
+ */
+export async function jumpToLesson(
+  studentId: string,
+  subjectId: string,
+  lesson: LessonRow,
+): Promise<ProgressRow> {
+  return upsertProgressStep(studentId, subjectId, { unit: lesson.unit, lesson_in_unit: lesson.lesson_in_unit })
+}
+
 /** One student's pre-advance position, captured so a bulk advance can be undone. */
 export interface BulkAdvanceEntry {
   studentId: string
