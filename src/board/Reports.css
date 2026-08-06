@@ -84,6 +84,7 @@
 }
 
 .reports__page {
+  flex-shrink: 0;
   background: var(--bg);
   border: 1px solid var(--border);
   border-radius: 16px;
