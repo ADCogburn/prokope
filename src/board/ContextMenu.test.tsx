@@ -20,6 +20,16 @@ describe('ContextMenu', () => {
     expect(screen.getByRole('menuitem', { name: 'Un-advance' })).toBeInTheDocument()
   })
 
+  it('renders into document.body via a portal, not its trigger render container', () => {
+    const { container } = render(
+      <ContextMenu items={[{ label: 'Jump to lesson...', onSelect: vi.fn() }]} x={10} y={20} onClose={vi.fn()} />,
+    )
+
+    const menu = screen.getByRole('menu')
+    expect(container.contains(menu)).toBe(false)
+    expect(menu.parentElement).toBe(document.body)
+  })
+
   it('clicking an item calls its onSelect and closes the menu', () => {
     const onSelect = vi.fn()
     const onClose = vi.fn()
