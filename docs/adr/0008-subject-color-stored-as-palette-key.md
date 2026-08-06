@@ -1,0 +1,3 @@
+# Subject color is stored as a palette key, not a hex value
+
+For per-subject header colors (#52), `SubjectRow.color` stores a named key into a central swatch table (e.g. `"coral"`), not a raw hex/rgba string. This follows from ADR-0002's curated-palette decision: since teachers only ever pick from a fixed set, the stored value can stay a stable identifier while the actual hex values (including separate light/dark variants) live in one place in code. That lets the palette's colors be retuned later — or gain new theme variants — without a data migration across every subject row and the sync layer.

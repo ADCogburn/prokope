@@ -1,0 +1,5 @@
+# Extra options on a Progress Cell open via right-click, not an ellipsis button or hover
+
+Issue #44 proposed an "extra options" menu on a Progress Cell (jump to lesson, add notes, skip) and floated three ways to open it: an ellipsis button, right-click, or a delayed on-hover mini-menu. We chose right-click. An ellipsis button would be the more discoverable choice, but it adds a persistent visible control to every cell in an already-dense student×subject grid meant for fast scanning; right-click matches a context-menu convention teachers already use elsewhere (spreadsheets, file managers), so the loss of discoverability is acceptable. Delayed on-hover was dropped outright — it adds latency to a fast-marking workflow and doesn't work on touch at all.
+
+This is desktop/mouse-first by design: touch/tablet has no long-press fallback scoped in, since mouse is the primary input today. If tablet use becomes a real scenario, that fallback should be scoped as its own follow-up rather than assumed here.
