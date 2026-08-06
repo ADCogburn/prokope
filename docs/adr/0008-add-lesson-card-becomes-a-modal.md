@@ -1,0 +1,3 @@
+# AddLessonCard becomes a modal, an exception to ADR-0003
+
+Issue #99 reorganizes the Curriculum page into per-unit columns with arrow navigation. `AddLessonCard`, previously a single inline-expanding form floating above a flat lesson list, doesn't have an obvious home in that layout and reads better as a modal overlay, matching the book-menu's existing "Curriculum Page" → `SubjectPickerModal` flow. This is a deliberate exception to [ADR-0003](0003-modals-for-picking-inline-cards-for-creating.md) (creation forms use inline-expanding cards, not modals) for this one component — chosen for UX fit within the new column layout, not a reversal of the general convention.
