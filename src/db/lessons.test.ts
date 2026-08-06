@@ -7,6 +7,7 @@ import {
   formatLessonLabel,
   getLessonByPosition,
   getNextLessonInSubject,
+  getNextLessonPosition,
   listLessonsForSubject,
   listLessonsForSubjects,
 } from './lessons'
@@ -204,6 +205,58 @@ describe('findNextLesson', () => {
     const found = findNextLesson(all, 'subject-1', { unit: 0, lesson_in_unit: 0 })
 
     expect(found).toBeUndefined()
+  })
+})
+
+describe('getNextLessonPosition', () => {
+  it('suggests one more than the highest lesson_in_unit already used in the requested unit', async () => {
+    await createLesson(lessonInput({ unit: 2, lesson_in_unit: 1 }))
+    await createLesson(lessonInput({ unit: 2, lesson_in_unit: 2 }))
+    const all = await listLessonsForSubject('subject-1')
+
+    const suggestion = getNextLessonPosition(all, 'subject-1', 2)
+
+    expect(suggestion).toEqual({ unit: 2, lesson_in_unit: 3 })
+  })
+
+  it('suggests lesson_in_unit 1 for a unit with no lessons yet', async () => {
+    await createLesson(lessonInput({ unit: 1, lesson_in_unit: 1 }))
+    const all = await listLessonsForSubject('subject-1')
+
+    const suggestion = getNextLessonPosition(all, 'subject-1', 3)
+
+    expect(suggestion).toEqual({ unit: 3, lesson_in_unit: 1 })
+  })
+
+  it('only counts lessons in the requested unit, ignoring other units', async () => {
+    await createLesson(lessonInput({ unit: 1, lesson_in_unit: 1 }))
+    await createLesson(lessonInput({ unit: 1, lesson_in_unit: 9 }))
+    await createLesson(lessonInput({ unit: 2, lesson_in_unit: 1 }))
+    const all = await listLessonsForSubject('subject-1')
+
+    const suggestion = getNextLessonPosition(all, 'subject-1', 2)
+
+    expect(suggestion).toEqual({ unit: 2, lesson_in_unit: 2 })
+  })
+
+  it('ignores a soft-deleted lesson when computing the max', async () => {
+    await createLesson(lessonInput({ unit: 1, lesson_in_unit: 1 }))
+    const deleted = await createLesson(lessonInput({ unit: 1, lesson_in_unit: 2 }))
+    await deleteLesson(deleted.id)
+    const all = await db.lesson.where('subject_id').equals('subject-1').toArray()
+
+    const suggestion = getNextLessonPosition(all, 'subject-1', 1)
+
+    expect(suggestion).toEqual({ unit: 1, lesson_in_unit: 2 })
+  })
+
+  it('scopes to the given subject, ignoring lessons in other subjects', async () => {
+    await createLesson(lessonInput({ subject_id: 'subject-2', unit: 1, lesson_in_unit: 5 }))
+    const all = await listLessonsForSubjects(['subject-1', 'subject-2'])
+
+    const suggestion = getNextLessonPosition(all, 'subject-1', 1)
+
+    expect(suggestion).toEqual({ unit: 1, lesson_in_unit: 1 })
   })
 })
 

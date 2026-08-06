@@ -13,6 +13,7 @@ export {
   getLessonByPosition,
   getNextLessonInSubject,
   findNextLesson,
+  getNextLessonPosition,
   deleteLesson,
   formatLessonLabel,
 } from './lessons'

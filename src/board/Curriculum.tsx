@@ -1,6 +1,6 @@
 import { useState, type FormEvent } from 'react'
 import type { ClassRow, LessonRow, SubjectRow } from '../db/schema'
-import { createLesson } from '../db'
+import { createLesson, deleteLesson, getNextLessonPosition } from '../db'
 import { InlineAddCard } from './InlineAddCard'
 import './Curriculum.css'
 
@@ -74,8 +74,15 @@ function AddLessonCard({ subjectId, lessons }: AddLessonCardProps) {
               type="number"
               value={unit}
               onChange={(event) => {
-                setUnit(event.target.value)
+                const value = event.target.value
+                setUnit(value)
                 setError('')
+
+                const unitNum = Number(value)
+                if (value.trim() !== '' && Number.isFinite(unitNum)) {
+                  const suggestion = getNextLessonPosition(lessons, subjectId, unitNum)
+                  setLessonInUnit(String(suggestion.lesson_in_unit))
+                }
               }}
             />
             <label htmlFor="new-lesson-lesson-in-unit">Lesson in unit</label>
@@ -148,13 +155,27 @@ export function Curriculum({ classRow, subject, lessons, onBack }: CurriculumPro
             <ul className="curriculum__lesson-list">
               {lessons.map((lesson) => (
                 <li key={lesson.id} className="curriculum__lesson">
-                  <span className="curriculum__lesson-position">
-                    Unit {lesson.unit} · Lesson {lesson.lesson_in_unit}
-                  </span>
-                  <span className="curriculum__lesson-title">{lesson.title}</span>
-                  {lesson.description !== '' && (
-                    <p className="curriculum__lesson-description">{lesson.description}</p>
-                  )}
+                  <div className="curriculum__lesson-main">
+                    <span className="curriculum__lesson-position">
+                      Unit {lesson.unit} · Lesson {lesson.lesson_in_unit}
+                    </span>
+                    <span className="curriculum__lesson-title">{lesson.title}</span>
+                    {lesson.description !== '' && (
+                      <p className="curriculum__lesson-description">{lesson.description}</p>
+                    )}
+                  </div>
+                  <button
+                    type="button"
+                    className="curriculum__lesson-delete"
+                    aria-label={`Delete ${lesson.title}`}
+                    onClick={() => {
+                      if (window.confirm(`Delete "${lesson.title}"?`)) {
+                        void deleteLesson(lesson.id)
+                      }
+                    }}
+                  >
+                    Delete
+                  </button>
                 </li>
               ))}
             </ul>

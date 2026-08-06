@@ -59,12 +59,33 @@
   padding: 12px 16px;
   border-bottom: 1px solid var(--border);
   display: flex;
-  flex-direction: column;
-  gap: 2px;
+  flex-direction: row;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
 }
 
 .curriculum__lesson:last-child {
   border-bottom: none;
+}
+
+.curriculum__lesson-main {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.curriculum__lesson-delete {
+  flex-shrink: 0;
+  font: inherit;
+  font-size: 13px;
+  padding: 4px 10px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: none;
+  color: var(--error);
+  cursor: pointer;
 }
 
 .curriculum__lesson-position {
