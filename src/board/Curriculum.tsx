@@ -1,7 +1,9 @@
 import { useState, type FormEvent } from 'react'
 import type { ClassRow, LessonRow, SubjectRow } from '../db/schema'
-import { createLesson, deleteLesson, getNextLessonPosition } from '../db'
+import { createLesson, deleteLesson, getNextLessonPosition, updateLessonContent } from '../db'
 import { InlineAddCard } from './InlineAddCard'
+import { ContextMenu } from './ContextMenu'
+import { SubjectNameLabel } from './SubjectNameLabel'
 import './Curriculum.css'
 
 interface AddLessonCardProps {
@@ -123,6 +125,126 @@ function AddLessonCard({ subjectId, lessons }: AddLessonCardProps) {
   )
 }
 
+interface LessonListItemProps {
+  lesson: LessonRow
+}
+
+/**
+ * One lesson row: position, title, description, the existing Delete
+ * control (#74), and (per #33, ADR-0006) a right-click menu offering "Edit
+ * lesson". Editing swaps the row for an inline title/description form --
+ * mirroring AddLessonCard's own form markup/classes rather than a modal,
+ * per ADR-0003 -- since two fields don't fit InlineRenameField's
+ * single-input swap. unit/lesson_in_unit aren't editable here; per
+ * updateLessonContent's own doc comment, repositioning is a different
+ * operation with different invariants (#73). Owns its own menu-open +
+ * edit-mode state, the same per-row pattern as ProgressCell/
+ * StudentRosterRow.
+ */
+function LessonListItem({ lesson }: LessonListItemProps) {
+  const [menuPosition, setMenuPosition] = useState<{ x: number; y: number } | null>(null)
+  const [editing, setEditing] = useState(false)
+  const [title, setTitle] = useState(lesson.title)
+  const [description, setDescription] = useState(lesson.description)
+  const [submitting, setSubmitting] = useState(false)
+
+  function startEditing() {
+    setTitle(lesson.title)
+    setDescription(lesson.description)
+    setEditing(true)
+  }
+
+  function cancelEditing() {
+    setTitle(lesson.title)
+    setDescription(lesson.description)
+    setEditing(false)
+  }
+
+  async function handleSubmit(event: FormEvent) {
+    event.preventDefault()
+    const trimmedTitle = title.trim()
+    if (trimmedTitle === '' || submitting) return
+    setSubmitting(true)
+    await updateLessonContent(lesson.id, { title: trimmedTitle, description: description.trim() })
+    setSubmitting(false)
+    setEditing(false)
+  }
+
+  if (editing) {
+    return (
+      <li className="curriculum__lesson curriculum__lesson--editing">
+        <form className="inline-add-card__form" onSubmit={(event) => void handleSubmit(event)}>
+          <label htmlFor={`edit-lesson-title-${lesson.id}`}>Title</label>
+          <input
+            id={`edit-lesson-title-${lesson.id}`}
+            value={title}
+            onChange={(event) => setTitle(event.target.value)}
+            onKeyDown={(event) => {
+              if (event.key === 'Escape') cancelEditing()
+            }}
+            autoFocus
+          />
+          <label htmlFor={`edit-lesson-description-${lesson.id}`}>Description</label>
+          <textarea
+            id={`edit-lesson-description-${lesson.id}`}
+            value={description}
+            onChange={(event) => setDescription(event.target.value)}
+            onKeyDown={(event) => {
+              if (event.key === 'Escape') cancelEditing()
+            }}
+          />
+          <div className="inline-add-card__actions">
+            <button type="button" onClick={cancelEditing}>
+              Cancel
+            </button>
+            <button type="submit" disabled={submitting || title.trim() === ''}>
+              Save
+            </button>
+          </div>
+        </form>
+      </li>
+    )
+  }
+
+  return (
+    <li
+      className="curriculum__lesson"
+      onContextMenu={(event) => {
+        event.preventDefault()
+        setMenuPosition({ x: event.clientX, y: event.clientY })
+      }}
+    >
+      <div className="curriculum__lesson-main">
+        <span className="curriculum__lesson-position">
+          Unit {lesson.unit} · Lesson {lesson.lesson_in_unit}
+        </span>
+        <span className="curriculum__lesson-title">{lesson.title}</span>
+        {lesson.description !== '' && <p className="curriculum__lesson-description">{lesson.description}</p>}
+      </div>
+      <button
+        type="button"
+        className="curriculum__lesson-delete"
+        aria-label={`Delete ${lesson.title}`}
+        onClick={() => {
+          if (window.confirm(`Delete "${lesson.title}"?`)) {
+            void deleteLesson(lesson.id)
+          }
+        }}
+      >
+        Delete
+      </button>
+      {menuPosition && (
+        <ContextMenu
+          x={menuPosition.x}
+          y={menuPosition.y}
+          onClose={() => setMenuPosition(null)}
+          items={[{ label: 'Edit lesson', onSelect: startEditing }]}
+        />
+      )}
+    </li>
+  )
+}
+
 interface CurriculumProps {
   classRow: ClassRow
   subject: SubjectRow
@@ -144,7 +266,7 @@ export function Curriculum({ classRow, subject, lessons, onBack }: CurriculumPro
         <button type="button" className="curriculum__back" onClick={onBack}>
           ← Back to board
         </button>
-        <h1>{subject.name}</h1>
+        <SubjectNameLabel subject={subject} tag="h1" />
         <p>{classRow.name}</p>
       </header>
       <div className="curriculum__body">
@@ -154,29 +276,7 @@ export function Curriculum({ classRow, subject, lessons, onBack }: CurriculumPro
           <>
             <ul className="curriculum__lesson-list">
               {lessons.map((lesson) => (
-                <li key={lesson.id} className="curriculum__lesson">
-                  <div className="curriculum__lesson-main">
-                    <span className="curriculum__lesson-position">
-                      Unit {lesson.unit} · Lesson {lesson.lesson_in_unit}
-                    </span>
-                    <span className="curriculum__lesson-title">{lesson.title}</span>
-                    {lesson.description !== '' && (
-                      <p className="curriculum__lesson-description">{lesson.description}</p>
-                    )}
-                  </div>
-                  <button
-                    type="button"
-                    className="curriculum__lesson-delete"
-                    aria-label={`Delete ${lesson.title}`}
-                    onClick={() => {
-                      if (window.confirm(`Delete "${lesson.title}"?`)) {
-                        void deleteLesson(lesson.id)
-                      }
-                    }}
-                  >
-                    Delete
-                  </button>
-                </li>
+                <LessonListItem key={lesson.id} lesson={lesson} />
               ))}
             </ul>
             <AddLessonCard subjectId={subject.id} lessons={lessons} />

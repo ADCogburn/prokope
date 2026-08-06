@@ -69,6 +69,15 @@
   border-bottom: none;
 }
 
+.curriculum__lesson--editing {
+  flex-direction: column;
+  align-items: stretch;
+}
+
+.curriculum__lesson--editing .inline-add-card__form {
+  width: 100%;
+}
+
 .curriculum__lesson-main {
   display: flex;
   flex-direction: column;

@@ -954,4 +954,297 @@ describe('ClassBoard', () => {
     const row = await db.student.get(student.id)
     expect(row?.deleted_at).toBeNull()
   })
+
+  it('right-clicking the class name heading opens the menu with "Rename class"', async () => {
+    const classRow = await createClass({ user_id: 'user-1', name: 'Homeroom' })
+
+    renderBoard({
+      classRow,
+      subjects: [],
+      students: [],
+      progress: [],
+      lessons: [],
+      activeSubjectId: undefined,
+    })
+
+    fireEvent.contextMenu(screen.getByText('Homeroom'))
+
+    expect(screen.getByRole('menuitem', { name: 'Rename class' })).toBeInTheDocument()
+  })
+
+  it('selecting "Rename class" reveals an inline input pre-filled with the current name', async () => {
+    const classRow = await createClass({ user_id: 'user-1', name: 'Homeroom' })
+
+    renderBoard({
+      classRow,
+      subjects: [],
+      students: [],
+      progress: [],
+      lessons: [],
+      activeSubjectId: undefined,
+    })
+
+    fireEvent.contextMenu(screen.getByText('Homeroom'))
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Rename class' }))
+
+    expect(screen.getByLabelText('Class name')).toHaveValue('Homeroom')
+  })
+
+  it('submitting a new class name calls renameClass and persists it', async () => {
+    const classRow = await createClass({ user_id: 'user-1', name: 'Homeroom' })
+
+    renderBoard({
+      classRow,
+      subjects: [],
+      students: [],
+      progress: [],
+      lessons: [],
+      activeSubjectId: undefined,
+    })
+
+    fireEvent.contextMenu(screen.getByText('Homeroom'))
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Rename class' }))
+    const input = screen.getByLabelText('Class name')
+    fireEvent.change(input, { target: { value: 'Room 12' } })
+    fireEvent.submit(input.closest('form')!)
+
+    await waitFor(async () => {
+      const row = await db.class.get(classRow.id)
+      expect(row?.name).toBe('Room 12')
+    })
+  })
+
+  it('submitting a blank class name is rejected', async () => {
+    const classRow = await createClass({ user_id: 'user-1', name: 'Homeroom' })
+
+    renderBoard({
+      classRow,
+      subjects: [],
+      students: [],
+      progress: [],
+      lessons: [],
+      activeSubjectId: undefined,
+    })
+
+    fireEvent.contextMenu(screen.getByText('Homeroom'))
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Rename class' }))
+    const input = screen.getByLabelText('Class name')
+    fireEvent.change(input, { target: { value: '   ' } })
+    fireEvent.submit(input.closest('form')!)
+
+    const row = await db.class.get(classRow.id)
+    expect(row?.name).toBe('Homeroom')
+    expect(screen.getByLabelText('Class name')).toBeInTheDocument()
+  })
+
+  it('pressing Escape discards the in-progress class rename without writing', async () => {
+    const classRow = await createClass({ user_id: 'user-1', name: 'Homeroom' })
+
+    renderBoard({
+      classRow,
+      subjects: [],
+      students: [],
+      progress: [],
+      lessons: [],
+      activeSubjectId: undefined,
+    })
+
+    fireEvent.contextMenu(screen.getByText('Homeroom'))
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Rename class' }))
+    const input = screen.getByLabelText('Class name')
+    fireEvent.change(input, { target: { value: 'Room 12' } })
+    fireEvent.keyDown(input, { key: 'Escape' })
+
+    expect(screen.queryByLabelText('Class name')).not.toBeInTheDocument()
+    expect(screen.getByText('Homeroom')).toBeInTheDocument()
+    const row = await db.class.get(classRow.id)
+    expect(row?.name).toBe('Homeroom')
+  })
+
+  it('right-clicking a subject panel header opens the menu with "Rename subject"', async () => {
+    const { classRow, subject } = await seedClassWithOneSubjectOneStudent()
+
+    renderBoard({
+      classRow,
+      subjects: [subject],
+      students: [],
+      progress: [],
+      lessons: await db.lesson.toArray(),
+      activeSubjectId: subject.id,
+    })
+
+    fireEvent.contextMenu(screen.getByText('Math'))
+
+    expect(screen.getByRole('menuitem', { name: 'Rename subject' })).toBeInTheDocument()
+  })
+
+  it('renaming a subject from the board panel header calls renameSubject and persists it', async () => {
+    const { classRow, subject } = await seedClassWithOneSubjectOneStudent()
+
+    renderBoard({
+      classRow,
+      subjects: [subject],
+      students: [],
+      progress: [],
+      lessons: await db.lesson.toArray(),
+      activeSubjectId: subject.id,
+    })
+
+    fireEvent.contextMenu(screen.getByText('Math'))
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Rename subject' }))
+    const input = screen.getByLabelText('Subject name')
+    fireEvent.change(input, { target: { value: 'Algebra' } })
+    fireEvent.submit(input.closest('form')!)
+
+    await waitFor(async () => {
+      const row = await db.subject.get(subject.id)
+      expect(row?.name).toBe('Algebra')
+    })
+  })
+
+  it('submitting a blank subject name from the board panel header is rejected', async () => {
+    const { classRow, subject } = await seedClassWithOneSubjectOneStudent()
+
+    renderBoard({
+      classRow,
+      subjects: [subject],
+      students: [],
+      progress: [],
+      lessons: await db.lesson.toArray(),
+      activeSubjectId: subject.id,
+    })
+
+    fireEvent.contextMenu(screen.getByText('Math'))
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Rename subject' }))
+    const input = screen.getByLabelText('Subject name')
+    fireEvent.change(input, { target: { value: '   ' } })
+    fireEvent.submit(input.closest('form')!)
+
+    const row = await db.subject.get(subject.id)
+    expect(row?.name).toBe('Math')
+    expect(screen.getByLabelText('Subject name')).toBeInTheDocument()
+  })
+
+  it('pressing Escape discards the in-progress subject rename without writing', async () => {
+    const { classRow, subject } = await seedClassWithOneSubjectOneStudent()
+
+    renderBoard({
+      classRow,
+      subjects: [subject],
+      students: [],
+      progress: [],
+      lessons: await db.lesson.toArray(),
+      activeSubjectId: subject.id,
+    })
+
+    fireEvent.contextMenu(screen.getByText('Math'))
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Rename subject' }))
+    const input = screen.getByLabelText('Subject name')
+    fireEvent.change(input, { target: { value: 'Algebra' } })
+    fireEvent.keyDown(input, { key: 'Escape' })
+
+    expect(screen.queryByLabelText('Subject name')).not.toBeInTheDocument()
+    expect(screen.getByText('Math')).toBeInTheDocument()
+    const row = await db.subject.get(subject.id)
+    expect(row?.name).toBe('Math')
+  })
+
+  it('right-clicking a student row opens the menu with "Rename student" alongside "Remove student"', async () => {
+    const classRow = await createClass({ user_id: 'user-1', name: 'Homeroom' })
+    const subject = await createSubject({ class_id: classRow.id, name: 'Math', position: 0 })
+    const student = await createStudent({ class_id: classRow.id, name: 'Emily', position: 0 })
+
+    renderBoard({
+      classRow,
+      subjects: [subject],
+      students: [student],
+      progress: [],
+      lessons: [],
+      activeSubjectId: subject.id,
+    })
+
+    fireEvent.contextMenu(screen.getByText('Emily', { selector: '.class-board__student-name' }))
+
+    expect(screen.getByRole('menuitem', { name: 'Rename student' })).toBeInTheDocument()
+    expect(screen.getByRole('menuitem', { name: 'Remove student' })).toBeInTheDocument()
+  })
+
+  it('selecting "Rename student" reveals an inline input, and submitting a new name calls renameStudent', async () => {
+    const classRow = await createClass({ user_id: 'user-1', name: 'Homeroom' })
+    const subject = await createSubject({ class_id: classRow.id, name: 'Math', position: 0 })
+    const student = await createStudent({ class_id: classRow.id, name: 'Emily', position: 0 })
+
+    renderBoard({
+      classRow,
+      subjects: [subject],
+      students: [student],
+      progress: [],
+      lessons: [],
+      activeSubjectId: subject.id,
+    })
+
+    fireEvent.contextMenu(screen.getByText('Emily', { selector: '.class-board__student-name' }))
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Rename student' }))
+    const input = screen.getByLabelText('Student name')
+    expect(input).toHaveValue('Emily')
+
+    fireEvent.change(input, { target: { value: 'Emma' } })
+    fireEvent.submit(input.closest('form')!)
+
+    await waitFor(async () => {
+      const row = await db.student.get(student.id)
+      expect(row?.name).toBe('Emma')
+    })
+  })
+
+  it('submitting a blank student name is rejected', async () => {
+    const classRow = await createClass({ user_id: 'user-1', name: 'Homeroom' })
+    const subject = await createSubject({ class_id: classRow.id, name: 'Math', position: 0 })
+    const student = await createStudent({ class_id: classRow.id, name: 'Emily', position: 0 })
+
+    renderBoard({
+      classRow,
+      subjects: [subject],
+      students: [student],
+      progress: [],
+      lessons: [],
+      activeSubjectId: subject.id,
+    })
+
+    fireEvent.contextMenu(screen.getByText('Emily', { selector: '.class-board__student-name' }))
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Rename student' }))
+    const input = screen.getByLabelText('Student name')
+    fireEvent.change(input, { target: { value: '   ' } })
+    fireEvent.submit(input.closest('form')!)
+
+    const row = await db.student.get(student.id)
+    expect(row?.name).toBe('Emily')
+    expect(screen.getByLabelText('Student name')).toBeInTheDocument()
+  })
+
+  it('pressing Escape discards the in-progress student rename without writing', async () => {
+    const classRow = await createClass({ user_id: 'user-1', name: 'Homeroom' })
+    const subject = await createSubject({ class_id: classRow.id, name: 'Math', position: 0 })
+    const student = await createStudent({ class_id: classRow.id, name: 'Emily', position: 0 })
+
+    renderBoard({
+      classRow,
+      subjects: [subject],
+      students: [student],
+      progress: [],
+      lessons: [],
+      activeSubjectId: subject.id,
+    })
+
+    fireEvent.contextMenu(screen.getByText('Emily', { selector: '.class-board__student-name' }))
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Rename student' }))
+    const input = screen.getByLabelText('Student name')
+    fireEvent.change(input, { target: { value: 'Emma' } })
+    fireEvent.keyDown(input, { key: 'Escape' })
+
+    expect(screen.queryByLabelText('Student name')).not.toBeInTheDocument()
+    expect(screen.getByText('Emily', { selector: '.class-board__student-name' })).toBeInTheDocument()
+    const row = await db.student.get(student.id)
+    expect(row?.name).toBe('Emily')
+  })
 })

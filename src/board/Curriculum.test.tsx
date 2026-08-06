@@ -190,4 +190,206 @@ describe('Curriculum', () => {
     const rows = await db.lesson.where('subject_id').equals(subject.id).toArray()
     expect(rows).toHaveLength(0)
   })
+
+  it('right-clicking the subject name header opens the menu with "Rename subject"', async () => {
+    const classRow = await createClass({ user_id: 'user-1', name: 'Homeroom' })
+    const subject = await createSubject({ class_id: classRow.id, name: 'Math', position: 0 })
+
+    renderCurriculum({ classRow, subject, lessons: [] })
+
+    fireEvent.contextMenu(screen.getByText('Math'))
+
+    expect(screen.getByRole('menuitem', { name: 'Rename subject' })).toBeInTheDocument()
+  })
+
+  it('renaming the subject from the curriculum header calls renameSubject and persists it', async () => {
+    const classRow = await createClass({ user_id: 'user-1', name: 'Homeroom' })
+    const subject = await createSubject({ class_id: classRow.id, name: 'Math', position: 0 })
+
+    renderCurriculum({ classRow, subject, lessons: [] })
+
+    fireEvent.contextMenu(screen.getByText('Math'))
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Rename subject' }))
+    const input = screen.getByLabelText('Subject name')
+    fireEvent.change(input, { target: { value: 'Algebra' } })
+    fireEvent.submit(input.closest('form')!)
+
+    await waitFor(async () => {
+      const row = await db.subject.get(subject.id)
+      expect(row?.name).toBe('Algebra')
+    })
+  })
+
+  it('submitting a blank subject name from the curriculum header is rejected', async () => {
+    const classRow = await createClass({ user_id: 'user-1', name: 'Homeroom' })
+    const subject = await createSubject({ class_id: classRow.id, name: 'Math', position: 0 })
+
+    renderCurriculum({ classRow, subject, lessons: [] })
+
+    fireEvent.contextMenu(screen.getByText('Math'))
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Rename subject' }))
+    const input = screen.getByLabelText('Subject name')
+    fireEvent.change(input, { target: { value: '   ' } })
+    fireEvent.submit(input.closest('form')!)
+
+    const row = await db.subject.get(subject.id)
+    expect(row?.name).toBe('Math')
+    expect(screen.getByLabelText('Subject name')).toBeInTheDocument()
+  })
+
+  it('pressing Escape discards the in-progress subject rename on the curriculum header without writing', async () => {
+    const classRow = await createClass({ user_id: 'user-1', name: 'Homeroom' })
+    const subject = await createSubject({ class_id: classRow.id, name: 'Math', position: 0 })
+
+    renderCurriculum({ classRow, subject, lessons: [] })
+
+    fireEvent.contextMenu(screen.getByText('Math'))
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Rename subject' }))
+    const input = screen.getByLabelText('Subject name')
+    fireEvent.change(input, { target: { value: 'Algebra' } })
+    fireEvent.keyDown(input, { key: 'Escape' })
+
+    expect(screen.queryByLabelText('Subject name')).not.toBeInTheDocument()
+    expect(screen.getByText('Math')).toBeInTheDocument()
+    const row = await db.subject.get(subject.id)
+    expect(row?.name).toBe('Math')
+  })
+
+  it('right-clicking a lesson row opens the menu with "Edit lesson"', async () => {
+    const classRow = await createClass({ user_id: 'user-1', name: 'Homeroom' })
+    const subject = await createSubject({ class_id: classRow.id, name: 'Math', position: 0 })
+    const lesson = await createLesson({
+      subject_id: subject.id,
+      unit: 1,
+      lesson_in_unit: 1,
+      title: 'Fractions',
+      description: 'Intro to fractions',
+    })
+
+    renderCurriculum({ classRow, subject, lessons: [lesson] })
+
+    fireEvent.contextMenu(screen.getByText('Fractions', { selector: '.curriculum__lesson-title' }))
+
+    expect(screen.getByRole('menuitem', { name: 'Edit lesson' })).toBeInTheDocument()
+  })
+
+  it('selecting "Edit lesson" reveals an inline title/description form pre-filled with the current values', async () => {
+    const classRow = await createClass({ user_id: 'user-1', name: 'Homeroom' })
+    const subject = await createSubject({ class_id: classRow.id, name: 'Math', position: 0 })
+    const lesson = await createLesson({
+      subject_id: subject.id,
+      unit: 1,
+      lesson_in_unit: 1,
+      title: 'Fractions',
+      description: 'Intro to fractions',
+    })
+
+    renderCurriculum({ classRow, subject, lessons: [lesson] })
+
+    fireEvent.contextMenu(screen.getByText('Fractions', { selector: '.curriculum__lesson-title' }))
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Edit lesson' }))
+
+    expect(screen.getByLabelText('Title')).toHaveValue('Fractions')
+    expect(screen.getByLabelText('Description')).toHaveValue('Intro to fractions')
+  })
+
+  it('submitting the edit-lesson form calls updateLessonContent and persists the new title/description', async () => {
+    const classRow = await createClass({ user_id: 'user-1', name: 'Homeroom' })
+    const subject = await createSubject({ class_id: classRow.id, name: 'Math', position: 0 })
+    const lesson = await createLesson({
+      subject_id: subject.id,
+      unit: 1,
+      lesson_in_unit: 1,
+      title: 'Fractions',
+      description: 'Intro to fractions',
+    })
+
+    renderCurriculum({ classRow, subject, lessons: [lesson] })
+
+    fireEvent.contextMenu(screen.getByText('Fractions', { selector: '.curriculum__lesson-title' }))
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Edit lesson' }))
+    fireEvent.change(screen.getByLabelText('Title'), { target: { value: 'Fractions II' } })
+    fireEvent.change(screen.getByLabelText('Description'), { target: { value: 'Advanced fractions' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Save' }))
+
+    await waitFor(async () => {
+      const row = await db.lesson.get(lesson.id)
+      expect(row?.title).toBe('Fractions II')
+      expect(row?.description).toBe('Advanced fractions')
+    })
+    // unit/lesson_in_unit stay immutable via this form.
+    const row = await db.lesson.get(lesson.id)
+    expect(row?.unit).toBe(1)
+    expect(row?.lesson_in_unit).toBe(1)
+  })
+
+  it('submitting a blank title in the edit-lesson form is rejected', async () => {
+    const classRow = await createClass({ user_id: 'user-1', name: 'Homeroom' })
+    const subject = await createSubject({ class_id: classRow.id, name: 'Math', position: 0 })
+    const lesson = await createLesson({
+      subject_id: subject.id,
+      unit: 1,
+      lesson_in_unit: 1,
+      title: 'Fractions',
+      description: 'Intro to fractions',
+    })
+
+    renderCurriculum({ classRow, subject, lessons: [lesson] })
+
+    fireEvent.contextMenu(screen.getByText('Fractions', { selector: '.curriculum__lesson-title' }))
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Edit lesson' }))
+    fireEvent.change(screen.getByLabelText('Title'), { target: { value: '   ' } })
+
+    expect(screen.getByRole('button', { name: 'Save' })).toBeDisabled()
+
+    const row = await db.lesson.get(lesson.id)
+    expect(row?.title).toBe('Fractions')
+  })
+
+  it('clicking Cancel in the edit-lesson form discards changes without writing', async () => {
+    const classRow = await createClass({ user_id: 'user-1', name: 'Homeroom' })
+    const subject = await createSubject({ class_id: classRow.id, name: 'Math', position: 0 })
+    const lesson = await createLesson({
+      subject_id: subject.id,
+      unit: 1,
+      lesson_in_unit: 1,
+      title: 'Fractions',
+      description: 'Intro to fractions',
+    })
+
+    renderCurriculum({ classRow, subject, lessons: [lesson] })
+
+    fireEvent.contextMenu(screen.getByText('Fractions', { selector: '.curriculum__lesson-title' }))
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Edit lesson' }))
+    fireEvent.change(screen.getByLabelText('Title'), { target: { value: 'Changed' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Cancel' }))
+
+    expect(screen.queryByLabelText('Title')).not.toBeInTheDocument()
+    expect(screen.getByText('Fractions', { selector: '.curriculum__lesson-title' })).toBeInTheDocument()
+    const row = await db.lesson.get(lesson.id)
+    expect(row?.title).toBe('Fractions')
+  })
+
+  it('pressing Escape in the edit-lesson form discards changes without writing', async () => {
+    const classRow = await createClass({ user_id: 'user-1', name: 'Homeroom' })
+    const subject = await createSubject({ class_id: classRow.id, name: 'Math', position: 0 })
+    const lesson = await createLesson({
+      subject_id: subject.id,
+      unit: 1,
+      lesson_in_unit: 1,
+      title: 'Fractions',
+      description: 'Intro to fractions',
+    })
+
+    renderCurriculum({ classRow, subject, lessons: [lesson] })
+
+    fireEvent.contextMenu(screen.getByText('Fractions', { selector: '.curriculum__lesson-title' }))
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Edit lesson' }))
+    fireEvent.change(screen.getByLabelText('Title'), { target: { value: 'Changed' } })
+    fireEvent.keyDown(screen.getByLabelText('Title'), { key: 'Escape' })
+
+    expect(screen.queryByLabelText('Title')).not.toBeInTheDocument()
+    const row = await db.lesson.get(lesson.id)
+    expect(row?.title).toBe('Fractions')
+  })
 })
