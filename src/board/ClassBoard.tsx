@@ -529,7 +529,7 @@ export function ClassBoard({
                     setPickerOpen(true)
                   }}
                 >
-                  Add lessons
+                  Curriculum Page
                 </button>
                 <button
                   type="button"

@@ -411,7 +411,7 @@ describe('ClassBoard', () => {
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
 
     fireEvent.click(screen.getByRole('button', { name: 'Add lessons menu' }))
-    fireEvent.click(screen.getByRole('button', { name: 'Add lessons' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Curriculum Page' }))
 
     const dialog = screen.getByRole('dialog', { name: 'Add lessons' })
     expect(dialog).toBeInTheDocument()
