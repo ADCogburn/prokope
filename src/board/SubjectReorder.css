@@ -35,14 +35,14 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 22px;
-  height: 22px;
+  width: 28px;
+  height: 28px;
   padding: 0;
   border: none;
   border-radius: 50%;
   background: var(--accent-bg);
   color: var(--text-h);
-  font-size: 12px;
+  font-size: 15px;
   line-height: 1;
   cursor: pointer;
   opacity: 0;
@@ -77,30 +77,30 @@
   display: flex;
   align-items: center;
   gap: 4px;
-  padding: 4px 10px;
+  padding: 5px 13px;
   border-radius: 999px;
   background: var(--accent-bg);
   color: var(--text-h);
-  font-size: 12px;
+  font-size: 15px;
   cursor: grab;
 }
 
 .subject-reorder__chip-icon {
-  font-size: 11px;
+  font-size: 13px;
 }
 
 .subject-reorder__check {
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 22px;
-  height: 22px;
+  width: 28px;
+  height: 28px;
   padding: 0;
   border: none;
   border-radius: 50%;
   background: var(--accent);
   color: var(--on-accent);
-  font-size: 12px;
+  font-size: 15px;
   line-height: 1;
   cursor: pointer;
 

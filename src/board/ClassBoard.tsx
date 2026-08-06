@@ -316,7 +316,7 @@ export function ClassBoard({
   onStudentNavigate,
 }: ClassBoardProps) {
   const wrapRef = useRef<HTMLDivElement>(null)
-  const [panelWidth, setPanelWidth] = useState(420)
+  const [panelWidth, setPanelWidth] = useState(520)
   const [containerWidth, setContainerWidth] = useState(0)
   const panelRefs = useRef(new Map<string, HTMLDivElement>())
   const panelRects = useRef(new Map<string, DOMRect>())
@@ -333,7 +333,7 @@ export function ClassBoard({
     if (!el) return
     const observer = new ResizeObserver(([entry]) => {
       setContainerWidth(entry.contentRect.width)
-      setPanelWidth(Math.min(460, entry.contentRect.width * 0.62))
+      setPanelWidth(Math.min(575, entry.contentRect.width * 0.62))
     })
     observer.observe(el)
     return () => observer.disconnect()

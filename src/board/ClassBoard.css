@@ -190,8 +190,8 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 36px;
-  height: 36px;
+  width: 46px;
+  height: 46px;
   padding: 0;
   border: none;
   border-radius: 50%;
@@ -208,8 +208,8 @@
   }
 
   svg {
-    width: 22px;
-    height: 22px;
+    width: 28px;
+    height: 28px;
     display: block;
   }
 
@@ -223,12 +223,12 @@
 }
 
 .class-board__carousel-arrow--prev {
-  left: 8px;
+  left: 16px;
   transform: translateY(-50%);
 }
 
 .class-board__carousel-arrow--next {
-  right: 8px;
+  right: 16px;
   transform: translateY(-50%);
 }
 
@@ -247,8 +247,9 @@
   align-items: center;
   justify-content: space-between;
   gap: 12px;
-  padding: 12px 16px;
+  padding: 16px 20px;
   color: var(--text-h);
+  font-size: 18px;
   font-weight: 600;
   background: var(--accent-bg);
   border-bottom: 1px solid var(--border);
@@ -263,10 +264,10 @@
 
 .class-board__bulk-advance {
   font: inherit;
-  font-size: 12px;
+  font-size: 14px;
   font-weight: 600;
   white-space: nowrap;
-  padding: 4px 10px;
+  padding: 6px 12px;
   border-radius: 6px;
   border: 1px solid var(--accent-border);
   background: var(--bg);
@@ -281,7 +282,7 @@
 
 .class-board__bulk-advance-undo {
   font: inherit;
-  font-size: 12px;
+  font-size: 14px;
   font-weight: 600;
   padding: 0;
   border: none;
@@ -292,7 +293,7 @@
 }
 
 .class-board__panel-body {
-  max-height: 60vh;
+  max-height: 75vh;
   overflow-y: auto;
 }
 
@@ -336,7 +337,7 @@
   align-items: center;
   justify-content: space-between;
   gap: 8px;
-  padding: 8px 16px;
+  padding: 10px 20px;
   border-bottom: 1px solid var(--border);
 }
 
@@ -349,7 +350,7 @@
 }
 
 .progress-cell__student {
-  font-size: 14px;
+  font-size: 16px;
   color: var(--text-h);
   flex: 1 1 auto;
   min-width: 0;
@@ -359,7 +360,7 @@
 }
 
 .progress-cell__step {
-  font-size: 13px;
+  font-size: 15px;
   color: var(--text);
   flex-shrink: 0;
 }
@@ -374,8 +375,8 @@
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 28px;
-  height: 28px;
+  width: 34px;
+  height: 34px;
   padding: 0;
   border: none;
   border-radius: 6px;
@@ -388,8 +389,8 @@
   }
 
   svg {
-    width: 16px;
-    height: 16px;
+    width: 20px;
+    height: 20px;
     display: block;
   }
 
@@ -417,10 +418,10 @@
 
 .progress-cell__advance {
   font: inherit;
-  font-size: 12px;
+  font-size: 14px;
   min-width: 15ch;
   text-align: center;
-  padding: 4px 8px;
+  padding: 6px 10px;
   border-radius: 6px;
   border: 1px solid var(--accent-border);
   background: var(--accent-bg);
