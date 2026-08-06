@@ -99,6 +99,13 @@
   overflow: hidden;
 }
 
+.class-board__empty-body {
+  display: flex;
+  align-items: flex-start;
+  gap: 24px;
+  padding: 24px;
+}
+
 .class-board__students {
   width: 220px;
   flex-shrink: 0;
