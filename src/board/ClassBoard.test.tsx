@@ -1,8 +1,15 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { ClassBoard } from './ClassBoard'
 import { db } from '../db/schema'
-import { createClass, createLesson, createStudent, createSubject, upsertProgressStep } from '../db'
+import {
+  createClass,
+  createLesson,
+  createStudent,
+  createSubject,
+  listStudentsForClass,
+  upsertProgressStep,
+} from '../db'
 import type { ClassRow, LessonRow, ProgressRow, StudentRow, SubjectRow } from '../db/schema'
 
 class MockResizeObserver {
@@ -70,7 +77,7 @@ function renderBoard(props: {
 }
 
 describe('ClassBoard', () => {
-  it('shows only the add-subject card when the class has no subjects', async () => {
+  it('shows the add-subject card and the student roster (with its own add-student card) when the class has no subjects', async () => {
     const classRow = await createClass({ user_id: 'user-1', name: 'Homeroom' })
 
     renderBoard({
@@ -83,6 +90,8 @@ describe('ClassBoard', () => {
     })
 
     expect(screen.getByRole('button', { name: '+ Add subject' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: '+ Add student' })).toBeInTheDocument()
+    expect(screen.getByText('No students yet.')).toBeInTheDocument()
     expect(screen.queryByText('No subjects yet.')).not.toBeInTheDocument()
     expect(screen.queryByRole('button', { name: /^Go to/ })).not.toBeInTheDocument()
   })
@@ -635,5 +644,314 @@ describe('ClassBoard', () => {
 
     expect(onReportNavigate).toHaveBeenCalledTimes(1)
     expect(screen.queryByRole('button', { name: 'Generate report' })).not.toBeInTheDocument()
+  })
+
+  it('clicking "+ Add student" reveals the inline form', async () => {
+    const classRow = await createClass({ user_id: 'user-1', name: 'Homeroom' })
+    const subject = await createSubject({ class_id: classRow.id, name: 'Math', position: 0 })
+
+    renderBoard({
+      classRow,
+      subjects: [subject],
+      students: [],
+      progress: [],
+      lessons: [],
+      activeSubjectId: subject.id,
+    })
+
+    expect(screen.queryByLabelText('Student name')).not.toBeInTheDocument()
+
+    fireEvent.click(screen.getByRole('button', { name: '+ Add student' }))
+
+    expect(screen.getByLabelText('Student name')).toBeInTheDocument()
+  })
+
+  it('creates a student from the add-student card, appended at the end, showing up in the roster and every subject panel at "Not started"', async () => {
+    const classRow = await createClass({ user_id: 'user-1', name: 'Homeroom' })
+    const subjectA = await createSubject({ class_id: classRow.id, name: 'Math', position: 0 })
+    const subjectB = await createSubject({ class_id: classRow.id, name: 'Reading', position: 1 })
+    const sam = await createStudent({ class_id: classRow.id, name: 'Sam', position: 0 })
+    const lessonA = await createLesson({
+      subject_id: subjectA.id,
+      unit: 1,
+      lesson_in_unit: 1,
+      title: 'Fractions',
+      description: '',
+    })
+    const lessonB = await createLesson({
+      subject_id: subjectB.id,
+      unit: 1,
+      lesson_in_unit: 1,
+      title: 'Phonics',
+      description: '',
+    })
+
+    const view = renderBoard({
+      classRow,
+      subjects: [subjectA, subjectB],
+      students: [sam],
+      progress: [],
+      lessons: [lessonA, lessonB],
+      activeSubjectId: subjectA.id,
+    })
+
+    fireEvent.click(screen.getByRole('button', { name: '+ Add student' }))
+    fireEvent.change(screen.getByLabelText('Student name'), { target: { value: 'Emily' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Add' }))
+
+    let allStudents: StudentRow[] = []
+    await waitFor(async () => {
+      allStudents = await listStudentsForClass(classRow.id)
+      const emily = allStudents.find((row) => row.name === 'Emily')
+      expect(emily).toBeDefined()
+      expect(emily?.position).toBe(1)
+    })
+
+    // The add-student card clears and collapses after a successful add.
+    expect(screen.queryByLabelText('Student name')).not.toBeInTheDocument()
+
+    // ClassBoard is a controlled/presentational component fed by a live
+    // query in the real app (ClassBoardRoute) -- simulate the next render a
+    // teacher would actually see once that query re-fires with the new row.
+    view.rerender(
+      <ClassBoard
+        classRow={classRow}
+        subjects={[subjectA, subjectB]}
+        students={allStudents}
+        progress={[]}
+        lessons={[lessonA, lessonB]}
+        activeSubjectId={subjectA.id}
+        onSubjectChange={vi.fn()}
+        onCurriculumNavigate={vi.fn()}
+        onReportNavigate={vi.fn()}
+      />,
+    )
+
+    expect(screen.getByText('Emily', { selector: '.class-board__student-name' })).toBeInTheDocument()
+
+    const mathPanel = screen.getByText('Math').closest('.class-board__panel') as HTMLElement
+    const readingPanel = screen.getByText('Reading').closest('.class-board__panel') as HTMLElement
+    const emilyInMath = within(mathPanel)
+      .getByText('Emily', { selector: '.progress-cell__student' })
+      .closest('.progress-cell') as HTMLElement
+    const emilyInReading = within(readingPanel)
+      .getByText('Emily', { selector: '.progress-cell__student' })
+      .closest('.progress-cell') as HTMLElement
+    expect(within(emilyInMath).getByText('Not started')).toBeInTheDocument()
+    expect(within(emilyInReading).getByText('Not started')).toBeInTheDocument()
+  })
+
+  it('submitting a blank or whitespace-only student name is rejected', async () => {
+    const classRow = await createClass({ user_id: 'user-1', name: 'Homeroom' })
+    const subject = await createSubject({ class_id: classRow.id, name: 'Math', position: 0 })
+
+    renderBoard({
+      classRow,
+      subjects: [subject],
+      students: [],
+      progress: [],
+      lessons: [],
+      activeSubjectId: subject.id,
+    })
+
+    fireEvent.click(screen.getByRole('button', { name: '+ Add student' }))
+    const input = screen.getByLabelText('Student name')
+    fireEvent.change(input, { target: { value: '   ' } })
+
+    expect(screen.getByRole('button', { name: 'Add' })).toBeDisabled()
+    fireEvent.submit(input.closest('form')!)
+
+    const rows = await db.student.where('class_id').equals(classRow.id).toArray()
+    expect(rows).toHaveLength(0)
+    expect(screen.getByLabelText('Student name')).toBeInTheDocument()
+  })
+
+  it('cancelling the add-student form collapses it back to the "+" card without creating a student', async () => {
+    const classRow = await createClass({ user_id: 'user-1', name: 'Homeroom' })
+    const subject = await createSubject({ class_id: classRow.id, name: 'Math', position: 0 })
+
+    renderBoard({
+      classRow,
+      subjects: [subject],
+      students: [],
+      progress: [],
+      lessons: [],
+      activeSubjectId: subject.id,
+    })
+
+    fireEvent.click(screen.getByRole('button', { name: '+ Add student' }))
+    fireEvent.change(screen.getByLabelText('Student name'), { target: { value: 'Emily' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Cancel' }))
+
+    expect(screen.getByRole('button', { name: '+ Add student' })).toBeInTheDocument()
+    const rows = await db.student.where('class_id').equals(classRow.id).toArray()
+    expect(rows).toHaveLength(0)
+  })
+
+  it('adds a student to a class with no subjects yet, from the empty-state roster', async () => {
+    const classRow = await createClass({ user_id: 'user-1', name: 'Homeroom' })
+
+    renderBoard({
+      classRow,
+      subjects: [],
+      students: [],
+      progress: [],
+      lessons: [],
+      activeSubjectId: undefined,
+    })
+
+    fireEvent.click(screen.getByRole('button', { name: '+ Add student' }))
+    fireEvent.change(screen.getByLabelText('Student name'), { target: { value: 'Emily' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Add' }))
+
+    await waitFor(async () => {
+      const rows = await db.student.where('class_id').equals(classRow.id).toArray()
+      expect(rows).toHaveLength(1)
+      expect(rows[0]).toMatchObject({ name: 'Emily', position: 0 })
+    })
+  })
+
+  it('right-clicking a student row opens the menu with "Remove student"', async () => {
+    const classRow = await createClass({ user_id: 'user-1', name: 'Homeroom' })
+    const subject = await createSubject({ class_id: classRow.id, name: 'Math', position: 0 })
+    const student = await createStudent({ class_id: classRow.id, name: 'Emily', position: 0 })
+
+    renderBoard({
+      classRow,
+      subjects: [subject],
+      students: [student],
+      progress: [],
+      lessons: [],
+      activeSubjectId: subject.id,
+    })
+
+    fireEvent.contextMenu(screen.getByText('Emily', { selector: '.class-board__student-name' }))
+
+    expect(screen.getByRole('menuitem', { name: 'Remove student' })).toBeInTheDocument()
+  })
+
+  it('selecting "Remove student" opens a confirmation dialog naming that student', async () => {
+    const classRow = await createClass({ user_id: 'user-1', name: 'Homeroom' })
+    const subject = await createSubject({ class_id: classRow.id, name: 'Math', position: 0 })
+    const student = await createStudent({ class_id: classRow.id, name: 'Emily', position: 0 })
+
+    renderBoard({
+      classRow,
+      subjects: [subject],
+      students: [student],
+      progress: [],
+      lessons: [],
+      activeSubjectId: subject.id,
+    })
+
+    fireEvent.contextMenu(screen.getByText('Emily', { selector: '.class-board__student-name' }))
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Remove student' }))
+
+    const dialog = screen.getByRole('dialog', { name: 'Remove student' })
+    expect(within(dialog).getByText('Remove Emily?')).toBeInTheDocument()
+
+    const rows = await db.student.where('class_id').equals(classRow.id).toArray()
+    expect(rows[0].deleted_at).toBeNull()
+  })
+
+  it('confirming removal soft-deletes the student, taking them out of a rerendered roster and every subject\'s progress grid', async () => {
+    const classRow = await createClass({ user_id: 'user-1', name: 'Homeroom' })
+    const subject = await createSubject({ class_id: classRow.id, name: 'Math', position: 0 })
+    const student = await createStudent({ class_id: classRow.id, name: 'Emily', position: 0 })
+    const other = await createStudent({ class_id: classRow.id, name: 'Sam', position: 1 })
+    const lesson = await createLesson({
+      subject_id: subject.id,
+      unit: 1,
+      lesson_in_unit: 1,
+      title: 'Fractions',
+      description: '',
+    })
+
+    const view = renderBoard({
+      classRow,
+      subjects: [subject],
+      students: [student, other],
+      progress: [],
+      lessons: [lesson],
+      activeSubjectId: subject.id,
+    })
+
+    fireEvent.contextMenu(screen.getByText('Emily', { selector: '.class-board__student-name' }))
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Remove student' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Remove student' }))
+
+    await waitFor(async () => {
+      const row = await db.student.get(student.id)
+      expect(row?.deleted_at).not.toBeNull()
+    })
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
+
+    // Sam is untouched by Emily's removal.
+    const samRow = await db.student.get(other.id)
+    expect(samRow?.deleted_at).toBeNull()
+
+    const remaining = await listStudentsForClass(classRow.id)
+    view.rerender(
+      <ClassBoard
+        classRow={classRow}
+        subjects={[subject]}
+        students={remaining}
+        progress={[]}
+        lessons={[lesson]}
+        activeSubjectId={subject.id}
+        onSubjectChange={vi.fn()}
+        onCurriculumNavigate={vi.fn()}
+        onReportNavigate={vi.fn()}
+      />,
+    )
+
+    expect(screen.queryByText('Emily')).not.toBeInTheDocument()
+    expect(screen.getByText('Sam', { selector: '.class-board__student-name' })).toBeInTheDocument()
+  })
+
+  it('a backdrop click on the removal confirmation dialog closes it without touching the database', async () => {
+    const classRow = await createClass({ user_id: 'user-1', name: 'Homeroom' })
+    const subject = await createSubject({ class_id: classRow.id, name: 'Math', position: 0 })
+    const student = await createStudent({ class_id: classRow.id, name: 'Emily', position: 0 })
+
+    renderBoard({
+      classRow,
+      subjects: [subject],
+      students: [student],
+      progress: [],
+      lessons: [],
+      activeSubjectId: subject.id,
+    })
+
+    fireEvent.contextMenu(screen.getByText('Emily', { selector: '.class-board__student-name' }))
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Remove student' }))
+    fireEvent.click(screen.getByRole('dialog').parentElement!)
+
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
+    const row = await db.student.get(student.id)
+    expect(row?.deleted_at).toBeNull()
+  })
+
+  it('pressing Escape on the removal confirmation dialog closes it without touching the database', async () => {
+    const classRow = await createClass({ user_id: 'user-1', name: 'Homeroom' })
+    const subject = await createSubject({ class_id: classRow.id, name: 'Math', position: 0 })
+    const student = await createStudent({ class_id: classRow.id, name: 'Emily', position: 0 })
+
+    renderBoard({
+      classRow,
+      subjects: [subject],
+      students: [student],
+      progress: [],
+      lessons: [],
+      activeSubjectId: subject.id,
+    })
+
+    fireEvent.contextMenu(screen.getByText('Emily', { selector: '.class-board__student-name' }))
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Remove student' }))
+    fireEvent.keyDown(document, { key: 'Escape' })
+
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
+    const row = await db.student.get(student.id)
+    expect(row?.deleted_at).toBeNull()
   })
 })

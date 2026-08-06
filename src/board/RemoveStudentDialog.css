@@ -1,0 +1,49 @@
+.remove-student-dialog__backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.4);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 100;
+}
+
+.remove-student-dialog {
+  width: 100%;
+  max-width: 360px;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  box-shadow: var(--shadow);
+  padding: 20px;
+
+  h2 {
+    margin: 0 0 8px;
+  }
+  p {
+    margin: 0 0 16px;
+    color: var(--text);
+  }
+}
+
+.remove-student-dialog__actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.remove-student-dialog__actions button {
+  font: inherit;
+  padding: 8px 14px;
+  border-radius: 8px;
+  color: var(--text-h);
+  background: transparent;
+  border: 1px solid var(--border);
+  cursor: pointer;
+}
+
+.remove-student-dialog__confirm {
+  background: var(--error);
+  border-color: var(--error);
+  color: var(--bg);
+}

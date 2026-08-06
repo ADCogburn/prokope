@@ -3,7 +3,9 @@ import type { ClassRow, ProgressRow, StudentRow, SubjectRow, LessonRow } from '.
 import {
   advanceProgress,
   bulkAdvanceProgress,
+  createStudent,
   createSubject,
+  deleteStudent,
   findNextLesson,
   jumpToLesson,
   positionOf,
@@ -15,9 +17,11 @@ import {
 import { useCarouselDrag } from './useCarouselDrag'
 import { ProgressCell } from './ProgressCell'
 import { InlineAddCard } from './InlineAddCard'
+import { ContextMenu } from './ContextMenu'
 import { SubjectReorder } from './SubjectReorder'
 import { SubjectPickerModal } from './SubjectPickerModal'
 import { LessonPickerModal } from './LessonPickerModal'
+import { RemoveStudentDialog } from './RemoveStudentDialog'
 import './ClassBoard.css'
 
 const PANEL_GAP = 24
@@ -89,6 +93,107 @@ function AddSubjectCard({ classId, position }: AddSubjectCardProps) {
   )
 }
 
+interface AddStudentCardProps {
+  classId: string
+  position: number
+}
+
+/** Trailing "+" card for adding a student to the roster, per #78. Mirrors AddSubjectCard exactly: calls createStudent directly, clears/collapses on success. */
+function AddStudentCard({ classId, position }: AddStudentCardProps) {
+  const [name, setName] = useState('')
+  const [submitting, setSubmitting] = useState(false)
+
+  return (
+    <InlineAddCard addLabel="Add student" className="class-board__add-student-card">
+      {({ collapse }) => {
+        async function handleSubmit(event: FormEvent) {
+          event.preventDefault()
+          const trimmed = name.trim()
+          if (trimmed === '' || submitting) return
+          setSubmitting(true)
+          await createStudent({ class_id: classId, name: trimmed, position })
+          setSubmitting(false)
+          setName('')
+          collapse()
+        }
+
+        return (
+          <form className="inline-add-card__form" onSubmit={handleSubmit}>
+            <label htmlFor="new-student-name">Student name</label>
+            <input
+              id="new-student-name"
+              value={name}
+              onChange={(event) => setName(event.target.value)}
+              placeholder="e.g. Emily"
+              autoFocus
+            />
+            <div className="inline-add-card__actions">
+              <button
+                type="button"
+                onClick={() => {
+                  setName('')
+                  collapse()
+                }}
+              >
+                Cancel
+              </button>
+              <button type="submit" disabled={submitting || name.trim() === ''}>
+                Add
+              </button>
+            </div>
+          </form>
+        )
+      }}
+    </InlineAddCard>
+  )
+}
+
+interface StudentRosterRowProps {
+  student: StudentRow
+  reviewCount: number
+  onRequestRemove: (student: StudentRow) => void
+}
+
+/**
+ * One roster row: avatar, name, review-flag count, and (per #78, ADR-0006) a
+ * right-click menu offering "Remove student". Owns its own menu
+ * open/closed + position state independently, the same way each
+ * ProgressCell scopes its own menu state -- the row only reports the
+ * removal request up to ClassBoard, which owns the confirmation dialog.
+ */
+function StudentRosterRow({ student, reviewCount, onRequestRemove }: StudentRosterRowProps) {
+  const [menuPosition, setMenuPosition] = useState<{ x: number; y: number } | null>(null)
+
+  return (
+    <div
+      className="class-board__student"
+      onContextMenu={(event) => {
+        event.preventDefault()
+        setMenuPosition({ x: event.clientX, y: event.clientY })
+      }}
+    >
+      <span className="class-board__student-avatar">{student.name[0]}</span>
+      <div>
+        <div className="class-board__student-name">{student.name}</div>
+        {reviewCount > 0 && <div className="class-board__review-count">{reviewCount} flagged for review</div>}
+      </div>
+      {menuPosition && (
+        <ContextMenu
+          x={menuPosition.x}
+          y={menuPosition.y}
+          onClose={() => setMenuPosition(null)}
+          items={[
+            {
+              label: 'Remove student',
+              onSelect: () => onRequestRemove(student),
+            },
+          ]}
+        />
+      )}
+    </div>
+  )
+}
+
 interface ClassBoardProps {
   classRow: ClassRow
   subjects: SubjectRow[]
@@ -130,6 +235,7 @@ export function ClassBoard({
   const [jumpPickerRequest, setJumpPickerRequest] = useState<{ studentId: string; subjectId: string } | null>(
     null,
   )
+  const [removeStudentRequest, setRemoveStudentRequest] = useState<StudentRow | null>(null)
 
   useEffect(() => {
     const el = wrapRef.current
@@ -256,13 +362,53 @@ export function ClassBoard({
     setJumpPickerRequest(null)
   }
 
+  async function handleRemoveStudent(studentId: string) {
+    await deleteStudent(studentId)
+    setRemoveStudentRequest(null)
+  }
+
+  // Shared between the zero-subjects empty state and the full board, per
+  // #78: a teacher can build their roster before adding any subject, so
+  // setup order between students and subjects isn't forced.
+  const studentsPanel = (
+    <div className="class-board__students">
+      {students.map((student) => {
+        const reviewCount = subjects.filter(
+          (subject) => progressByKey.get(progressKey(student.id, subject.id))?.review,
+        ).length
+        return (
+          <StudentRosterRow
+            key={student.id}
+            student={student}
+            reviewCount={reviewCount}
+            onRequestRemove={setRemoveStudentRequest}
+          />
+        )
+      })}
+      {students.length === 0 && <p className="class-board__empty-message">No students yet.</p>}
+      <AddStudentCard classId={classRow.id} position={students.length} />
+    </div>
+  )
+
+  const removeStudentDialog = removeStudentRequest && (
+    <RemoveStudentDialog
+      student={removeStudentRequest}
+      onConfirm={() => void handleRemoveStudent(removeStudentRequest.id)}
+      onClose={() => setRemoveStudentRequest(null)}
+    />
+  )
+
   if (subjects.length === 0) {
     return (
       <div className="class-board class-board--empty">
         <header className="class-board__header">
           <h1>{classRow.name}</h1>
         </header>
-        <AddSubjectCard classId={classRow.id} position={0} />
+        <div className="class-board__empty-body">
+          {studentsPanel}
+          <AddSubjectCard classId={classRow.id} position={0} />
+        </div>
+        {removeStudentDialog}
       </div>
     )
   }
@@ -336,26 +482,9 @@ export function ClassBoard({
             />
           )
         })()}
+      {removeStudentDialog}
       <div className="class-board__body">
-        <div className="class-board__students">
-          {students.map((student) => {
-            const reviewCount = subjects.filter(
-              (subject) => progressByKey.get(progressKey(student.id, subject.id))?.review,
-            ).length
-            return (
-              <div key={student.id} className="class-board__student">
-                <span className="class-board__student-avatar">{student.name[0]}</span>
-                <div>
-                  <div className="class-board__student-name">{student.name}</div>
-                  {reviewCount > 0 && (
-                    <div className="class-board__review-count">{reviewCount} flagged for review</div>
-                  )}
-                </div>
-              </div>
-            )
-          })}
-          {students.length === 0 && <p className="class-board__empty-message">No students yet.</p>}
-        </div>
+        {studentsPanel}
 
         <div ref={wrapRef} className="class-board__carousel-wrap">
           {index > 0 && (
