@@ -1,3 +1,4 @@
+import { formatLessonLabel } from '../db'
 import { formatDayHeader, type WeeklyLessonPlanRow } from './weeklyLessonPlan'
 import './WeeklyLessonPlanReport.css'
 
@@ -35,7 +36,7 @@ export function WeeklyLessonPlanReport({ weekDates, rows }: WeeklyLessonPlanRepo
               <th scope="row">{subject.name}</th>
               {days.map(({ date, lesson }) => (
                 <td key={date.toISOString()}>
-                  <p>Lesson: {lesson?.title}</p>
+                  <p>Lesson: {lesson && formatLessonLabel(lesson)}</p>
                   <p>Notes: {lesson?.description}</p>
                 </td>
               ))}

@@ -97,3 +97,8 @@ export async function deleteLesson(id: string): Promise<void> {
   const now = new Date().toISOString()
   await db.lesson.update(id, { deleted_at: now, updated_at: now })
 }
+
+/** "1.2 - Fractions": a lesson's {unit, lesson_in_unit} position alongside its title, for reports where the raw title alone doesn't tell a teacher where it falls in the curriculum. */
+export function formatLessonLabel(lesson: LessonRow): string {
+  return `${lesson.unit}.${lesson.lesson_in_unit} - ${lesson.title}`
+}

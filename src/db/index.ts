@@ -14,6 +14,7 @@ export {
   getNextLessonInSubject,
   findNextLesson,
   deleteLesson,
+  formatLessonLabel,
 } from './lessons'
 export type { CreateLessonInput, LessonPosition } from './lessons'
 

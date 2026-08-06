@@ -1,10 +1,10 @@
-import { positionOf } from '../db'
+import { formatLessonLabel, positionOf } from '../db'
 import type { LessonRow, ProgressRow, StudentRow, SubjectRow } from '../db/schema'
 
 export interface StudentReportSubjectRow {
   subject: SubjectRow
-  /** The current lesson's title, per #11 -- not the raw {unit, lesson_in_unit} id. undefined covers both "not started yet" and "no lessons defined" (see hasLessons). */
-  lessonTitle: string | undefined
+  /** The current lesson's unit/lesson number and title (e.g. "1.1 - Practicing addition"), per #11. undefined covers both "not started yet" and "no lessons defined" (see hasLessons). */
+  lessonLabel: string | undefined
   hasLessons: boolean
   reviewFlagged: boolean
 }
@@ -31,7 +31,7 @@ export function buildStudentReport(
 
     return {
       subject,
-      lessonTitle: currentLesson?.title,
+      lessonLabel: currentLesson ? formatLessonLabel(currentLesson) : undefined,
       hasLessons: subjectLessons.length > 0,
       reviewFlagged: Boolean(progressRow?.review),
     }
