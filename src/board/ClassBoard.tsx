@@ -156,6 +156,7 @@ interface StudentRosterRowProps {
   student: StudentRow
   reviewCount: number
   onRequestRemove: (student: StudentRow) => void
+  onNavigate: (studentId: string) => void
 }
 
 /**
@@ -166,8 +167,15 @@ interface StudentRosterRowProps {
  * ProgressCell scopes its own menu state -- the row only reports the
  * removal request up to ClassBoard, which owns the confirmation dialog;
  * renaming, being non-destructive, is handled entirely within the row.
+ *
+ * Per #108, left-clicking the row (outside inline-rename mode) reports a
+ * navigate-to-Student-Summary request the same way. That click handler
+ * lives on an inner wrapper around just the avatar/name/review-count --
+ * not the outer div -- so it doesn't sit as an ancestor of the ContextMenu
+ * markup rendered alongside it; a click on "Rename student"/"Remove
+ * student" would otherwise bubble into it and fire navigation too.
  */
-function StudentRosterRow({ student, reviewCount, onRequestRemove }: StudentRosterRowProps) {
+function StudentRosterRow({ student, reviewCount, onRequestRemove, onNavigate }: StudentRosterRowProps) {
   const [menuPosition, setMenuPosition] = useState<{ x: number; y: number } | null>(null)
   const [editing, setEditing] = useState(false)
 
@@ -180,24 +188,32 @@ function StudentRosterRow({ student, reviewCount, onRequestRemove }: StudentRost
         setMenuPosition({ x: event.clientX, y: event.clientY })
       }}
     >
-      <span className="class-board__student-avatar">{student.name[0]}</span>
-      <div>
-        <div className="class-board__student-name">
-          {editing ? (
-            <InlineRenameField
-              ariaLabel="Student name"
-              initialValue={student.name}
-              onSubmit={async (trimmed) => {
-                await renameStudent(student.id, trimmed)
-                setEditing(false)
-              }}
-              onCancel={() => setEditing(false)}
-            />
-          ) : (
-            student.name
-          )}
+      <div
+        className="class-board__student-clickable"
+        onClick={() => {
+          if (editing) return
+          onNavigate(student.id)
+        }}
+      >
+        <span className="class-board__student-avatar">{student.name[0]}</span>
+        <div>
+          <div className="class-board__student-name">
+            {editing ? (
+              <InlineRenameField
+                ariaLabel="Student name"
+                initialValue={student.name}
+                onSubmit={async (trimmed) => {
+                  await renameStudent(student.id, trimmed)
+                  setEditing(false)
+                }}
+                onCancel={() => setEditing(false)}
+              />
+            ) : (
+              student.name
+            )}
+          </div>
+          {reviewCount > 0 && <div className="class-board__review-count">{reviewCount} flagged for review</div>}
         </div>
-        {reviewCount > 0 && <div className="class-board__review-count">{reviewCount} flagged for review</div>}
       </div>
       {menuPosition && (
         <ContextMenu
@@ -277,6 +293,7 @@ interface ClassBoardProps {
   onSubjectChange: (subjectId: string) => void
   onCurriculumNavigate: (subjectId: string) => void
   onReportNavigate: () => void
+  onStudentNavigate: (studentId: string) => void
 }
 
 /**
@@ -296,6 +313,7 @@ export function ClassBoard({
   onSubjectChange,
   onCurriculumNavigate,
   onReportNavigate,
+  onStudentNavigate,
 }: ClassBoardProps) {
   const wrapRef = useRef<HTMLDivElement>(null)
   const [panelWidth, setPanelWidth] = useState(420)
@@ -455,6 +473,7 @@ export function ClassBoard({
             student={student}
             reviewCount={reviewCount}
             onRequestRemove={setRemoveStudentRequest}
+            onNavigate={onStudentNavigate}
           />
         )
       })}
