@@ -188,7 +188,7 @@
 }
 
 .curriculum__lesson-edit,
-.curriculum__lesson-delete {
+.curriculum__lesson-remove {
   flex-shrink: 0;
   font: inherit;
   font-size: 13px;
@@ -203,7 +203,7 @@
   color: var(--text-h);
 }
 
-.curriculum__lesson-delete {
+.curriculum__lesson-remove {
   color: var(--error);
 }
 
