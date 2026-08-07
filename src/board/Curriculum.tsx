@@ -288,16 +288,16 @@ export function Curriculum({ classRow, subject, lessons, onBack }: CurriculumPro
           </button>
           <div className="curriculum__title-row">
             <SubjectNameLabel subject={subject} tag="h1" showPencil />
+            <button
+              type="button"
+              className="inline-add-card curriculum__header-add"
+              onClick={() => setAddLessonModalOpen(true)}
+            >
+              + Add lesson
+            </button>
           </div>
           <p>{classRow.name}</p>
         </div>
-        <button
-          type="button"
-          className="inline-add-card curriculum__header-add"
-          onClick={() => setAddLessonModalOpen(true)}
-        >
-          + Add lesson
-        </button>
       </header>
       <div className="curriculum__body">
         {lessons.length > 0 && (
