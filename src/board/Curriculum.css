@@ -7,18 +7,50 @@
 }
 
 .curriculum__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
   padding: 16px 24px;
   background: var(--bg);
   border-bottom: 1px solid var(--border);
+}
 
-  h1 {
-    margin: 0 0 4px;
-    font-size: 20px;
-  }
+.curriculum__header-main {
+  min-width: 0;
+  overflow: hidden;
+
   p {
     margin: 0;
     font-size: 14px;
     color: var(--text);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+}
+
+.curriculum__header-add {
+  flex-shrink: 0;
+  min-height: 40px;
+  padding: 0 16px;
+  margin-left: 20px;
+}
+
+.curriculum__title-row {
+  display: flex;
+  align-items: center;
+  min-width: 0;
+  margin-bottom: 4px;
+
+  h1 {
+    flex-shrink: 1;
+    min-width: 0;
+    margin: 0;
+    font-size: 20px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
   }
 }
 
@@ -35,18 +67,30 @@
 
 .curriculum__body {
   flex: 1;
+  min-height: 0;
   overflow-y: auto;
   padding: 24px;
   display: flex;
   flex-direction: column;
   gap: 16px;
-  max-width: 640px;
 }
 
-.curriculum__lesson-list {
-  list-style: none;
-  margin: 0;
-  padding: 0;
+.curriculum__units-wrap {
+  position: relative;
+  flex: 1;
+  min-height: 0;
+}
+
+.curriculum__units {
+  display: flex;
+  align-items: stretch;
+  max-height: 100%;
+  gap: 16px;
+}
+
+.curriculum__unit-column {
+  flex-shrink: 0;
+  width: 280px;
   display: flex;
   flex-direction: column;
   border: 1px solid var(--border);
@@ -55,16 +99,122 @@
   background: var(--bg);
 }
 
+.curriculum__unit-header {
+  margin: 0;
+  padding: 10px 16px;
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--text-h);
+  background: var(--accent-bg);
+  border-bottom: 1px solid var(--border);
+}
+
+.curriculum__unit-arrow {
+  position: absolute;
+  top: 50%;
+  z-index: 2;
+  transform: translateY(-50%);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  padding: 0;
+  border: none;
+  border-radius: 50%;
+  background: var(--bg);
+  box-shadow: var(--shadow);
+  color: var(--text-h);
+  cursor: pointer;
+
+  svg {
+    width: 20px;
+    height: 20px;
+    display: block;
+  }
+
+  path {
+    fill: none;
+    stroke: currentColor;
+    stroke-width: 2;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+  }
+}
+
+.curriculum__unit-arrow--prev {
+  left: 8px;
+}
+
+.curriculum__unit-arrow--next {
+  right: 8px;
+}
+
+.curriculum__lesson-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+}
+
 .curriculum__lesson {
   padding: 12px 16px;
   border-bottom: 1px solid var(--border);
   display: flex;
-  flex-direction: column;
-  gap: 2px;
+  flex-direction: row;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
 }
 
 .curriculum__lesson:last-child {
   border-bottom: none;
+}
+
+.curriculum__lesson--editing {
+  flex-direction: column;
+  align-items: stretch;
+}
+
+.curriculum__lesson--editing .inline-add-card__form {
+  width: 100%;
+}
+
+.curriculum__lesson-main {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.curriculum__lesson-actions {
+  flex-shrink: 0;
+  display: flex;
+  gap: 8px;
+}
+
+.curriculum__lesson-edit,
+.curriculum__lesson-remove {
+  flex-shrink: 0;
+  font: inherit;
+  font-size: 13px;
+  padding: 4px 10px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: none;
+  cursor: pointer;
+}
+
+.curriculum__lesson-edit {
+  color: var(--text-h);
+}
+
+.curriculum__lesson-remove {
+  color: var(--error);
 }
 
 .curriculum__lesson-position {
@@ -82,11 +232,6 @@
   margin: 4px 0 0;
   font-size: 13px;
   color: var(--text);
-}
-
-.curriculum__add-card {
-  align-self: flex-start;
-  min-width: 280px;
 }
 
 .curriculum__add-card-error {

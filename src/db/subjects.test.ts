@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it } from 'vitest'
 import { db } from './schema'
-import { createSubject, deleteSubject, listSubjectsForClass, reorderSubjects } from './subjects'
+import { createSubject, deleteSubject, listSubjectsForClass, renameSubject, reorderSubjects } from './subjects'
 
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 
@@ -60,5 +60,18 @@ describe('deleteSubject', () => {
     const raw = await db.subject.get(created.id)
     expect(raw).toBeDefined()
     expect(raw?.deleted_at).not.toBeNull()
+  })
+})
+
+describe('renameSubject', () => {
+  it('updates the name without touching other fields', async () => {
+    const created = await createSubject({ class_id: 'class-1', name: 'Math', position: 0 })
+
+    await renameSubject(created.id, 'Mathematics')
+
+    const raw = await db.subject.get(created.id)
+    expect(raw?.name).toBe('Mathematics')
+    expect(raw?.class_id).toBe(created.class_id)
+    expect(raw?.position).toBe(created.position)
   })
 })

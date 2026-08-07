@@ -1,11 +1,31 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, type FormEvent } from 'react'
 import type { ClassRow, ProgressRow, StudentRow, SubjectRow, LessonRow } from '../db/schema'
-import { advanceProgress, createSubject, findNextLesson, positionOf, upsertProgressReview } from '../db'
+import {
+  advanceProgress,
+  bulkAdvanceProgress,
+  createStudent,
+  createSubject,
+  deleteStudent,
+  findNextLesson,
+  jumpToLesson,
+  positionOf,
+  renameClass,
+  renameStudent,
+  unAdvanceProgress,
+  upsertProgressReview,
+  upsertProgressStep,
+  type BulkAdvanceEntry,
+} from '../db'
 import { useCarouselDrag } from './useCarouselDrag'
 import { ProgressCell } from './ProgressCell'
 import { InlineAddCard } from './InlineAddCard'
+import { InlineRenameField } from './InlineRenameField'
+import { ContextMenu } from './ContextMenu'
+import { SubjectNameLabel } from './SubjectNameLabel'
 import { SubjectReorder } from './SubjectReorder'
 import { SubjectPickerModal } from './SubjectPickerModal'
+import { LessonPickerModal } from './LessonPickerModal'
+import { RemoveStudentDialog } from './RemoveStudentDialog'
 import './ClassBoard.css'
 
 const PANEL_GAP = 24
@@ -77,6 +97,192 @@ function AddSubjectCard({ classId, position }: AddSubjectCardProps) {
   )
 }
 
+interface AddStudentCardProps {
+  classId: string
+  position: number
+}
+
+/** Trailing "+" card for adding a student to the roster, per #78. Mirrors AddSubjectCard exactly: calls createStudent directly, clears/collapses on success. */
+function AddStudentCard({ classId, position }: AddStudentCardProps) {
+  const [name, setName] = useState('')
+  const [submitting, setSubmitting] = useState(false)
+
+  return (
+    <InlineAddCard addLabel="Add student" className="class-board__add-student-card">
+      {({ collapse }) => {
+        async function handleSubmit(event: FormEvent) {
+          event.preventDefault()
+          const trimmed = name.trim()
+          if (trimmed === '' || submitting) return
+          setSubmitting(true)
+          await createStudent({ class_id: classId, name: trimmed, position })
+          setSubmitting(false)
+          setName('')
+          collapse()
+        }
+
+        return (
+          <form className="inline-add-card__form" onSubmit={handleSubmit}>
+            <label htmlFor="new-student-name">Student name</label>
+            <input
+              id="new-student-name"
+              value={name}
+              onChange={(event) => setName(event.target.value)}
+              placeholder="e.g. Emily"
+              autoFocus
+            />
+            <div className="inline-add-card__actions">
+              <button
+                type="button"
+                onClick={() => {
+                  setName('')
+                  collapse()
+                }}
+              >
+                Cancel
+              </button>
+              <button type="submit" disabled={submitting || name.trim() === ''}>
+                Add
+              </button>
+            </div>
+          </form>
+        )
+      }}
+    </InlineAddCard>
+  )
+}
+
+interface StudentRosterRowProps {
+  student: StudentRow
+  reviewCount: number
+  onRequestRemove: (student: StudentRow) => void
+  onNavigate: (studentId: string) => void
+}
+
+/**
+ * One roster row: avatar, name, review-flag count, and (per #78, ADR-0006) a
+ * right-click menu offering "Remove student", now joined by "Rename
+ * student" (#33) -> InlineRenameField, per ADR-0003. Owns its own menu
+ * open/closed + edit-mode state independently, the same way each
+ * ProgressCell scopes its own menu state -- the row only reports the
+ * removal request up to ClassBoard, which owns the confirmation dialog;
+ * renaming, being non-destructive, is handled entirely within the row.
+ *
+ * Per #108, left-clicking the row (outside inline-rename mode) reports a
+ * navigate-to-Student-Summary request the same way. That click handler
+ * lives on an inner wrapper around just the avatar/name/review-count --
+ * not the outer div -- so it doesn't sit as an ancestor of the ContextMenu
+ * markup rendered alongside it; a click on "Rename student"/"Remove
+ * student" would otherwise bubble into it and fire navigation too.
+ */
+function StudentRosterRow({ student, reviewCount, onRequestRemove, onNavigate }: StudentRosterRowProps) {
+  const [menuPosition, setMenuPosition] = useState<{ x: number; y: number } | null>(null)
+  const [editing, setEditing] = useState(false)
+
+  return (
+    <div
+      className="class-board__student"
+      onContextMenu={(event) => {
+        if (editing) return
+        event.preventDefault()
+        setMenuPosition({ x: event.clientX, y: event.clientY })
+      }}
+    >
+      <div
+        className="class-board__student-clickable"
+        onClick={() => {
+          if (editing) return
+          onNavigate(student.id)
+        }}
+      >
+        <span className="class-board__student-avatar">{student.name[0]}</span>
+        <div>
+          <div className="class-board__student-name">
+            {editing ? (
+              <InlineRenameField
+                ariaLabel="Student name"
+                initialValue={student.name}
+                onSubmit={async (trimmed) => {
+                  await renameStudent(student.id, trimmed)
+                  setEditing(false)
+                }}
+                onCancel={() => setEditing(false)}
+              />
+            ) : (
+              student.name
+            )}
+          </div>
+          {reviewCount > 0 && <div className="class-board__review-count">{reviewCount} flagged for review</div>}
+        </div>
+      </div>
+      {menuPosition && (
+        <ContextMenu
+          x={menuPosition.x}
+          y={menuPosition.y}
+          onClose={() => setMenuPosition(null)}
+          items={[
+            {
+              label: 'Rename student',
+              onSelect: () => setEditing(true),
+            },
+            {
+              label: 'Remove student',
+              onSelect: () => onRequestRemove(student),
+            },
+          ]}
+        />
+      )}
+    </div>
+  )
+}
+
+/**
+ * The class-board header's class-name heading -- right-click -> "Rename
+ * class" -> InlineRenameField, per #33/ADR-0006/ADR-0003. Owns its own
+ * menu/edit state, the same per-element pattern as StudentRosterRow and
+ * ProgressCell. Used in both the zero-subjects empty state and the full
+ * board header, so renaming works regardless of whether any subject exists
+ * yet.
+ */
+function ClassNameHeading({ classRow }: { classRow: ClassRow }) {
+  const [menuPosition, setMenuPosition] = useState<{ x: number; y: number } | null>(null)
+  const [editing, setEditing] = useState(false)
+
+  return (
+    <>
+      <h1
+        onContextMenu={(event) => {
+          if (editing) return
+          event.preventDefault()
+          setMenuPosition({ x: event.clientX, y: event.clientY })
+        }}
+      >
+        {editing ? (
+          <InlineRenameField
+            ariaLabel="Class name"
+            initialValue={classRow.name}
+            onSubmit={async (trimmed) => {
+              await renameClass(classRow.id, trimmed)
+              setEditing(false)
+            }}
+            onCancel={() => setEditing(false)}
+          />
+        ) : (
+          classRow.name
+        )}
+      </h1>
+      {menuPosition && (
+        <ContextMenu
+          x={menuPosition.x}
+          y={menuPosition.y}
+          onClose={() => setMenuPosition(null)}
+          items={[{ label: 'Rename class', onSelect: () => setEditing(true) }]}
+        />
+      )}
+    </>
+  )
+}
+
 interface ClassBoardProps {
   classRow: ClassRow
   subjects: SubjectRow[]
@@ -87,6 +293,7 @@ interface ClassBoardProps {
   onSubjectChange: (subjectId: string) => void
   onCurriculumNavigate: (subjectId: string) => void
   onReportNavigate: () => void
+  onStudentNavigate: (studentId: string) => void
 }
 
 /**
@@ -106,21 +313,27 @@ export function ClassBoard({
   onSubjectChange,
   onCurriculumNavigate,
   onReportNavigate,
+  onStudentNavigate,
 }: ClassBoardProps) {
   const wrapRef = useRef<HTMLDivElement>(null)
-  const [panelWidth, setPanelWidth] = useState(420)
+  const [panelWidth, setPanelWidth] = useState(520)
   const [containerWidth, setContainerWidth] = useState(0)
   const panelRefs = useRef(new Map<string, HTMLDivElement>())
   const panelRects = useRef(new Map<string, DOMRect>())
   const [bookMenuOpen, setBookMenuOpen] = useState(false)
   const [pickerOpen, setPickerOpen] = useState(false)
+  const [bulkUndo, setBulkUndo] = useState<{ subjectId: string; entries: BulkAdvanceEntry[] } | null>(null)
+  const [jumpPickerRequest, setJumpPickerRequest] = useState<{ studentId: string; subjectId: string } | null>(
+    null,
+  )
+  const [removeStudentRequest, setRemoveStudentRequest] = useState<StudentRow | null>(null)
 
   useEffect(() => {
     const el = wrapRef.current
     if (!el) return
     const observer = new ResizeObserver(([entry]) => {
       setContainerWidth(entry.contentRect.width)
-      setPanelWidth(Math.min(460, entry.contentRect.width * 0.62))
+      setPanelWidth(Math.min(575, entry.contentRect.width * 0.62))
     })
     observer.observe(el)
     return () => observer.disconnect()
@@ -195,20 +408,99 @@ export function ClassBoard({
 
   async function handleAdvance(studentId: string, subjectId: string) {
     await advanceProgress(studentId, subjectId)
+    if (bulkUndo?.subjectId === subjectId) {
+      setBulkUndo(null)
+    }
+  }
+
+  async function handleUnAdvance(studentId: string, subjectId: string) {
+    await unAdvanceProgress(studentId, subjectId)
+    if (bulkUndo?.subjectId === subjectId) {
+      setBulkUndo(null)
+    }
   }
 
   async function handleToggleReview(studentId: string, subjectId: string) {
     const current = progressByKey.get(progressKey(studentId, subjectId))
     await upsertProgressReview(studentId, subjectId, !current?.review)
+    if (bulkUndo?.subjectId === subjectId) {
+      setBulkUndo(null)
+    }
   }
+
+  async function handleBulkAdvance(subjectId: string) {
+    const entries = await bulkAdvanceProgress(
+      students.map((s) => s.id),
+      subjectId,
+    )
+    setBulkUndo(entries.length > 0 ? { subjectId, entries } : null)
+  }
+
+  async function handleUndoBulkAdvance() {
+    if (!bulkUndo) return
+    const { subjectId, entries } = bulkUndo
+    for (const entry of entries) {
+      await upsertProgressStep(entry.studentId, subjectId, entry.previous)
+    }
+    setBulkUndo(null)
+  }
+
+  async function handleJumpToLesson(studentId: string, subjectId: string, lesson: LessonRow) {
+    await jumpToLesson(studentId, subjectId, lesson)
+    if (bulkUndo?.subjectId === subjectId) {
+      setBulkUndo(null)
+    }
+    setJumpPickerRequest(null)
+  }
+
+  async function handleRemoveStudent(studentId: string) {
+    await deleteStudent(studentId)
+    setRemoveStudentRequest(null)
+  }
+
+  // Shared between the zero-subjects empty state and the full board, per
+  // #78: a teacher can build their roster before adding any subject, so
+  // setup order between students and subjects isn't forced.
+  const studentsPanel = (
+    <div className="class-board__students">
+      {students.map((student) => {
+        const reviewCount = subjects.filter(
+          (subject) => progressByKey.get(progressKey(student.id, subject.id))?.review,
+        ).length
+        return (
+          <StudentRosterRow
+            key={student.id}
+            student={student}
+            reviewCount={reviewCount}
+            onRequestRemove={setRemoveStudentRequest}
+            onNavigate={onStudentNavigate}
+          />
+        )
+      })}
+      {students.length === 0 && <p className="class-board__empty-message">No students yet.</p>}
+      <AddStudentCard classId={classRow.id} position={students.length} />
+    </div>
+  )
+
+  const removeStudentDialog = removeStudentRequest && (
+    <RemoveStudentDialog
+      student={removeStudentRequest}
+      onConfirm={() => void handleRemoveStudent(removeStudentRequest.id)}
+      onClose={() => setRemoveStudentRequest(null)}
+    />
+  )
 
   if (subjects.length === 0) {
     return (
       <div className="class-board class-board--empty">
         <header className="class-board__header">
-          <h1>{classRow.name}</h1>
+          <ClassNameHeading classRow={classRow} />
         </header>
-        <AddSubjectCard classId={classRow.id} position={0} />
+        <div className="class-board__empty-body">
+          {studentsPanel}
+          <AddSubjectCard classId={classRow.id} position={0} />
+        </div>
+        {removeStudentDialog}
       </div>
     )
   }
@@ -217,7 +509,7 @@ export function ClassBoard({
     <div className="class-board">
       <header className="class-board__header">
         <div className="class-board__header-row">
-          <h1>{classRow.name}</h1>
+          <ClassNameHeading classRow={classRow} />
           <div className="class-board__book">
             <button
               type="button"
@@ -237,7 +529,7 @@ export function ClassBoard({
                     setPickerOpen(true)
                   }}
                 >
-                  Add lessons
+                  Curriculum Page
                 </button>
                 <button
                   type="button"
@@ -265,26 +557,26 @@ export function ClassBoard({
           onClose={() => setPickerOpen(false)}
         />
       )}
+      {jumpPickerRequest &&
+        (() => {
+          const student = students.find((s) => s.id === jumpPickerRequest.studentId)
+          const subject = subjects.find((s) => s.id === jumpPickerRequest.subjectId)
+          if (!student || !subject) return null
+          const subjectLessons = lessons.filter((l) => l.subject_id === subject.id)
+          const studentProgress = progressByKey.get(progressKey(student.id, subject.id))
+          return (
+            <LessonPickerModal
+              studentName={student.name}
+              lessons={subjectLessons}
+              currentPosition={positionOf(studentProgress)}
+              onSelectLesson={(lesson) => void handleJumpToLesson(student.id, subject.id, lesson)}
+              onClose={() => setJumpPickerRequest(null)}
+            />
+          )
+        })()}
+      {removeStudentDialog}
       <div className="class-board__body">
-        <div className="class-board__students">
-          {students.map((student) => {
-            const reviewCount = subjects.filter(
-              (subject) => progressByKey.get(progressKey(student.id, subject.id))?.review,
-            ).length
-            return (
-              <div key={student.id} className="class-board__student">
-                <span className="class-board__student-avatar">{student.name[0]}</span>
-                <div>
-                  <div className="class-board__student-name">{student.name}</div>
-                  {reviewCount > 0 && (
-                    <div className="class-board__review-count">{reviewCount} flagged for review</div>
-                  )}
-                </div>
-              </div>
-            )
-          })}
-          {students.length === 0 && <p className="class-board__empty-message">No students yet.</p>}
-        </div>
+        {studentsPanel}
 
         <div ref={wrapRef} className="class-board__carousel-wrap">
           {index > 0 && (
@@ -317,7 +609,30 @@ export function ClassBoard({
                   className="class-board__panel"
                   style={{ width: panelWidth, marginRight: PANEL_GAP, opacity: i === index ? 1 : 0.45 }}
                 >
-                  <div className="class-board__panel-header">{subject.name}</div>
+                  <div className="class-board__panel-header">
+                    <SubjectNameLabel subject={subject} />
+                    {i === index && (
+                      <div className="class-board__bulk-advance-group">
+                        <button
+                          type="button"
+                          className="class-board__bulk-advance"
+                          onClick={() => void handleBulkAdvance(subject.id)}
+                          disabled={subjectLessons.length === 0 || students.length === 0}
+                        >
+                          Bulk Advance
+                        </button>
+                        {bulkUndo?.subjectId === subject.id && (
+                          <button
+                            type="button"
+                            className="class-board__bulk-advance-undo"
+                            onClick={() => void handleUndoBulkAdvance()}
+                          >
+                            Undo
+                          </button>
+                        )}
+                      </div>
+                    )}
+                  </div>
                   <div className="class-board__panel-body">
                     {subjectLessons.length === 0 ? (
                       <div className="class-board__panel-empty">
@@ -341,8 +656,13 @@ export function ClassBoard({
                             progress={studentProgress}
                             hasNextLesson={nextLesson !== undefined}
                             hasAnyLessons={subjectLessons.length > 0}
+                            subjectLessons={subjectLessons}
                             onAdvance={() => void handleAdvance(student.id, subject.id)}
                             onToggleReview={() => void handleToggleReview(student.id, subject.id)}
+                            onJumpToLesson={() =>
+                              setJumpPickerRequest({ studentId: student.id, subjectId: subject.id })
+                            }
+                            onUnAdvance={() => void handleUnAdvance(student.id, subject.id)}
                           />
                         )
                       })

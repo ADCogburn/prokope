@@ -64,6 +64,7 @@ export function ClassBoardRoute() {
       onSubjectChange={(nextSubjectId) => navigate(`/class/${classId}/subject/${nextSubjectId}`, { replace: true })}
       onCurriculumNavigate={(nextSubjectId) => navigate(`/class/${classId}/subject/${nextSubjectId}/curriculum`)}
       onReportNavigate={() => navigate(`/class/${classId}/report`)}
+      onStudentNavigate={(studentId) => navigate(`/class/${classId}/student/${studentId}`)}
     />
   )
 }

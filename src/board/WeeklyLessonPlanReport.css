@@ -68,6 +68,15 @@
     padding: 0;
   }
 
+  /* Chrome/Safari suppress background colors on print by default; force
+     the header row/column's gray backgrounds to survive printing. */
+  .weekly-plan__table thead th,
+  .weekly-plan__table tbody th {
+    -webkit-print-color-adjust: exact;
+    color-adjust: exact;
+    print-color-adjust: exact;
+  }
+
   @page {
     size: letter landscape;
     margin: 1in;

@@ -34,10 +34,10 @@ export function WeeklyLessonPlanReport({ weekDates, rows }: WeeklyLessonPlanRepo
           {rows.map(({ subject, days }) => (
             <tr key={subject.id}>
               <th scope="row">{subject.name}</th>
-              {days.map(({ date, lesson }) => (
+              {days.map(({ date, lesson, skipReason }) => (
                 <td key={date.toISOString()}>
-                  <p>Lesson: {lesson && formatLessonLabel(lesson)}</p>
-                  <p>Notes: {lesson?.description}</p>
+                  <p>Lesson: {skipReason ?? (lesson && formatLessonLabel(lesson))}</p>
+                  <p>Notes: {skipReason ? undefined : lesson?.description}</p>
                 </td>
               ))}
             </tr>

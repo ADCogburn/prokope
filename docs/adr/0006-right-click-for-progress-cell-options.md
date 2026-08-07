@@ -1,0 +1,5 @@
+# Right-click, not a visible icon, triggers a Progress Cell's options menu
+
+For #44 (Jump to lesson), a Progress Cell needed a way to expose an action beyond the existing Advance button and review-flag toggle without crowding a cell that's already tight on space in the class-board grid. We considered adding another always-visible icon button per cell. We chose a right-click context menu instead: it adds zero visual weight to the default view, and it's the platform-native gesture for "more options on this thing," so it needs no onboarding.
+
+The menu itself (`ContextMenu`) is a small, generic, list-of-items component -- not hard-coded to "Jump to lesson..." -- since more right-click options are expected to land later (starting with Un-advance, #77). It suppresses the browser's native context menu, closes on selecting an item, clicking outside, or pressing Escape, and is mouse-first: no keyboard-only invocation is provided for now, since right-click itself has no keyboard equivalent to hook into cleanly.

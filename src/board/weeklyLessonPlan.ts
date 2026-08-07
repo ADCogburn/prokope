@@ -45,16 +45,45 @@ export function ordinalOfStep(lessons: LessonRow[], step: LessonPosition): numbe
 export interface WeekDayProjection {
   date: Date
   lesson: LessonRow | undefined
+  skipReason?: string
 }
 
 /**
- * Per-subject weekly projection, per #23's addendum. Monday is the rounded
- * average ordinal across every id in `studentIds` (progress rows for other
- * subjects are ignored); Tuesday-Friday each walk one lesson forward from
- * the previous day via the same "next lesson" rule the board's advance
- * control uses. Once a day walks past the subject's last lesson, every
- * remaining day that week is lessonless too (findNextLesson keeps
- * returning undefined from an undefined `current`).
+ * A same-visit, session-only adjustment to a subject's weekly projection
+ * (#84): the class didn't advance in `subjectId` on `date`, for the given
+ * `reason`. "Skip Day(s)" mode (every subject, one or more days) isn't a
+ * separate concept here -- the panel that builds these composes one
+ * exception per (subject, day) pair before calling into
+ * `buildWeeklyLessonPlan`, so this projection layer only ever deals with
+ * concrete per-subject, per-date exceptions.
+ */
+export interface SkipException {
+  subjectId: string
+  date: Date
+  reason: string
+}
+
+function isSameDate(a: Date, b: Date): boolean {
+  return a.getFullYear() === b.getFullYear() && a.getMonth() === b.getMonth() && a.getDate() === b.getDate()
+}
+
+function exceptionFor(exceptions: SkipException[], subjectId: string, date: Date): SkipException | undefined {
+  return exceptions.find((exception) => exception.subjectId === subjectId && isSameDate(exception.date, date))
+}
+
+/**
+ * Per-subject weekly projection, per #23's addendum and #84's skip
+ * exceptions. Monday is the rounded average ordinal across every id in
+ * `studentIds` (progress rows for other subjects are ignored); from there,
+ * every day in `weekDates` is walked in one uniform pass: a day with a
+ * matching exception shows the reason and doesn't consume a lesson (`current`
+ * carries forward unchanged), otherwise the day shows `current` and then
+ * advances via the same "next lesson" rule the board's advance control uses.
+ * This is what makes a skipped day's lesson shift onto the next non-skipped
+ * day "for free" -- it was never consumed. Once a day walks past the
+ * subject's last lesson, every remaining unskipped day that week is
+ * lessonless too (findNextLesson keeps returning undefined from an
+ * undefined `current`).
  */
 export function projectSubjectWeek(
   lessons: LessonRow[],
@@ -62,11 +91,8 @@ export function projectSubjectWeek(
   progressRows: ProgressRow[],
   studentIds: string[],
   weekDates: Date[],
+  exceptions: SkipException[] = [],
 ): WeekDayProjection[] {
-  if (lessons.length === 0) {
-    return weekDates.map((date) => ({ date, lesson: undefined }))
-  }
-
   const progressByStudent = new Map(
     progressRows.filter((row) => row.subject_id === subjectId).map((row) => [row.student_id, row]),
   )
@@ -74,15 +100,19 @@ export function projectSubjectWeek(
   const avgOrdinal = ordinals.length === 0 ? -1 : ordinals.reduce((sum, o) => sum + o, 0) / ordinals.length
   const roundedOrdinal = Math.min(Math.max(Math.round(avgOrdinal), 0), lessons.length - 1)
 
-  const monday = lessons[roundedOrdinal]
-  const days: WeekDayProjection[] = [{ date: weekDates[0], lesson: monday }]
+  let current: LessonRow | undefined = lessons[roundedOrdinal]
+  const days: WeekDayProjection[] = []
 
-  let current: LessonRow | undefined = monday
-  for (let i = 1; i < weekDates.length; i++) {
+  for (const date of weekDates) {
+    const exception = exceptionFor(exceptions, subjectId, date)
+    if (exception) {
+      days.push({ date, lesson: undefined, skipReason: exception.reason })
+      continue
+    }
+    days.push({ date, lesson: current })
     current = current
       ? findNextLesson(lessons, subjectId, { unit: current.unit, lesson_in_unit: current.lesson_in_unit })
       : undefined
-    days.push({ date: weekDates[i], lesson: current })
   }
 
   return days
@@ -98,13 +128,20 @@ export interface WeeklyLessonPlan {
   rows: WeeklyLessonPlanRow[]
 }
 
-/** Assembles a whole class's weekly lesson-plan grid, per #23's addendum. `subjects` order is preserved (already the teacher's configured position order). */
+/**
+ * Assembles a whole class's weekly lesson-plan grid, per #23's addendum.
+ * `subjects` order is preserved (already the teacher's configured position
+ * order). `exceptions` (#84) is filtered per-subject before being handed to
+ * `projectSubjectWeek`, the same filtering style already used for
+ * `progress`/`lessons`.
+ */
 export function buildWeeklyLessonPlan(
   subjects: SubjectRow[],
   lessons: LessonRow[],
   progress: ProgressRow[],
   studentIds: string[],
   referenceDate: Date,
+  exceptions: SkipException[] = [],
 ): WeeklyLessonPlan {
   const weekDates = getUpcomingWeekDates(referenceDate)
   const rows = subjects.map((subject) => ({
@@ -115,6 +152,7 @@ export function buildWeeklyLessonPlan(
       progress,
       studentIds,
       weekDates,
+      exceptions.filter((exception) => exception.subjectId === subject.id),
     ),
   }))
   return { weekDates, rows }

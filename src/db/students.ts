@@ -21,6 +21,11 @@ export async function createStudent(input: CreateStudentInput): Promise<StudentR
   return row
 }
 
+export async function getStudent(id: string): Promise<StudentRow | undefined> {
+  const row = await db.student.get(id)
+  return row && row.deleted_at === null ? row : undefined
+}
+
 export async function listStudentsForClass(classId: string): Promise<StudentRow[]> {
   const rows = await db.student.where('class_id').equals(classId).toArray()
   return rows.filter((row) => row.deleted_at === null).sort((a, b) => a.position - b.position)
@@ -39,4 +44,9 @@ export async function reorderStudents(orderedIds: string[]): Promise<void> {
 export async function deleteStudent(id: string): Promise<void> {
   const now = new Date().toISOString()
   await db.student.update(id, { deleted_at: now, updated_at: now })
+}
+
+export async function renameStudent(id: string, name: string): Promise<void> {
+  const now = new Date().toISOString()
+  await db.student.update(id, { name, updated_at: now })
 }
