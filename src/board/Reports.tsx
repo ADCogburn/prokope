@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react'
-import type { ClassRow, LessonRow, ProgressRow, StudentRow, SubjectRow } from '../db/schema'
+import type { ClassRow, LessonRow, ProgressRow, ReviewFlagRow, StudentRow, SubjectRow } from '../db/schema'
 import { buildStudentReport } from './studentReportData'
 import { buildWeeklyLessonPlan } from './weeklyLessonPlan'
 import { SkipLessonsPanel, type SkipEntry } from './SkipLessonsPanel'
@@ -16,6 +16,7 @@ interface ReportsProps {
   students: StudentRow[]
   lessons: LessonRow[]
   progress: ProgressRow[]
+  reviewFlags: ReviewFlagRow[]
   onBack: () => void
 }
 
@@ -27,7 +28,7 @@ interface ReportsProps {
  * page. Printing is left to the browser's own print (Ctrl/Cmd+P covers it
  * too; the button is a discoverable affordance, not the only way in).
  */
-export function Reports({ classRow, subjects, students, lessons, progress, onBack }: ReportsProps) {
+export function Reports({ classRow, subjects, students, lessons, progress, reviewFlags, onBack }: ReportsProps) {
   const [reportType, setReportType] = useState<ReportType>('per-student')
   const [studentSelection, setStudentSelection] = useState<string>(ALL_STUDENTS)
   const [skipEntries, setSkipEntries] = useState<SkipEntry[]>([])
@@ -115,7 +116,7 @@ export function Reports({ classRow, subjects, students, lessons, progress, onBac
           ) : (
             selectedStudents.map((student) => (
               <div key={student.id} className="reports__page">
-                <StudentReport data={buildStudentReport(student, subjects, lessons, progress)} />
+                <StudentReport data={buildStudentReport(student, subjects, lessons, progress, reviewFlags)} />
               </div>
             ))
           )

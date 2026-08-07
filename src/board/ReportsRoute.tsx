@@ -1,7 +1,13 @@
 import { useMemo } from 'react'
 import { Navigate, useNavigate, useParams } from 'react-router-dom'
 import { useLiveQuery } from 'dexie-react-hooks'
-import { listLessonsForSubjects, listProgressForStudents, listStudentsForClass, listSubjectsForClass } from '../db'
+import {
+  listLessonsForSubjects,
+  listProgressForStudents,
+  listReviewFlagsForStudents,
+  listStudentsForClass,
+  listSubjectsForClass,
+} from '../db'
 import { Reports } from './Reports'
 import { useClassLookup } from './useClassLookup'
 
@@ -24,6 +30,7 @@ export function ReportsRoute() {
   const subjectIds = useMemo(() => (subjects ?? []).map((s) => s.id), [subjects])
 
   const progress = useLiveQuery(() => listProgressForStudents(studentIds), [studentIds])
+  const reviewFlags = useLiveQuery(() => listReviewFlagsForStudents(studentIds), [studentIds])
   const lessons = useLiveQuery(() => listLessonsForSubjects(subjectIds), [subjectIds])
 
   if (classStatus === 'loading') {
@@ -38,7 +45,13 @@ export function ReportsRoute() {
     return <Navigate to="/" replace />
   }
 
-  if (subjects === undefined || students === undefined || progress === undefined || lessons === undefined) {
+  if (
+    subjects === undefined ||
+    students === undefined ||
+    progress === undefined ||
+    reviewFlags === undefined ||
+    lessons === undefined
+  ) {
     return (
       <div role="status">
         <p>Loading…</p>
@@ -53,6 +66,7 @@ export function ReportsRoute() {
       students={students}
       lessons={lessons}
       progress={progress}
+      reviewFlags={reviewFlags}
       onBack={() => navigate(`/class/${classId}`)}
     />
   )

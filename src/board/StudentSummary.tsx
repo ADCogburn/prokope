@@ -1,4 +1,4 @@
-import type { ClassRow, LessonRow, ProgressRow, StudentRow, SubjectRow } from '../db/schema'
+import type { ClassRow, LessonRow, ProgressRow, ReviewFlagRow, StudentRow, SubjectRow } from '../db/schema'
 import { buildStudentSummary } from './studentSummaryData'
 import './StudentSummary.css'
 
@@ -8,6 +8,7 @@ interface StudentSummaryProps {
   subjects: SubjectRow[]
   lessons: LessonRow[]
   progress: ProgressRow[]
+  reviewFlags: ReviewFlagRow[]
   onBack: () => void
 }
 
@@ -18,8 +19,16 @@ interface StudentSummaryProps {
  * entry in CONTEXT.md and ADR-0009 for why this has its own data builder
  * (buildStudentSummary) rather than reusing the printable report's.
  */
-export function StudentSummary({ classRow, student, subjects, lessons, progress, onBack }: StudentSummaryProps) {
-  const summary = buildStudentSummary(student, subjects, lessons, progress)
+export function StudentSummary({
+  classRow,
+  student,
+  subjects,
+  lessons,
+  progress,
+  reviewFlags,
+  onBack,
+}: StudentSummaryProps) {
+  const summary = buildStudentSummary(student, subjects, lessons, progress, reviewFlags)
 
   return (
     <div className="student-summary">

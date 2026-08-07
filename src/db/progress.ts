@@ -32,14 +32,9 @@ export async function getProgress(
 
 /**
  * Writes progress.step and stamps a fresh step_hlc/step_client_id pair.
- * Never touches review/review_hlc/review_client_id on an existing row --
- * a concurrent edit to one field must not clobber the other's stamp.
- *
- * The one exception is creating a brand-new (student_id, subject_id) row:
- * review/review_hlc/review_client_id are non-nullable (mirroring Postgres),
- * so the initial `review: false` default is itself stamped with this same
- * write's HLC/client_id, same as any other first-write default in an
- * LWW-register scheme.
+ * Progress's only remaining field since #152/ADR-0011 moved review onto its
+ * own ReviewFlag entity, keyed by (student, lesson) instead of
+ * (student, subject) -- see src/db/reviewFlags.ts.
  */
 export async function upsertProgressStep(
   studentId: string,
@@ -68,56 +63,6 @@ export async function upsertProgressStep(
         step_lesson_in_unit: step.lesson_in_unit,
         step_hlc: hlc,
         step_client_id: clientId,
-        review: false,
-        review_hlc: hlc,
-        review_client_id: clientId,
-        updated_at: now,
-      }
-
-  await db.progress.put(row)
-  return row
-}
-
-/**
- * Writes progress.review and stamps a fresh review_hlc/review_client_id
- * pair. Never touches step/step_hlc/step_client_id on an existing row --
- * a concurrent edit to one field must not clobber the other's stamp.
- *
- * The one exception is creating a brand-new (student_id, subject_id) row:
- * step/step_hlc/step_client_id are non-nullable (mirroring Postgres), so
- * the initial `step: {unit: 0, lesson_in_unit: 0}` default is itself
- * stamped with this same write's HLC/client_id, same as any other
- * first-write default in an LWW-register scheme.
- */
-export async function upsertProgressReview(
-  studentId: string,
-  subjectId: string,
-  review: boolean,
-): Promise<ProgressRow> {
-  const now = new Date().toISOString()
-  const hlc = nextHlc()
-  const clientId = getClientId()
-  const existing = await findProgressRow(studentId, subjectId)
-
-  const row: ProgressRow = existing
-    ? {
-        ...existing,
-        review,
-        review_hlc: hlc,
-        review_client_id: clientId,
-        updated_at: now,
-      }
-    : {
-        id: crypto.randomUUID(),
-        student_id: studentId,
-        subject_id: subjectId,
-        step_unit: 0,
-        step_lesson_in_unit: 0,
-        step_hlc: hlc,
-        step_client_id: clientId,
-        review,
-        review_hlc: hlc,
-        review_client_id: clientId,
         updated_at: now,
       }
 
@@ -190,9 +135,8 @@ export async function unAdvanceProgress(
  * "Jump to lesson..."), forward or backward, regardless of how many lessons
  * away it is from their current position. A thin wrapper around
  * upsertProgressStep, which already accepts any {unit, lesson_in_unit} pair
- * with no directional constraint and already leaves
- * review/review_hlc/review_client_id untouched -- mirrors how
- * advanceProgress wraps the same primitive.
+ * with no directional constraint -- mirrors how advanceProgress wraps the
+ * same primitive.
  */
 export async function jumpToLesson(
   studentId: string,
