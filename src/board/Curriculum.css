@@ -18,29 +18,37 @@
 
 .curriculum__header-main {
   min-width: 0;
+  overflow: hidden;
 
   p {
     margin: 0;
     font-size: 14px;
     color: var(--text);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
   }
 }
 
 .curriculum__header-add {
   flex-shrink: 0;
   min-height: 40px;
-  min-width: 0;
   padding: 0 16px;
 }
 
 .curriculum__title-row {
   display: flex;
   align-items: center;
+  min-width: 0;
   margin-bottom: 4px;
 
   h1 {
+    min-width: 0;
     margin: 0;
     font-size: 20px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
   }
 }
 
@@ -74,7 +82,7 @@
 .curriculum__units {
   display: flex;
   align-items: stretch;
-  height: 100%;
+  max-height: 100%;
   gap: 16px;
 }
 
