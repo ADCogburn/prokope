@@ -37,6 +37,10 @@
   margin-left: 20px;
 }
 
+.curriculum__save-template-card {
+  flex-shrink: 0;
+}
+
 .curriculum__title-row {
   display: flex;
   align-items: center;

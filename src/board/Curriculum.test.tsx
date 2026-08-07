@@ -963,4 +963,127 @@ describe('Curriculum', () => {
     expect(document.querySelectorAll('.curriculum__unit-column')).toHaveLength(2)
     expect(screen.queryByRole('button', { name: 'Next unit' })).not.toBeInTheDocument()
   })
+
+  it('shows a collapsed "Save as Template" affordance that expands into a form on click', async () => {
+    const classRow = await createClass({ user_id: 'user-1', name: 'Homeroom' })
+    const subject = await createSubject({ class_id: classRow.id, name: 'Math', position: 0 })
+
+    renderCurriculum({ classRow, subject, lessons: [] })
+
+    expect(screen.getByRole('button', { name: '+ Save as Template' })).toBeInTheDocument()
+    expect(screen.queryByLabelText('Template name')).not.toBeInTheDocument()
+
+    fireEvent.click(screen.getByRole('button', { name: '+ Save as Template' }))
+
+    expect(screen.getByLabelText('Template name')).toBeInTheDocument()
+  })
+
+  it('pre-fills the Save as Template name field with the subject\'s current name', async () => {
+    const classRow = await createClass({ user_id: 'user-1', name: 'Homeroom' })
+    const subject = await createSubject({ class_id: classRow.id, name: 'Math', position: 0 })
+
+    renderCurriculum({ classRow, subject, lessons: [] })
+
+    fireEvent.click(screen.getByRole('button', { name: '+ Save as Template' }))
+
+    expect(screen.getByLabelText('Template name')).toHaveValue('Math')
+  })
+
+  it('submitting Save as Template with the prefilled name persists a subject_template row and collapses the card', async () => {
+    const classRow = await createClass({ user_id: 'user-1', name: 'Homeroom' })
+    const subject = await createSubject({ class_id: classRow.id, name: 'Math', position: 0 })
+    const lesson = await createLesson({
+      subject_id: subject.id,
+      unit: 1,
+      lesson_in_unit: 1,
+      title: 'Fractions',
+      description: 'Intro to fractions',
+    })
+
+    renderCurriculum({ classRow, subject, lessons: [lesson] })
+
+    fireEvent.click(screen.getByRole('button', { name: '+ Save as Template' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Save' }))
+
+    await waitFor(async () => {
+      const templates = await db.subject_template.where('user_id').equals('user-1').toArray()
+      expect(templates).toHaveLength(1)
+      expect(templates[0].name).toBe('Math')
+    })
+
+    const templates = await db.subject_template.where('user_id').equals('user-1').toArray()
+    const templateLessons = await db.subject_template_lesson
+      .where('subject_template_id')
+      .equals(templates[0].id)
+      .toArray()
+    expect(templateLessons).toHaveLength(1)
+    expect(templateLessons[0]).toMatchObject({ unit: 1, lesson_in_unit: 1, title: 'Fractions' })
+
+    expect(screen.queryByLabelText('Template name')).not.toBeInTheDocument()
+    expect(screen.getByRole('button', { name: '+ Save as Template' })).toBeInTheDocument()
+  })
+
+  it('submitting Save as Template with an edited name persists the edited name', async () => {
+    const classRow = await createClass({ user_id: 'user-1', name: 'Homeroom' })
+    const subject = await createSubject({ class_id: classRow.id, name: 'Math', position: 0 })
+
+    renderCurriculum({ classRow, subject, lessons: [] })
+
+    fireEvent.click(screen.getByRole('button', { name: '+ Save as Template' }))
+    fireEvent.change(screen.getByLabelText('Template name'), {
+      target: { value: 'Math-For-Fun 3rd Grade - Fall Semester' },
+    })
+    fireEvent.click(screen.getByRole('button', { name: 'Save' }))
+
+    await waitFor(async () => {
+      const templates = await db.subject_template.where('user_id').equals('user-1').toArray()
+      expect(templates).toHaveLength(1)
+      expect(templates[0].name).toBe('Math-For-Fun 3rd Grade - Fall Semester')
+    })
+  })
+
+  it('does not affect the live subject or its lessons when Save as Template is submitted', async () => {
+    const classRow = await createClass({ user_id: 'user-1', name: 'Homeroom' })
+    const subject = await createSubject({ class_id: classRow.id, name: 'Math', position: 0 })
+    const lesson = await createLesson({
+      subject_id: subject.id,
+      unit: 1,
+      lesson_in_unit: 1,
+      title: 'Fractions',
+      description: '',
+    })
+
+    renderCurriculum({ classRow, subject, lessons: [lesson] })
+
+    fireEvent.click(screen.getByRole('button', { name: '+ Save as Template' }))
+    fireEvent.change(screen.getByLabelText('Template name'), { target: { value: 'Fall Template' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Save' }))
+
+    await waitFor(async () => {
+      const templates = await db.subject_template.where('user_id').equals('user-1').toArray()
+      expect(templates).toHaveLength(1)
+    })
+
+    const subjectRow = await db.subject.get(subject.id)
+    expect(subjectRow?.name).toBe('Math')
+    const lessonRow = await db.lesson.get(lesson.id)
+    expect(lessonRow?.title).toBe('Fractions')
+    expect(lessonRow?.deleted_at).toBeNull()
+  })
+
+  it('cancelling Save as Template collapses the card without persisting a template', async () => {
+    const classRow = await createClass({ user_id: 'user-1', name: 'Homeroom' })
+    const subject = await createSubject({ class_id: classRow.id, name: 'Math', position: 0 })
+
+    renderCurriculum({ classRow, subject, lessons: [] })
+
+    fireEvent.click(screen.getByRole('button', { name: '+ Save as Template' }))
+    fireEvent.change(screen.getByLabelText('Template name'), { target: { value: 'Changed' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Cancel' }))
+
+    expect(screen.queryByLabelText('Template name')).not.toBeInTheDocument()
+    expect(screen.getByRole('button', { name: '+ Save as Template' })).toBeInTheDocument()
+    const templates = await db.subject_template.where('user_id').equals('user-1').toArray()
+    expect(templates).toHaveLength(0)
+  })
 })
