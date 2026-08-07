@@ -1,4 +1,13 @@
-import { db, type ClassRow, type SubjectRow, type LessonRow, type StudentRow, type ProgressRow } from './schema'
+import {
+  db,
+  type ClassRow,
+  type SubjectRow,
+  type LessonRow,
+  type StudentRow,
+  type ProgressRow,
+  type SubjectTemplateRow,
+  type SubjectTemplateLessonRow,
+} from './schema'
 
 export interface SyncSnapshot {
   classes: ClassRow[]
@@ -6,6 +15,8 @@ export interface SyncSnapshot {
   lessons: LessonRow[]
   students: StudentRow[]
   progress: ProgressRow[]
+  subject_templates: SubjectTemplateRow[]
+  subject_template_lessons: SubjectTemplateLessonRow[]
 }
 
 /**
@@ -19,19 +30,24 @@ export interface SyncSnapshot {
  */
 export async function listRowsUpdatedSince(since: string | null): Promise<SyncSnapshot> {
   const isNewer = (row: { updated_at: string }) => since === null || row.updated_at > since
-  const [classes, subjects, lessons, students, progress] = await Promise.all([
-    db.class.toArray(),
-    db.subject.toArray(),
-    db.lesson.toArray(),
-    db.student.toArray(),
-    db.progress.toArray(),
-  ])
+  const [classes, subjects, lessons, students, progress, subjectTemplates, subjectTemplateLessons] =
+    await Promise.all([
+      db.class.toArray(),
+      db.subject.toArray(),
+      db.lesson.toArray(),
+      db.student.toArray(),
+      db.progress.toArray(),
+      db.subject_template.toArray(),
+      db.subject_template_lesson.toArray(),
+    ])
   return {
     classes: classes.filter(isNewer),
     subjects: subjects.filter(isNewer),
     lessons: lessons.filter(isNewer),
     students: students.filter(isNewer),
     progress: progress.filter(isNewer),
+    subject_templates: subjectTemplates.filter(isNewer),
+    subject_template_lessons: subjectTemplateLessons.filter(isNewer),
   }
 }
 
@@ -51,6 +67,15 @@ export const getRawProgressByPair = (studentId: string, subjectId: string): Prom
   db.progress.where('[student_id+subject_id]').equals([studentId, subjectId]).first()
 export const putRawProgress = (row: ProgressRow): Promise<string> => db.progress.put(row)
 export const deleteRawProgress = (id: string): Promise<void> => db.progress.delete(id)
+
+// #165: Template rows are create-only -- no rename/delete path exists (see
+// SubjectTemplateRow's doc comment in schema.ts) -- so there's no getRaw/
+// deleteRaw pair to mirror class/subject/lesson/student's; a remote row is
+// simply upserted-by-id like theirs, never merged by a natural key like
+// progress.
+export const putRawSubjectTemplate = (row: SubjectTemplateRow): Promise<string> => db.subject_template.put(row)
+export const putRawSubjectTemplateLesson = (row: SubjectTemplateLessonRow): Promise<string> =>
+  db.subject_template_lesson.put(row)
 
 // Wipes every local table. Called on account switch (see resetLocalStore in
 // sync/engine.ts) so a previous session's rows -- tagged with a user_id the

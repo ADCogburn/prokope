@@ -13,6 +13,8 @@ public class SchemaMigrationTests(DatabaseFixture fixture) : IClassFixture<Datab
     [InlineData("lesson")]
     [InlineData("student")]
     [InlineData("progress")]
+    [InlineData("subject_template")]
+    [InlineData("subject_template_lesson")]
     public async Task Table_exists(string table)
     {
         Assert.True(await _schema.TableExistsAsync(table), $"Expected table '{table}' to exist.");
@@ -108,6 +110,35 @@ public class SchemaMigrationTests(DatabaseFixture fixture) : IClassFixture<Datab
     }
 
     [Fact]
+    public async Task Subject_template_has_expected_columns()
+    {
+        var columns = await _schema.GetColumnsAsync("subject_template");
+
+        AssertColumn(columns, "id", "uuid", nullable: false);
+        AssertColumn(columns, "user_id", "uuid", nullable: false);
+        AssertColumn(columns, "name", "text", nullable: false);
+        AssertColumn(columns, "created_at", "timestamp with time zone", nullable: false);
+        AssertColumn(columns, "updated_at", "timestamp with time zone", nullable: false);
+        Assert.False(columns.ContainsKey("deleted_at"), "subject_template should have no deleted_at -- Templates are immutable/create-only per #147.");
+    }
+
+    [Fact]
+    public async Task Subject_template_lesson_has_expected_columns()
+    {
+        var columns = await _schema.GetColumnsAsync("subject_template_lesson");
+
+        AssertColumn(columns, "id", "uuid", nullable: false);
+        AssertColumn(columns, "subject_template_id", "uuid", nullable: false);
+        AssertColumn(columns, "unit", "integer", nullable: false);
+        AssertColumn(columns, "lesson_in_unit", "integer", nullable: false);
+        AssertColumn(columns, "title", "text", nullable: false);
+        AssertColumn(columns, "description", "text", nullable: false);
+        AssertColumn(columns, "created_at", "timestamp with time zone", nullable: false);
+        AssertColumn(columns, "updated_at", "timestamp with time zone", nullable: false);
+        Assert.False(columns.ContainsKey("deleted_at"), "subject_template_lesson should have no deleted_at -- Templates are immutable/create-only per #147.");
+    }
+
+    [Fact]
     public async Task Lesson_is_unique_on_subject_unit_lesson_in_unit()
     {
         var uniqueSets = await _schema.GetUniqueConstraintColumnSetsAsync("lesson");
@@ -132,6 +163,8 @@ public class SchemaMigrationTests(DatabaseFixture fixture) : IClassFixture<Datab
     [InlineData("student", "class_id", "class")]
     [InlineData("progress", "student_id", "student")]
     [InlineData("progress", "subject_id", "subject")]
+    [InlineData("subject_template", "user_id", "users")]
+    [InlineData("subject_template_lesson", "subject_template_id", "subject_template")]
     public async Task Foreign_key_resolves_to_parent_table(string table, string column, string expectedParentTable)
     {
         var actualParentTable = await _schema.GetForeignKeyTargetTableAsync(table, column);

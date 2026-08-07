@@ -1,4 +1,12 @@
-export type { ClassRow, SubjectRow, LessonRow, StudentRow, ProgressRow } from './schema'
+export type {
+  ClassRow,
+  SubjectRow,
+  LessonRow,
+  StudentRow,
+  ProgressRow,
+  SubjectTemplateRow,
+  SubjectTemplateLessonRow,
+} from './schema'
 
 export { createClass, getClass, getClassForUser, deleteClass, renameClass } from './classes'
 export type { CreateClassInput } from './classes'
@@ -47,3 +55,5 @@ export {
 export type { ProgressStep, BulkAdvanceEntry } from './progress'
 
 export { getClientId } from './clientId'
+
+export { saveSubjectTemplate, listSubjectTemplatesForUser, applySubjectTemplate } from './templates'

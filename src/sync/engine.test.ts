@@ -36,7 +36,15 @@ function makeProgress(overrides: Partial<ProgressRow> = {}): ProgressRow {
 }
 
 function emptyBatch() {
-  return { classes: [], subjects: [], lessons: [], students: [], progress: [] }
+  return {
+    classes: [],
+    subjects: [],
+    lessons: [],
+    students: [],
+    progress: [],
+    subject_templates: [],
+    subject_template_lessons: [],
+  }
 }
 
 function jsonResponse(body: unknown): Response {

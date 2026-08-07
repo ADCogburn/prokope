@@ -49,12 +49,38 @@ export interface ProgressRow {
   updated_at: string
 }
 
+// #165: keyed by user_id directly (not derived via a Class/Subject FK), so a
+// Template outlives its source Subject/Class. Immutable once created -- #147
+// has no rename/delete/edit path for a Template -- but `updated_at` is still
+// carried (never mutated after creation) because src/sync/engine.ts's
+// watermark computation expects every synced row to have one.
+export interface SubjectTemplateRow {
+  id: string
+  user_id: string
+  name: string
+  created_at: string
+  updated_at: string
+}
+
+export interface SubjectTemplateLessonRow {
+  id: string
+  subject_template_id: string
+  unit: number
+  lesson_in_unit: number
+  title: string
+  description: string
+  created_at: string
+  updated_at: string
+}
+
 class ProkopeDatabase extends Dexie {
   class!: EntityTable<ClassRow, 'id'>
   subject!: EntityTable<SubjectRow, 'id'>
   lesson!: EntityTable<LessonRow, 'id'>
   student!: EntityTable<StudentRow, 'id'>
   progress!: EntityTable<ProgressRow, 'id'>
+  subject_template!: EntityTable<SubjectTemplateRow, 'id'>
+  subject_template_lesson!: EntityTable<SubjectTemplateLessonRow, 'id'>
 
   constructor(name: string) {
     super(name)
@@ -74,6 +100,14 @@ class ProkopeDatabase extends Dexie {
     // migration needed.
     this.version(2).stores({
       lesson: 'id, subject_id, [subject_id+unit+lesson_in_unit]',
+    })
+    // #165: subject_template rows are looked up by owning user_id (see the
+    // interface comment above); subject_template_lesson rows are looked up
+    // by owning template. Neither table has a soft-delete or position
+    // concept, so a plain index is enough -- same shape as `class`.
+    this.version(3).stores({
+      subject_template: 'id, user_id',
+      subject_template_lesson: 'id, subject_template_id',
     })
   }
 }
