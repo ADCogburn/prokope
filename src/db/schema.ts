@@ -49,12 +49,51 @@ export interface ProgressRow {
   updated_at: string
 }
 
+// Class Templates (#168): a saved snapshot of a Class's Subjects/Lessons at
+// save time, keyed by user_id directly (no class_id -- the source Class may
+// later be renamed, edited, or deleted without affecting the template).
+// Immutable/create-only, same as #165's Subject Templates -- no deleted_at,
+// nothing ever mutates a row after creation. created_at/updated_at are still
+// carried on every row (even though updated_at never changes post-create)
+// because the sync engine's watermark math (src/sync/engine.ts's
+// maxUpdatedAt/batchWatermark) expects every synced row to have one.
+export interface ClassTemplateRow {
+  id: string
+  user_id: string
+  name: string
+  created_at: string
+  updated_at: string
+}
+
+export interface ClassTemplateSubjectRow {
+  id: string
+  class_template_id: string
+  name: string
+  position: number
+  created_at: string
+  updated_at: string
+}
+
+export interface ClassTemplateLessonRow {
+  id: string
+  class_template_subject_id: string
+  unit: number
+  lesson_in_unit: number
+  title: string
+  description: string
+  created_at: string
+  updated_at: string
+}
+
 class ProkopeDatabase extends Dexie {
   class!: EntityTable<ClassRow, 'id'>
   subject!: EntityTable<SubjectRow, 'id'>
   lesson!: EntityTable<LessonRow, 'id'>
   student!: EntityTable<StudentRow, 'id'>
   progress!: EntityTable<ProgressRow, 'id'>
+  class_template!: EntityTable<ClassTemplateRow, 'id'>
+  class_template_subject!: EntityTable<ClassTemplateSubjectRow, 'id'>
+  class_template_lesson!: EntityTable<ClassTemplateLessonRow, 'id'>
 
   constructor(name: string) {
     super(name)
@@ -74,6 +113,14 @@ class ProkopeDatabase extends Dexie {
     // migration needed.
     this.version(2).stores({
       lesson: 'id, subject_id, [subject_id+unit+lesson_in_unit]',
+    })
+    // #168: Class Templates. Simple indexes only -- these rows are
+    // immutable and create-only, so unlike class/subject/lesson there's no
+    // soft-delete or position-ordering compound key to support.
+    this.version(3).stores({
+      class_template: 'id, user_id',
+      class_template_subject: 'id, class_template_id',
+      class_template_lesson: 'id, class_template_subject_id',
     })
   }
 }

@@ -58,12 +58,44 @@ public record ProgressSyncRow(
     [property: JsonPropertyName("review_client_id")] Guid ReviewClientId,
     [property: JsonPropertyName("updated_at")] DateTimeOffset UpdatedAt);
 
+// #168: class_template rows are keyed by user_id directly (not class_id),
+// and -- like class_template_subject/class_template_lesson below -- have no
+// deleted_at: they're immutable and create-only, so unlike the rows above
+// there's no soft-delete field to carry over the wire.
+public record ClassTemplateSyncRow(
+    [property: JsonPropertyName("id")] Guid Id,
+    [property: JsonPropertyName("user_id")] Guid UserId,
+    [property: JsonPropertyName("name")] string Name,
+    [property: JsonPropertyName("created_at")] DateTimeOffset CreatedAt,
+    [property: JsonPropertyName("updated_at")] DateTimeOffset UpdatedAt);
+
+public record ClassTemplateSubjectSyncRow(
+    [property: JsonPropertyName("id")] Guid Id,
+    [property: JsonPropertyName("class_template_id")] Guid ClassTemplateId,
+    [property: JsonPropertyName("name")] string Name,
+    [property: JsonPropertyName("position")] int Position,
+    [property: JsonPropertyName("created_at")] DateTimeOffset CreatedAt,
+    [property: JsonPropertyName("updated_at")] DateTimeOffset UpdatedAt);
+
+public record ClassTemplateLessonSyncRow(
+    [property: JsonPropertyName("id")] Guid Id,
+    [property: JsonPropertyName("class_template_subject_id")] Guid ClassTemplateSubjectId,
+    [property: JsonPropertyName("unit")] int Unit,
+    [property: JsonPropertyName("lesson_in_unit")] int LessonInUnit,
+    [property: JsonPropertyName("title")] string Title,
+    [property: JsonPropertyName("description")] string Description,
+    [property: JsonPropertyName("created_at")] DateTimeOffset CreatedAt,
+    [property: JsonPropertyName("updated_at")] DateTimeOffset UpdatedAt);
+
 public record SyncBatch(
     [property: JsonPropertyName("classes")] List<ClassSyncRow> Classes,
     [property: JsonPropertyName("subjects")] List<SubjectSyncRow> Subjects,
     [property: JsonPropertyName("lessons")] List<LessonSyncRow> Lessons,
     [property: JsonPropertyName("students")] List<StudentSyncRow> Students,
-    [property: JsonPropertyName("progress")] List<ProgressSyncRow> Progress);
+    [property: JsonPropertyName("progress")] List<ProgressSyncRow> Progress,
+    [property: JsonPropertyName("class_templates")] List<ClassTemplateSyncRow> ClassTemplates,
+    [property: JsonPropertyName("class_template_subjects")] List<ClassTemplateSubjectSyncRow> ClassTemplateSubjects,
+    [property: JsonPropertyName("class_template_lessons")] List<ClassTemplateLessonSyncRow> ClassTemplateLessons);
 
 public record SyncPullResponse(
     [property: JsonPropertyName("classes")] List<ClassSyncRow> Classes,
@@ -71,4 +103,7 @@ public record SyncPullResponse(
     [property: JsonPropertyName("lessons")] List<LessonSyncRow> Lessons,
     [property: JsonPropertyName("students")] List<StudentSyncRow> Students,
     [property: JsonPropertyName("progress")] List<ProgressSyncRow> Progress,
+    [property: JsonPropertyName("class_templates")] List<ClassTemplateSyncRow> ClassTemplates,
+    [property: JsonPropertyName("class_template_subjects")] List<ClassTemplateSubjectSyncRow> ClassTemplateSubjects,
+    [property: JsonPropertyName("class_template_lessons")] List<ClassTemplateLessonSyncRow> ClassTemplateLessons,
     [property: JsonPropertyName("watermark")] DateTimeOffset Watermark);

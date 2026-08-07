@@ -6,6 +6,9 @@ import {
   getRawProgressByPair,
   listRowsUpdatedSince,
   putRawClass,
+  putRawClassTemplate,
+  putRawClassTemplateLesson,
+  putRawClassTemplateSubject,
   putRawLesson,
   putRawProgress,
   putRawStudent,
@@ -44,9 +47,11 @@ async function applyRemoteProgress(incoming: ProgressRow): Promise<void> {
   await putRawProgress(merged)
 }
 
-// class/subject/lesson/student have no per-field HLC and no conflict
-// resolution at all (per #6/#7) -- same as the server's push handler, this
-// is a plain overwrite-by-id, last-received-wins.
+// class/subject/lesson/student -- and now class_template/
+// class_template_subject/class_template_lesson (#168, immutable/create-only
+// so there's nothing to conflict on in the first place) -- have no per-field
+// HLC and no conflict resolution at all (per #6/#7) -- same as the server's
+// push handler, this is a plain overwrite-by-id, last-received-wins.
 async function applyRemoteBatch(batch: SyncBatch): Promise<void> {
   await Promise.all([
     ...batch.classes.map(putRawClass),
@@ -54,6 +59,9 @@ async function applyRemoteBatch(batch: SyncBatch): Promise<void> {
     ...batch.lessons.map(putRawLesson),
     ...batch.students.map(putRawStudent),
     ...batch.progress.map(applyRemoteProgress),
+    ...batch.class_templates.map(putRawClassTemplate),
+    ...batch.class_template_subjects.map(putRawClassTemplateSubject),
+    ...batch.class_template_lessons.map(putRawClassTemplateLesson),
   ])
 }
 
@@ -63,7 +71,10 @@ function isEmptyBatch(batch: SyncBatch): boolean {
     batch.subjects.length === 0 &&
     batch.lessons.length === 0 &&
     batch.students.length === 0 &&
-    batch.progress.length === 0
+    batch.progress.length === 0 &&
+    batch.class_templates.length === 0 &&
+    batch.class_template_subjects.length === 0 &&
+    batch.class_template_lessons.length === 0
   )
 }
 
@@ -72,10 +83,16 @@ function maxUpdatedAt(rows: { updated_at: string }[], floor: string): string {
 }
 
 function batchWatermark(batch: SyncBatch, floor: string): string {
-  return [batch.classes, batch.subjects, batch.lessons, batch.students, batch.progress].reduce(
-    (max, rows) => maxUpdatedAt(rows, max),
-    floor,
-  )
+  return [
+    batch.classes,
+    batch.subjects,
+    batch.lessons,
+    batch.students,
+    batch.progress,
+    batch.class_templates,
+    batch.class_template_subjects,
+    batch.class_template_lessons,
+  ].reduce((max, rows) => maxUpdatedAt(rows, max), floor)
 }
 
 function getToken(): string | null {

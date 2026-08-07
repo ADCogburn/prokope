@@ -25,8 +25,8 @@ public class SyncEndpointsTests(DatabaseFixture fixture) : IClassFixture<Databas
         var lessonRow = NewLesson(subjectRow.Id, unit: 1, lessonInUnit: 1);
         var progressRow = NewProgress(studentRow.Id, subjectRow.Id);
 
-        var response = await client.PostAsJsonAsync("/sync/push", new SyncBatch(
-            [classRow], [subjectRow], [lessonRow], [studentRow], [progressRow]));
+        var response = await client.PostAsJsonAsync("/sync/push", NewBatch(
+            classes: [classRow], subjects: [subjectRow], lessons: [lessonRow], students: [studentRow], progress: [progressRow]));
 
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
         var body = await response.Content.ReadFromJsonAsync<SyncBatch>();
@@ -58,8 +58,7 @@ public class SyncEndpointsTests(DatabaseFixture fixture) : IClassFixture<Databas
         Authorize(client, tokenA);
 
         // Authenticated as A but the payload claims the row belongs to B.
-        var response = await client.PostAsJsonAsync("/sync/push", new SyncBatch(
-            [NewClass(userIdB)], [], [], [], []));
+        var response = await client.PostAsJsonAsync("/sync/push", NewBatch(classes: [NewClass(userIdB)]));
 
         Assert.Equal(HttpStatusCode.Forbidden, response.StatusCode);
     }
@@ -73,13 +72,13 @@ public class SyncEndpointsTests(DatabaseFixture fixture) : IClassFixture<Databas
 
         Authorize(client, tokenA);
         var classRow = NewClass(userIdA);
-        await client.PostAsJsonAsync("/sync/push", new SyncBatch([classRow], [], [], [], []));
+        await client.PostAsJsonAsync("/sync/push", NewBatch(classes: [classRow]));
 
         // B claims the row as their own (row.UserId == B), but the row already
         // exists server-side under A's ownership.
         Authorize(client, tokenB);
-        var response = await client.PostAsJsonAsync("/sync/push", new SyncBatch(
-            [classRow with { UserId = userIdB }], [], [], [], []));
+        var response = await client.PostAsJsonAsync("/sync/push", NewBatch(
+            classes: [classRow with { UserId = userIdB }]));
 
         Assert.Equal(HttpStatusCode.Forbidden, response.StatusCode);
     }
@@ -93,11 +92,10 @@ public class SyncEndpointsTests(DatabaseFixture fixture) : IClassFixture<Databas
 
         Authorize(client, tokenA);
         var classRow = NewClass(userIdA);
-        await client.PostAsJsonAsync("/sync/push", new SyncBatch([classRow], [], [], [], []));
+        await client.PostAsJsonAsync("/sync/push", NewBatch(classes: [classRow]));
 
         Authorize(client, tokenB);
-        var response = await client.PostAsJsonAsync("/sync/push", new SyncBatch(
-            [], [NewSubject(classRow.Id)], [], [], []));
+        var response = await client.PostAsJsonAsync("/sync/push", NewBatch(subjects: [NewSubject(classRow.Id)]));
 
         Assert.Equal(HttpStatusCode.Forbidden, response.StatusCode);
     }
@@ -112,15 +110,13 @@ public class SyncEndpointsTests(DatabaseFixture fixture) : IClassFixture<Databas
         var classRow = NewClass(userId);
         var subjectRow = NewSubject(classRow.Id);
         var studentRow = NewStudent(classRow.Id);
-        await client.PostAsJsonAsync("/sync/push", new SyncBatch(
-            [classRow], [subjectRow], [], [studentRow], []));
+        await client.PostAsJsonAsync("/sync/push", NewBatch(classes: [classRow], subjects: [subjectRow], students: [studentRow]));
 
         var firstDeviceRow = NewProgress(
             studentRow.Id, subjectRow.Id,
             stepUnit: 1, stepHlc: "hlc-1",
             review: false, reviewHlc: "hlc-1");
-        var firstResponse = await client.PostAsJsonAsync("/sync/push", new SyncBatch(
-            [], [], [], [], [firstDeviceRow]));
+        var firstResponse = await client.PostAsJsonAsync("/sync/push", NewBatch(progress: [firstDeviceRow]));
         var firstBody = await firstResponse.Content.ReadFromJsonAsync<SyncBatch>();
         var canonicalId = Assert.Single(firstBody!.Progress).Id;
 
@@ -131,8 +127,7 @@ public class SyncEndpointsTests(DatabaseFixture fixture) : IClassFixture<Databas
             studentRow.Id, subjectRow.Id,
             stepUnit: 99, stepHlc: "hlc-0",
             review: true, reviewHlc: "hlc-2");
-        var secondResponse = await client.PostAsJsonAsync("/sync/push", new SyncBatch(
-            [], [], [], [], [secondDeviceRow]));
+        var secondResponse = await client.PostAsJsonAsync("/sync/push", NewBatch(progress: [secondDeviceRow]));
 
         Assert.Equal(HttpStatusCode.OK, secondResponse.StatusCode);
         var secondBody = await secondResponse.Content.ReadFromJsonAsync<SyncBatch>();
@@ -154,11 +149,11 @@ public class SyncEndpointsTests(DatabaseFixture fixture) : IClassFixture<Databas
 
         Authorize(client, tokenA);
         var classA = NewClass(userIdA, name: "A's class");
-        await client.PostAsJsonAsync("/sync/push", new SyncBatch([classA], [], [], [], []));
+        await client.PostAsJsonAsync("/sync/push", NewBatch(classes: [classA]));
 
         Authorize(client, tokenB);
         var classB = NewClass(userIdB, name: "B's class");
-        await client.PostAsJsonAsync("/sync/push", new SyncBatch([classB], [], [], [], []));
+        await client.PostAsJsonAsync("/sync/push", NewBatch(classes: [classB]));
 
         var pullResponse = await client.GetAsync("/sync/pull");
         var pullBody = await pullResponse.Content.ReadFromJsonAsync<SyncPullResponse>();
@@ -175,14 +170,14 @@ public class SyncEndpointsTests(DatabaseFixture fixture) : IClassFixture<Databas
         Authorize(client, token);
 
         var firstClass = NewClass(userId, name: "First");
-        await client.PostAsJsonAsync("/sync/push", new SyncBatch([firstClass], [], [], [], []));
+        await client.PostAsJsonAsync("/sync/push", NewBatch(classes: [firstClass]));
 
         var firstPull = await client.GetAsync("/sync/pull");
         var firstPullBody = await firstPull.Content.ReadFromJsonAsync<SyncPullResponse>();
         Assert.Contains(firstPullBody!.Classes, c => c.Id == firstClass.Id);
 
         var secondClass = NewClass(userId, name: "Second");
-        await client.PostAsJsonAsync("/sync/push", new SyncBatch([secondClass], [], [], [], []));
+        await client.PostAsJsonAsync("/sync/push", NewBatch(classes: [secondClass]));
 
         var watermark = Uri.EscapeDataString(firstPullBody.Watermark.ToString("o"));
         var secondPull = await client.GetAsync($"/sync/pull?since={watermark}");
@@ -204,8 +199,8 @@ public class SyncEndpointsTests(DatabaseFixture fixture) : IClassFixture<Databas
         var studentRow = NewStudent(classRow.Id);
         var lessonRow = NewLesson(subjectRow.Id);
         var progressRow = NewProgress(studentRow.Id, subjectRow.Id);
-        await client.PostAsJsonAsync("/sync/push", new SyncBatch(
-            [classRow], [subjectRow], [lessonRow], [studentRow], [progressRow]));
+        await client.PostAsJsonAsync("/sync/push", NewBatch(
+            classes: [classRow], subjects: [subjectRow], lessons: [lessonRow], students: [studentRow], progress: [progressRow]));
 
         var response = await client.GetAsync("/sync/pull");
         var body = await response.Content.ReadFromJsonAsync<SyncPullResponse>();
@@ -215,6 +210,144 @@ public class SyncEndpointsTests(DatabaseFixture fixture) : IClassFixture<Databas
         Assert.Contains(body.Students, s => s.Id == studentRow.Id);
         Assert.Contains(body.Lessons, l => l.Id == lessonRow.Id);
         Assert.Contains(body.Progress, p => p.Id == progressRow.Id);
+    }
+
+    // #168: Class Templates are a three-level ownership chain rooted at their
+    // own user_id (not a class) -- class_template -> class_template_subject
+    // -> class_template_lesson. Mirrors the class/subject/lesson coverage
+    // above, one level deeper.
+    [Fact]
+    public async Task Push_creates_a_class_template_and_its_subject_and_lesson_in_the_same_batch()
+    {
+        using var client = fixture.CreateClient();
+        var (token, userId) = await LoginAsync(client, "sub-template-push-create");
+        Authorize(client, token);
+
+        var templateRow = NewClassTemplate(userId, name: "Fall Curriculum");
+        var templateSubjectRow = NewClassTemplateSubject(templateRow.Id, name: "Math");
+        var templateLessonRow = NewClassTemplateLesson(templateSubjectRow.Id, unit: 1, lessonInUnit: 1);
+
+        // All three levels -- parent, child, and grandchild -- arrive in one
+        // push batch, so the handler must add each same-batch-created parent's
+        // id to the ownership set before validating rows that reference it,
+        // rather than requiring a prior round trip to establish ownership.
+        var response = await client.PostAsJsonAsync("/sync/push", NewBatch(
+            classTemplates: [templateRow],
+            classTemplateSubjects: [templateSubjectRow],
+            classTemplateLessons: [templateLessonRow]));
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        var body = await response.Content.ReadFromJsonAsync<SyncBatch>();
+
+        var echoedTemplate = Assert.Single(body!.ClassTemplates);
+        Assert.Equal(templateRow.Id, echoedTemplate.Id);
+        Assert.Equal("Fall Curriculum", echoedTemplate.Name);
+        Assert.Equal(userId, echoedTemplate.UserId);
+
+        var echoedSubject = Assert.Single(body.ClassTemplateSubjects);
+        Assert.Equal(templateSubjectRow.Id, echoedSubject.Id);
+        Assert.Equal(templateRow.Id, echoedSubject.ClassTemplateId);
+
+        var echoedLesson = Assert.Single(body.ClassTemplateLessons);
+        Assert.Equal(templateLessonRow.Id, echoedLesson.Id);
+        Assert.Equal(templateSubjectRow.Id, echoedLesson.ClassTemplateSubjectId);
+    }
+
+    [Fact]
+    public async Task Push_rejects_a_class_template_claimed_for_another_user()
+    {
+        using var client = fixture.CreateClient();
+        var (tokenA, _) = await LoginAsync(client, "sub-template-claim-a");
+        var (_, userIdB) = await LoginAsync(client, "sub-template-claim-b");
+        Authorize(client, tokenA);
+
+        var response = await client.PostAsJsonAsync("/sync/push", NewBatch(
+            classTemplates: [NewClassTemplate(userIdB)]));
+
+        Assert.Equal(HttpStatusCode.Forbidden, response.StatusCode);
+    }
+
+    [Fact]
+    public async Task Push_rejects_a_class_template_subject_referencing_a_template_not_owned_by_the_caller()
+    {
+        using var client = fixture.CreateClient();
+        var (tokenA, userIdA) = await LoginAsync(client, "sub-template-subject-a");
+        var (tokenB, _) = await LoginAsync(client, "sub-template-subject-b");
+
+        Authorize(client, tokenA);
+        var templateRow = NewClassTemplate(userIdA);
+        await client.PostAsJsonAsync("/sync/push", NewBatch(classTemplates: [templateRow]));
+
+        Authorize(client, tokenB);
+        var response = await client.PostAsJsonAsync("/sync/push", NewBatch(
+            classTemplateSubjects: [NewClassTemplateSubject(templateRow.Id)]));
+
+        Assert.Equal(HttpStatusCode.Forbidden, response.StatusCode);
+    }
+
+    [Fact]
+    public async Task Push_rejects_a_class_template_lesson_referencing_a_subject_not_owned_by_the_caller()
+    {
+        using var client = fixture.CreateClient();
+        var (tokenA, userIdA) = await LoginAsync(client, "sub-template-lesson-a");
+        var (tokenB, _) = await LoginAsync(client, "sub-template-lesson-b");
+
+        Authorize(client, tokenA);
+        var templateRow = NewClassTemplate(userIdA);
+        var templateSubjectRow = NewClassTemplateSubject(templateRow.Id);
+        await client.PostAsJsonAsync("/sync/push", NewBatch(
+            classTemplates: [templateRow], classTemplateSubjects: [templateSubjectRow]));
+
+        Authorize(client, tokenB);
+        var response = await client.PostAsJsonAsync("/sync/push", NewBatch(
+            classTemplateLessons: [NewClassTemplateLesson(templateSubjectRow.Id)]));
+
+        Assert.Equal(HttpStatusCode.Forbidden, response.StatusCode);
+    }
+
+    [Fact]
+    public async Task Pull_returns_only_the_authenticated_users_own_class_templates()
+    {
+        using var client = fixture.CreateClient();
+        var (tokenA, userIdA) = await LoginAsync(client, "sub-template-pull-scope-a");
+        var (tokenB, userIdB) = await LoginAsync(client, "sub-template-pull-scope-b");
+
+        Authorize(client, tokenA);
+        var templateA = NewClassTemplate(userIdA, name: "A's template");
+        await client.PostAsJsonAsync("/sync/push", NewBatch(classTemplates: [templateA]));
+
+        Authorize(client, tokenB);
+        var templateB = NewClassTemplate(userIdB, name: "B's template");
+        await client.PostAsJsonAsync("/sync/push", NewBatch(classTemplates: [templateB]));
+
+        var pullResponse = await client.GetAsync("/sync/pull");
+        var pullBody = await pullResponse.Content.ReadFromJsonAsync<SyncPullResponse>();
+
+        Assert.Contains(pullBody!.ClassTemplates, ct => ct.Id == templateB.Id);
+        Assert.DoesNotContain(pullBody.ClassTemplates, ct => ct.Id == templateA.Id);
+    }
+
+    [Fact]
+    public async Task Pull_with_no_since_returns_the_full_class_template_snapshot()
+    {
+        using var client = fixture.CreateClient();
+        var (token, userId) = await LoginAsync(client, "sub-template-pull-snapshot");
+        Authorize(client, token);
+
+        var templateRow = NewClassTemplate(userId);
+        var templateSubjectRow = NewClassTemplateSubject(templateRow.Id);
+        var templateLessonRow = NewClassTemplateLesson(templateSubjectRow.Id);
+        await client.PostAsJsonAsync("/sync/push", NewBatch(
+            classTemplates: [templateRow],
+            classTemplateSubjects: [templateSubjectRow],
+            classTemplateLessons: [templateLessonRow]));
+
+        var response = await client.GetAsync("/sync/pull");
+        var body = await response.Content.ReadFromJsonAsync<SyncPullResponse>();
+
+        Assert.Contains(body!.ClassTemplates, ct => ct.Id == templateRow.Id);
+        Assert.Contains(body.ClassTemplateSubjects, cts => cts.Id == templateSubjectRow.Id);
+        Assert.Contains(body.ClassTemplateLessons, ctl => ctl.Id == templateLessonRow.Id);
     }
 
     private static async Task<(string Token, Guid UserId)> LoginAsync(HttpClient client, string subjectSeed)
@@ -227,6 +360,25 @@ public class SyncEndpointsTests(DatabaseFixture fixture) : IClassFixture<Databas
 
     private static void Authorize(HttpClient client, string token) =>
         client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", token);
+
+    private static SyncBatch NewBatch(
+        List<ClassSyncRow>? classes = null,
+        List<SubjectSyncRow>? subjects = null,
+        List<LessonSyncRow>? lessons = null,
+        List<StudentSyncRow>? students = null,
+        List<ProgressSyncRow>? progress = null,
+        List<ClassTemplateSyncRow>? classTemplates = null,
+        List<ClassTemplateSubjectSyncRow>? classTemplateSubjects = null,
+        List<ClassTemplateLessonSyncRow>? classTemplateLessons = null) =>
+        new(
+            classes ?? [],
+            subjects ?? [],
+            lessons ?? [],
+            students ?? [],
+            progress ?? [],
+            classTemplates ?? [],
+            classTemplateSubjects ?? [],
+            classTemplateLessons ?? []);
 
     private static ClassSyncRow NewClass(Guid userId, Guid? id = null, string name = "Room 5") =>
         new(id ?? Guid.NewGuid(), userId, name, DateTimeOffset.UtcNow, DateTimeOffset.UtcNow, null);
@@ -252,4 +404,16 @@ public class SyncEndpointsTests(DatabaseFixture fixture) : IClassFixture<Databas
         string reviewHlc = "hlc-1") =>
         new(id ?? Guid.NewGuid(), studentId, subjectId, stepUnit, stepLessonInUnit, stepHlc, Guid.NewGuid(),
             review, reviewHlc, Guid.NewGuid(), DateTimeOffset.UtcNow);
+
+    private static ClassTemplateSyncRow NewClassTemplate(Guid userId, Guid? id = null, string name = "Fall Curriculum") =>
+        new(id ?? Guid.NewGuid(), userId, name, DateTimeOffset.UtcNow, DateTimeOffset.UtcNow);
+
+    private static ClassTemplateSubjectSyncRow NewClassTemplateSubject(
+        Guid classTemplateId, Guid? id = null, string name = "Math", int position = 0) =>
+        new(id ?? Guid.NewGuid(), classTemplateId, name, position, DateTimeOffset.UtcNow, DateTimeOffset.UtcNow);
+
+    private static ClassTemplateLessonSyncRow NewClassTemplateLesson(
+        Guid classTemplateSubjectId, Guid? id = null, int unit = 1, int lessonInUnit = 1) =>
+        new(id ?? Guid.NewGuid(), classTemplateSubjectId, unit, lessonInUnit, "Fractions", "Intro to fractions",
+            DateTimeOffset.UtcNow, DateTimeOffset.UtcNow);
 }
