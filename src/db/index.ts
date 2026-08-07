@@ -20,6 +20,7 @@ export {
   deleteLesson,
   updateLessonContent,
   formatLessonLabel,
+  bulkGenerateLessons,
 } from './lessons'
 export type { CreateLessonInput, LessonPosition, UpdateLessonContentInput } from './lessons'
 

@@ -205,3 +205,42 @@ export async function updateLessonContent(id: string, input: UpdateLessonContent
 export function formatLessonLabel(lesson: LessonRow): string {
   return `${lesson.unit}.${lesson.lesson_in_unit} - ${lesson.title}`
 }
+
+/**
+ * "Bulk Generate" (#162): scaffolds placeholder lessons across a subject's
+ * fixed unit x lesson_in_unit grid (1..unitCount x 1..lessonsPerUnit) in one
+ * call. For each grid position, checks getLessonByPosition -- a position
+ * with a live lesson is skipped and left untouched; an empty position, or
+ * one occupied only by a soft-deleted lesson (ADR-0010: soft-deleted rows
+ * don't count as occupying a position), gets a new row via the unmodified
+ * createLesson with title "Untitled" and an empty description. The
+ * soft-deleted row itself, if any, is left as-is -- never restored.
+ *
+ * Never touches units/lessons outside the requested grid. Returns the ids of
+ * only the lessons this call created, in grid order (unit-major, then
+ * lesson_in_unit) -- callers should not rely on that order.
+ */
+export async function bulkGenerateLessons(
+  subjectId: string,
+  unitCount: number,
+  lessonsPerUnit: number,
+): Promise<string[]> {
+  const createdIds: string[] = []
+  for (let unit = 1; unit <= unitCount; unit++) {
+    for (let lessonInUnit = 1; lessonInUnit <= lessonsPerUnit; lessonInUnit++) {
+      const existing = await getLessonByPosition(subjectId, unit, lessonInUnit)
+      if (existing) {
+        continue
+      }
+      const created = await createLesson({
+        subject_id: subjectId,
+        unit,
+        lesson_in_unit: lessonInUnit,
+        title: 'Untitled',
+        description: '',
+      })
+      createdIds.push(created.id)
+    }
+  }
+  return createdIds
+}
