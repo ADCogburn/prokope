@@ -58,6 +58,11 @@ export function StudentSummaryRoute() {
 
   return (
     <StudentSummary
+      // Force a fresh mount per student, so #154's page-visit-scoped undo
+      // state (plain useState in StudentSummary) can't leak from one
+      // student's visit into another's if a caller ever links directly
+      // between two Student Summary pages without an intervening route.
+      key={studentId}
       classRow={classRow!}
       student={student!}
       subjects={subjects}
