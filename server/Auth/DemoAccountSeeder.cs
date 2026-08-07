@@ -52,8 +52,17 @@ public static class DemoAccountSeeder
                 (2, 1, "Intro to Multiplication", "Understand multiplication as repeated addition."),
                 (2, 2, "Skip Counting", "Count by 2s, 5s, and 10s."),
             ],
-            // Ava ahead; Ben on-track but flagged; Chloe behind; Diego on-track but flagged; Emma just started.
-            progress: [(2, 2, false), (1, 3, true), (1, 1, false), (1, 2, true), (1, 1, false)]);
+            // Ava ahead; Ben on-track but flagged (and also flagged on a
+            // lesson he's already passed, so the demo shows both a
+            // current-lesson flag and a persisted past-lesson flag per
+            // #156); Chloe behind; Diego on-track but flagged; Emma just
+            // started.
+            progress: [(2, 2, false), (1, 3, true), (1, 1, false), (1, 2, true), (1, 1, false)],
+            // Ben (index 1) is currently on (1, 3) "Subtraction Basics", so
+            // (1, 1) "Counting to 10" is a lesson he's already progressed
+            // past -- flagging it demonstrates the past-lesson flag
+            // persisting independent of his current position (#152/#156).
+            additionalFlags: [(1, 1, 1)]);
 
         SeedSubject(db, classId, studentIds, now, ref hlcCounter, position: 1, name: "Reading",
             lessons:
@@ -88,7 +97,8 @@ public static class DemoAccountSeeder
         int position,
         string name,
         (int Unit, int LessonInUnit, string Title, string Description)[] lessons,
-        (int StepUnit, int StepLessonInUnit, bool Review)[] progress)
+        (int StepUnit, int StepLessonInUnit, bool Review)[] progress,
+        (int StudentIndex, int Unit, int LessonInUnit)[]? additionalFlags = null)
     {
         var subjectId = Guid.NewGuid();
         db.Subjects.Add(new Subject
@@ -148,6 +158,27 @@ public static class DemoAccountSeeder
                     Id = Guid.NewGuid(),
                     StudentId = studentIds[i],
                     LessonId = lessonId,
+                    Flagged = true,
+                    Hlc = NextHlc(now, ref hlcCounter),
+                    ClientId = Guid.NewGuid(),
+                    UpdatedAt = now,
+                });
+            }
+        }
+
+        // Extra flags beyond each student's current lesson (#156) -- e.g. a
+        // past lesson a student has already progressed beyond -- so the demo
+        // shows a persisted past-lesson flag alongside the current-lesson
+        // one, without a teacher configuring it by hand.
+        foreach (var (studentIndex, unit, lessonInUnit) in additionalFlags ?? [])
+        {
+            if (lessonIdsByPosition.TryGetValue((unit, lessonInUnit), out var additionalLessonId))
+            {
+                db.ReviewFlags.Add(new ReviewFlag
+                {
+                    Id = Guid.NewGuid(),
+                    StudentId = studentIds[studentIndex],
+                    LessonId = additionalLessonId,
                     Flagged = true,
                     Hlc = NextHlc(now, ref hlcCounter),
                     ClientId = Guid.NewGuid(),

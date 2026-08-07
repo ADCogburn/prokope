@@ -73,6 +73,42 @@ public class DemoAuthEndpointsTests(DatabaseFixture fixture) : IClassFixture<Dat
         Assert.Contains(reviewFlags, r => r.Flagged);
     }
 
+    // #156: at least one demo student is flagged on both their current
+    // lesson and a lesson they've already progressed past, so the review
+    // flag's full range (current-lesson quick-toggle + persisted
+    // past-lesson flag) is visible on a fresh demo class without a teacher
+    // configuring anything by hand. Math's Ben is seeded that way -- see
+    // DemoAccountSeeder's Math SeedSubject call.
+    [Fact]
+    public async Task Demo_login_flags_a_students_current_lesson_and_a_separate_past_lesson()
+    {
+        using var client = fixture.CreateClient();
+        var response = await client.PostAsync("/auth/demo", null);
+        var body = await response.Content.ReadFromJsonAsync<AuthResponse>();
+
+        using var scope = fixture.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+
+        var classRow = await db.Classes.SingleAsync(c => c.UserId == body!.UserId);
+        var ben = await db.Students.SingleAsync(s => s.ClassId == classRow.Id && s.Name == "Ben");
+        var math = await db.Subjects.SingleAsync(s => s.ClassId == classRow.Id && s.Name == "Math");
+        var mathLessons = await db.Lessons.Where(l => l.SubjectId == math.Id).ToListAsync();
+        var benProgress = await db.Progress.SingleAsync(p => p.StudentId == ben.Id && p.SubjectId == math.Id);
+
+        var currentLesson = mathLessons.Single(l =>
+            l.Unit == benProgress.StepUnit && l.LessonInUnit == benProgress.StepLessonInUnit);
+        var pastLesson = mathLessons.Single(l => l.Unit == 1 && l.LessonInUnit == 1);
+        Assert.NotEqual(currentLesson.Id, pastLesson.Id);
+
+        var benFlags = await db.ReviewFlags.Where(r => r.StudentId == ben.Id).ToListAsync();
+
+        var currentLessonFlag = Assert.Single(benFlags, r => r.LessonId == currentLesson.Id);
+        Assert.True(currentLessonFlag.Flagged);
+
+        var pastLessonFlag = Assert.Single(benFlags, r => r.LessonId == pastLesson.Id);
+        Assert.True(pastLessonFlag.Flagged);
+    }
+
     [Fact]
     public async Task Demo_login_issues_a_token_that_works_against_auth_me()
     {
