@@ -791,6 +791,252 @@ describe('ClassBoard', () => {
     expect(screen.getByRole('menuitem', { name: 'Un-advance' })).toBeDisabled()
   })
 
+  it('right-click -> "Review other lessons" opens the checklist modal, distinct from "Jump to lesson..." (#153)', async () => {
+    const { classRow, subject, student, lesson } = await seedClassWithOneSubjectOneStudent()
+
+    renderBoard({
+      classRow,
+      subjects: [subject],
+      students: [student],
+      progress: [],
+      lessons: [lesson],
+      activeSubjectId: subject.id,
+    })
+
+    fireEvent.contextMenu(screen.getByText('Emily', { selector: '.progress-cell__student' }))
+
+    expect(screen.getByRole('menuitem', { name: 'Jump to lesson...' })).toBeInTheDocument()
+    expect(screen.getByRole('menuitem', { name: 'Review other lessons' })).toBeInTheDocument()
+
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Review other lessons' }))
+
+    const dialog = screen.getByRole('dialog', { name: 'Mark lessons for review for Emily' })
+    expect(dialog).toBeInTheDocument()
+    expect(within(dialog).getByRole('checkbox', { name: '1.1 - Fractions' })).toBeInTheDocument()
+  })
+
+  it('lists every lesson in the subject, including ones ahead of the student\'s current position, each checkable', async () => {
+    const classRow = await createClass({ user_id: 'user-1', name: 'Homeroom' })
+    const subject = await createSubject({ class_id: classRow.id, name: 'Math', position: 0 })
+    const student = await createStudent({ class_id: classRow.id, name: 'Emily', position: 0 })
+    const first = await createLesson({
+      subject_id: subject.id,
+      unit: 1,
+      lesson_in_unit: 1,
+      title: 'Fractions',
+      description: '',
+    })
+    const second = await createLesson({
+      subject_id: subject.id,
+      unit: 1,
+      lesson_in_unit: 2,
+      title: 'Decimals',
+      description: '',
+    })
+    // Student's current position is `first` -- `second` is ahead of them.
+    const progress = await upsertProgressStep(student.id, subject.id, {
+      unit: first.unit,
+      lesson_in_unit: first.lesson_in_unit,
+    })
+
+    renderBoard({
+      classRow,
+      subjects: [subject],
+      students: [student],
+      progress: [progress],
+      lessons: [first, second],
+      activeSubjectId: subject.id,
+    })
+
+    fireEvent.contextMenu(screen.getByText('Emily', { selector: '.progress-cell__student' }))
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Review other lessons' }))
+
+    const dialog = screen.getByRole('dialog', { name: 'Mark lessons for review for Emily' })
+    expect(within(dialog).getByRole('checkbox', { name: '1.1 - Fractions' })).toBeInTheDocument()
+    const aheadCheckbox = within(dialog).getByRole('checkbox', { name: '1.2 - Decimals' })
+    expect(aheadCheckbox).toBeInTheDocument()
+    expect(aheadCheckbox).toBeEnabled()
+  })
+
+  it('checking a lesson in "Review other lessons" flags it via ReviewFlag without changing the student\'s position', async () => {
+    const { classRow, subject, student, lesson } = await seedClassWithOneSubjectOneStudent()
+    const progress = await upsertProgressStep(student.id, subject.id, {
+      unit: lesson.unit,
+      lesson_in_unit: lesson.lesson_in_unit,
+    })
+
+    renderBoard({
+      classRow,
+      subjects: [subject],
+      students: [student],
+      progress: [progress],
+      lessons: [lesson],
+      activeSubjectId: subject.id,
+    })
+
+    fireEvent.contextMenu(screen.getByText('Emily', { selector: '.progress-cell__student' }))
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Review other lessons' }))
+    fireEvent.click(screen.getByRole('checkbox', { name: '1.1 - Fractions' }))
+
+    await waitFor(async () => {
+      const row = await db.review_flag
+        .where('[student_id+lesson_id]')
+        .equals([student.id, lesson.id])
+        .first()
+      expect(row?.flagged).toBe(true)
+    })
+
+    // Position is untouched.
+    const positionRow = await db.progress.where('[student_id+subject_id]').equals([student.id, subject.id]).first()
+    expect(positionRow?.step_unit).toBe(lesson.unit)
+    expect(positionRow?.step_lesson_in_unit).toBe(lesson.lesson_in_unit)
+  })
+
+  it('unchecking an already-flagged lesson in "Review other lessons" unflags it without changing position', async () => {
+    const { classRow, subject, student, lesson } = await seedClassWithOneSubjectOneStudent()
+    const progress = await upsertProgressStep(student.id, subject.id, {
+      unit: lesson.unit,
+      lesson_in_unit: lesson.lesson_in_unit,
+    })
+    const reviewFlag = await upsertReviewFlag(student.id, lesson.id, true)
+
+    renderBoard({
+      classRow,
+      subjects: [subject],
+      students: [student],
+      progress: [progress],
+      reviewFlags: [reviewFlag],
+      lessons: [lesson],
+      activeSubjectId: subject.id,
+    })
+
+    fireEvent.contextMenu(screen.getByText('Emily', { selector: '.progress-cell__student' }))
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Review other lessons' }))
+
+    const checkbox = screen.getByRole('checkbox', { name: '1.1 - Fractions' })
+    expect(checkbox).toBeChecked()
+
+    fireEvent.click(checkbox)
+
+    await waitFor(async () => {
+      const row = await db.review_flag
+        .where('[student_id+lesson_id]')
+        .equals([student.id, lesson.id])
+        .first()
+      expect(row?.flagged).toBe(false)
+    })
+
+    const positionRow = await db.progress.where('[student_id+subject_id]').equals([student.id, subject.id]).first()
+    expect(positionRow?.step_unit).toBe(lesson.unit)
+    expect(positionRow?.step_lesson_in_unit).toBe(lesson.lesson_in_unit)
+  })
+
+  it('flagging a lesson ahead of the student\'s current position via "Review other lessons" does not move them there', async () => {
+    const classRow = await createClass({ user_id: 'user-1', name: 'Homeroom' })
+    const subject = await createSubject({ class_id: classRow.id, name: 'Math', position: 0 })
+    const student = await createStudent({ class_id: classRow.id, name: 'Emily', position: 0 })
+    const first = await createLesson({
+      subject_id: subject.id,
+      unit: 1,
+      lesson_in_unit: 1,
+      title: 'Fractions',
+      description: '',
+    })
+    const second = await createLesson({
+      subject_id: subject.id,
+      unit: 1,
+      lesson_in_unit: 2,
+      title: 'Decimals',
+      description: '',
+    })
+    const progress = await upsertProgressStep(student.id, subject.id, {
+      unit: first.unit,
+      lesson_in_unit: first.lesson_in_unit,
+    })
+
+    renderBoard({
+      classRow,
+      subjects: [subject],
+      students: [student],
+      progress: [progress],
+      lessons: [first, second],
+      activeSubjectId: subject.id,
+    })
+
+    fireEvent.contextMenu(screen.getByText('Emily', { selector: '.progress-cell__student' }))
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Review other lessons' }))
+    fireEvent.click(screen.getByRole('checkbox', { name: '1.2 - Decimals' }))
+
+    await waitFor(async () => {
+      const row = await db.review_flag.where('[student_id+lesson_id]').equals([student.id, second.id]).first()
+      expect(row?.flagged).toBe(true)
+    })
+
+    // The student's position is still `first`, not `second`.
+    const positionRow = await db.progress.where('[student_id+subject_id]').equals([student.id, subject.id]).first()
+    expect(positionRow?.step_unit).toBe(first.unit)
+    expect(positionRow?.step_lesson_in_unit).toBe(first.lesson_in_unit)
+  })
+
+  it('scopes "Review other lessons" to the one student+subject whose cell was right-clicked, with no cross-subject or cross-student leakage', async () => {
+    const classRow = await createClass({ user_id: 'user-1', name: 'Homeroom' })
+    const math = await createSubject({ class_id: classRow.id, name: 'Math', position: 0 })
+    const reading = await createSubject({ class_id: classRow.id, name: 'Reading', position: 1 })
+    const emily = await createStudent({ class_id: classRow.id, name: 'Emily', position: 0 })
+    const sam = await createStudent({ class_id: classRow.id, name: 'Sam', position: 1 })
+    const mathLesson = await createLesson({
+      subject_id: math.id,
+      unit: 1,
+      lesson_in_unit: 1,
+      title: 'Fractions',
+      description: '',
+    })
+    const readingLesson = await createLesson({
+      subject_id: reading.id,
+      unit: 1,
+      lesson_in_unit: 1,
+      title: 'Phonics',
+      description: '',
+    })
+
+    renderBoard({
+      classRow,
+      subjects: [math, reading],
+      students: [emily, sam],
+      progress: [],
+      lessons: [mathLesson, readingLesson],
+      activeSubjectId: math.id,
+    })
+
+    const mathPanel = screen.getByText('Math').closest('.class-board__panel') as HTMLElement
+    const emilyInMath = within(mathPanel)
+      .getByText('Emily', { selector: '.progress-cell__student' })
+
+    fireEvent.contextMenu(emilyInMath)
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Review other lessons' }))
+
+    const dialog = screen.getByRole('dialog', { name: 'Mark lessons for review for Emily' })
+    // Only Math's one lesson shows -- not Reading's, and not another
+    // student's flags.
+    expect(within(dialog).getByRole('checkbox', { name: '1.1 - Fractions' })).toBeInTheDocument()
+    expect(within(dialog).queryByRole('checkbox', { name: '1.1 - Phonics' })).not.toBeInTheDocument()
+
+    fireEvent.click(within(dialog).getByRole('checkbox', { name: '1.1 - Fractions' }))
+
+    await waitFor(async () => {
+      const row = await db.review_flag
+        .where('[student_id+lesson_id]')
+        .equals([emily.id, mathLesson.id])
+        .first()
+      expect(row?.flagged).toBe(true)
+    })
+
+    // Sam has no ReviewFlag rows at all -- flagging Emily's lesson didn't
+    // leak to him.
+    const samFlags = await db.review_flag.where('student_id').equals(sam.id).toArray()
+    expect(samFlags).toHaveLength(0)
+  })
+
   it('a real right-click sequence (pointer-down with the right button, then contextmenu) on a Progress Cell opens its menu without engaging the carousel drag state', async () => {
     const { classRow, subject, student, lesson } = await seedClassWithOneSubjectOneStudent()
 
