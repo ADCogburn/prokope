@@ -30,11 +30,18 @@
   }
 }
 
+.curriculum__header-actions {
+  display: flex;
+  flex-shrink: 0;
+  align-items: center;
+  gap: 8px;
+  margin-left: 20px;
+}
+
 .curriculum__header-add {
   flex-shrink: 0;
   min-height: 40px;
   padding: 0 16px;
-  margin-left: 20px;
 }
 
 .curriculum__title-row {
