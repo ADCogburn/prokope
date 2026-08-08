@@ -3,6 +3,7 @@ using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
+using server.AiBulkGeneration;
 using server.Auth;
 using Testcontainers.PostgreSql;
 
@@ -93,6 +94,12 @@ public class DatabaseFixture : IAsyncLifetime
                 // per #18's testing decisions.
                 builder.ConfigureServices(services =>
                     services.Replace(ServiceDescriptor.Scoped<IGoogleTokenVerifier, StubGoogleTokenVerifier>()));
+
+                // AnthropicCurriculumClient is a placeholder that throws --
+                // tests substitute a stub instead, per #197's testing
+                // decisions (mirrors the Google replacement above).
+                builder.ConfigureServices(services =>
+                    services.Replace(ServiceDescriptor.Scoped<IAnthropicCurriculumClient, StubAnthropicCurriculumClient>()));
             });
 
             // Accessing Services forces the host to build, which runs Program.cs's
