@@ -24,6 +24,19 @@ if (string.IsNullOrEmpty(googleClientId))
     throw new InvalidOperationException("Google:ClientId is not configured.");
 }
 
+// Read eagerly, same as Google:ClientId above, so a missing Anthropic:ApiKey
+// fails the app at startup instead of the Anthropic client silently
+// degrading (or throwing mid-request) on the first AI Bulk Generation call.
+// Unlike Google:ClientId, a fake value here can't authenticate against the
+// real Anthropic API -- appsettings.Development.json intentionally carries
+// no placeholder, so local dev requires `dotnet user-secrets set
+// Anthropic:ApiKey <key>` (see server/README.md).
+var anthropicApiKey = builder.Configuration["Anthropic:ApiKey"];
+if (string.IsNullOrEmpty(anthropicApiKey))
+{
+    throw new InvalidOperationException("Anthropic:ApiKey is not configured.");
+}
+
 builder.Services.AddScoped<IGoogleTokenVerifier>(_ => new GoogleTokenVerifier(googleClientId));
 builder.Services.AddScoped<ISessionTokenService, JwtSessionTokenService>();
 
