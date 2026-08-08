@@ -51,6 +51,16 @@
   color: var(--error);
 }
 
+.student-report__flag-list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.student-report__flag-list li + li {
+  margin-top: 4px;
+}
+
 @media print {
   .student-report {
     color: #000;
