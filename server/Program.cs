@@ -1,3 +1,4 @@
+using Anthropic;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Tokens;
@@ -38,13 +39,27 @@ if (string.IsNullOrEmpty(anthropicApiKey))
     throw new InvalidOperationException("Anthropic:ApiKey is not configured.");
 }
 
+// Defaulted to claude-sonnet-5 in appsettings.json (#196); read here rather
+// than hardcoded in AnthropicCurriculumClient so a model bump is a config
+// change, not a code change.
+var anthropicModel = builder.Configuration["Anthropic:Model"] ?? "claude-sonnet-5";
+
 builder.Services.AddScoped<IGoogleTokenVerifier>(_ => new GoogleTokenVerifier(googleClientId));
 builder.Services.AddScoped<ISessionTokenService, JwtSessionTokenService>();
 
-// Placeholder registration -- see AnthropicCurriculumClient.cs. The real
-// Anthropic-backed implementation (ADR-0018) is a later ticket; this only
-// needs to exist so the app boots and the endpoint resolves (#197).
-builder.Services.AddScoped<IAnthropicCurriculumClient, AnthropicCurriculumClient>();
+// Singleton: the SDK client wraps a single HttpClient and is safe to share
+// across requests, same rationale as any other typed HTTP client in this
+// app. Constructed here (not resolved from DI as its own registration)
+// because it needs the eagerly-validated API key above, not a fresh
+// re-read of configuration per resolution.
+builder.Services.AddSingleton<IAnthropicClient>(_ => new AnthropicClient { ApiKey = anthropicApiKey });
+
+// Real Anthropic-backed two-call implementation (ADR-0018: search + gather,
+// then extract + constrain, with a one-time retry on schema-validation
+// failure) -- see AnthropicCurriculumClient.cs. Replaces the #197
+// placeholder registration.
+builder.Services.AddScoped<IAnthropicCurriculumClient>(sp =>
+    new AnthropicCurriculumClient(sp.GetRequiredService<IAnthropicClient>(), anthropicModel));
 
 builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
     .AddJwtBearer(options =>
