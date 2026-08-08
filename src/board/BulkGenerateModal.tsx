@@ -5,6 +5,13 @@ import './BulkGenerateModal.css'
 interface BulkGenerateModalProps {
   subjectId: string
   onClose: () => void
+  /**
+   * Reports the ids of lessons actually created by this submission, right
+   * before onClose() fires -- lets the parent (Curriculum, #164) capture a
+   * one-shot Undo batch. Not called on cancel/backdrop/close-button
+   * dismissal, only after a successful bulkGenerateLessons call.
+   */
+  onGenerated?: (ids: string[]) => void
 }
 
 const MIN_COUNT = 1
@@ -35,7 +42,7 @@ function isValidCount(value: string): boolean {
  * submitting/onClose flow so generated lessons sync the same way any other
  * locally-created lesson already does.
  */
-export function BulkGenerateModal({ subjectId, onClose }: BulkGenerateModalProps) {
+export function BulkGenerateModal({ subjectId, onClose, onGenerated }: BulkGenerateModalProps) {
   const [units, setUnits] = useState('')
   const [lessonsPerUnit, setLessonsPerUnit] = useState('')
   const [submitting, setSubmitting] = useState(false)
@@ -47,8 +54,9 @@ export function BulkGenerateModal({ subjectId, onClose }: BulkGenerateModalProps
     if (!canSubmit || submitting) return
 
     setSubmitting(true)
-    await bulkGenerateLessons(subjectId, Number(units), Number(lessonsPerUnit))
+    const createdIds = await bulkGenerateLessons(subjectId, Number(units), Number(lessonsPerUnit))
     setSubmitting(false)
+    onGenerated?.(createdIds)
     onClose()
   }
 

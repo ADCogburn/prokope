@@ -514,6 +514,183 @@ describe('Curriculum', () => {
     expect(rows.some((row) => row.title === 'Untitled' && row.unit === 1 && row.lesson_in_unit === 2)).toBe(true)
   })
 
+  it('shows an Undo Bulk Generation control after a successful Bulk Generate run', async () => {
+    const classRow = await createClass({ user_id: 'user-1', name: 'Homeroom' })
+    const subject = await createSubject({ class_id: classRow.id, name: 'Math', position: 0 })
+
+    renderCurriculum({ classRow, subject, lessons: [] })
+
+    expect(screen.queryByRole('button', { name: 'Undo Bulk Generation' })).not.toBeInTheDocument()
+
+    fireEvent.click(screen.getByRole('button', { name: 'Bulk Generate' }))
+    fireEvent.change(screen.getByLabelText('Units'), { target: { value: '1' } })
+    fireEvent.change(screen.getByLabelText('Lessons per unit'), { target: { value: '2' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Generate' }))
+
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Undo Bulk Generation' })).toBeInTheDocument())
+  })
+
+  it('clicking Undo Bulk Generation soft-deletes every lesson created by that batch', async () => {
+    const classRow = await createClass({ user_id: 'user-1', name: 'Homeroom' })
+    const subject = await createSubject({ class_id: classRow.id, name: 'Math', position: 0 })
+
+    renderCurriculum({ classRow, subject, lessons: [] })
+
+    fireEvent.click(screen.getByRole('button', { name: 'Bulk Generate' }))
+    fireEvent.change(screen.getByLabelText('Units'), { target: { value: '1' } })
+    fireEvent.change(screen.getByLabelText('Lessons per unit'), { target: { value: '2' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Generate' }))
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Undo Bulk Generation' })).toBeInTheDocument())
+
+    const generated = await db.lesson.where('subject_id').equals(subject.id).toArray()
+    expect(generated).toHaveLength(2)
+    expect(generated.every((row) => row.deleted_at === null)).toBe(true)
+
+    fireEvent.click(screen.getByRole('button', { name: 'Undo Bulk Generation' }))
+
+    await waitFor(async () => {
+      const rows = await db.lesson.where('subject_id').equals(subject.id).toArray()
+      expect(rows).toHaveLength(2)
+      expect(rows.every((row) => row.deleted_at !== null)).toBe(true)
+    })
+    expect(screen.queryByRole('button', { name: 'Undo Bulk Generation' })).not.toBeInTheDocument()
+  })
+
+  it('clears Undo Bulk Generation after adding a new lesson', async () => {
+    const classRow = await createClass({ user_id: 'user-1', name: 'Homeroom' })
+    const subject = await createSubject({ class_id: classRow.id, name: 'Math', position: 0 })
+
+    renderCurriculum({ classRow, subject, lessons: [] })
+
+    fireEvent.click(screen.getByRole('button', { name: 'Bulk Generate' }))
+    fireEvent.change(screen.getByLabelText('Units'), { target: { value: '1' } })
+    fireEvent.change(screen.getByLabelText('Lessons per unit'), { target: { value: '2' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Generate' }))
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Undo Bulk Generation' })).toBeInTheDocument())
+
+    fireEvent.click(screen.getByRole('button', { name: '+ Add lesson' }))
+    fireEvent.change(screen.getByLabelText('Title'), { target: { value: 'Decimals' } })
+    fireEvent.change(screen.getByLabelText('Unit'), { target: { value: '9' } })
+    fireEvent.change(screen.getByLabelText('Lesson in unit'), { target: { value: '1' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Add' }))
+
+    await waitFor(() => expect(screen.queryByRole('button', { name: 'Undo Bulk Generation' })).not.toBeInTheDocument())
+  })
+
+  it('clears Undo Bulk Generation after editing an existing lesson', async () => {
+    const classRow = await createClass({ user_id: 'user-1', name: 'Homeroom' })
+    const subject = await createSubject({ class_id: classRow.id, name: 'Math', position: 0 })
+    const existing = await createLesson({
+      subject_id: subject.id,
+      unit: 5,
+      lesson_in_unit: 1,
+      title: 'Fractions',
+      description: '',
+    })
+
+    renderCurriculum({ classRow, subject, lessons: [existing] })
+
+    fireEvent.click(screen.getByRole('button', { name: 'Bulk Generate' }))
+    fireEvent.change(screen.getByLabelText('Units'), { target: { value: '1' } })
+    fireEvent.change(screen.getByLabelText('Lessons per unit'), { target: { value: '1' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Generate' }))
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Undo Bulk Generation' })).toBeInTheDocument())
+
+    fireEvent.click(screen.getByRole('button', { name: 'Edit Fractions' }))
+    fireEvent.change(screen.getByLabelText('Title'), { target: { value: 'Fractions II' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Save' }))
+
+    await waitFor(() => expect(screen.queryByRole('button', { name: 'Undo Bulk Generation' })).not.toBeInTheDocument())
+  })
+
+  it('clears Undo Bulk Generation after removing an existing lesson', async () => {
+    const classRow = await createClass({ user_id: 'user-1', name: 'Homeroom' })
+    const subject = await createSubject({ class_id: classRow.id, name: 'Math', position: 0 })
+    const existing = await createLesson({
+      subject_id: subject.id,
+      unit: 5,
+      lesson_in_unit: 1,
+      title: 'Fractions',
+      description: '',
+    })
+
+    renderCurriculum({ classRow, subject, lessons: [existing] })
+
+    fireEvent.click(screen.getByRole('button', { name: 'Bulk Generate' }))
+    fireEvent.change(screen.getByLabelText('Units'), { target: { value: '1' } })
+    fireEvent.change(screen.getByLabelText('Lessons per unit'), { target: { value: '1' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Generate' }))
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Undo Bulk Generation' })).toBeInTheDocument())
+
+    fireEvent.click(screen.getByRole('button', { name: 'Remove Fractions' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Remove lesson' }))
+
+    await waitFor(() => expect(screen.queryByRole('button', { name: 'Undo Bulk Generation' })).not.toBeInTheDocument())
+  })
+
+  it('replaces rather than stacks the Undo batch when Bulk Generate runs a second time', async () => {
+    const classRow = await createClass({ user_id: 'user-1', name: 'Homeroom' })
+    const subject = await createSubject({ class_id: classRow.id, name: 'Math', position: 0 })
+
+    renderCurriculum({ classRow, subject, lessons: [] })
+
+    fireEvent.click(screen.getByRole('button', { name: 'Bulk Generate' }))
+    fireEvent.change(screen.getByLabelText('Units'), { target: { value: '1' } })
+    fireEvent.change(screen.getByLabelText('Lessons per unit'), { target: { value: '1' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Generate' }))
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Undo Bulk Generation' })).toBeInTheDocument())
+
+    const firstBatch = await db.lesson.where('subject_id').equals(subject.id).toArray()
+    expect(firstBatch).toHaveLength(1)
+    const firstBatchId = firstBatch[0].id
+
+    // Unit 1/Lesson 1 already exists from the first run and is skipped;
+    // Unit 2/Lesson 1 is newly created -- the second batch is just that one id.
+    fireEvent.click(screen.getByRole('button', { name: 'Bulk Generate' }))
+    fireEvent.change(screen.getByLabelText('Units'), { target: { value: '2' } })
+    fireEvent.change(screen.getByLabelText('Lessons per unit'), { target: { value: '1' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Generate' }))
+
+    await waitFor(async () => {
+      const rows = await db.lesson.where('subject_id').equals(subject.id).toArray()
+      expect(rows).toHaveLength(2)
+    })
+    expect(screen.getByRole('button', { name: 'Undo Bulk Generation' })).toBeInTheDocument()
+
+    fireEvent.click(screen.getByRole('button', { name: 'Undo Bulk Generation' }))
+
+    await waitFor(async () => {
+      const secondBatchRow = await db.lesson
+        .where('subject_id')
+        .equals(subject.id)
+        .and((row) => row.unit === 2)
+        .first()
+      expect(secondBatchRow?.deleted_at).not.toBeNull()
+    })
+    const firstBatchRow = await db.lesson.get(firstBatchId)
+    expect(firstBatchRow?.deleted_at).toBeNull()
+  })
+
+  it('has no Undo Bulk Generation control on a fresh mount, even though a prior instance ran Bulk Generate', async () => {
+    const classRow = await createClass({ user_id: 'user-1', name: 'Homeroom' })
+    const subject = await createSubject({ class_id: classRow.id, name: 'Math', position: 0 })
+
+    const { unmount } = renderCurriculum({ classRow, subject, lessons: [] })
+
+    fireEvent.click(screen.getByRole('button', { name: 'Bulk Generate' }))
+    fireEvent.change(screen.getByLabelText('Units'), { target: { value: '1' } })
+    fireEvent.change(screen.getByLabelText('Lessons per unit'), { target: { value: '1' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Generate' }))
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Undo Bulk Generation' })).toBeInTheDocument())
+
+    unmount()
+
+    const rows = await db.lesson.where('subject_id').equals(subject.id).toArray()
+    renderCurriculum({ classRow, subject, lessons: rows })
+
+    expect(screen.queryByRole('button', { name: 'Undo Bulk Generation' })).not.toBeInTheDocument()
+  })
+
   it('right-clicking the subject name header opens the menu with "Rename subject"', async () => {
     const classRow = await createClass({ user_id: 'user-1', name: 'Homeroom' })
     const subject = await createSubject({ class_id: classRow.id, name: 'Math', position: 0 })

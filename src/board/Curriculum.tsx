@@ -26,6 +26,7 @@ function ChevronIcon({ direction }: { direction: 'left' | 'right' }) {
 interface LessonListItemProps {
   lesson: LessonRow
   lessons: LessonRow[]
+  onLessonMutated: () => void
 }
 
 /**
@@ -43,7 +44,7 @@ interface LessonListItemProps {
  * check but excluding this lesson itself. Owns its own menu-open + edit-mode
  * state, the same per-row pattern as ProgressCell/StudentRosterRow.
  */
-function LessonListItem({ lesson, lessons }: LessonListItemProps) {
+function LessonListItem({ lesson, lessons, onLessonMutated }: LessonListItemProps) {
   const [menuPosition, setMenuPosition] = useState<{ x: number; y: number } | null>(null)
   const [editing, setEditing] = useState(false)
   const [unit, setUnit] = useState(String(lesson.unit))
@@ -96,6 +97,7 @@ function LessonListItem({ lesson, lessons }: LessonListItemProps) {
     })
     setSubmitting(false)
     setEditing(false)
+    onLessonMutated()
   }
 
   const canSubmit = title.trim() !== '' && unit.trim() !== '' && lessonInUnit.trim() !== ''
@@ -208,6 +210,7 @@ function LessonListItem({ lesson, lessons }: LessonListItemProps) {
           onConfirm={() => {
             void deleteLesson(lesson.id)
             setRemoveRequested(false)
+            onLessonMutated()
           }}
           onClose={() => setRemoveRequested(false)}
         />
@@ -220,16 +223,17 @@ interface UnitColumnProps {
   unit: number
   unitLessons: LessonRow[]
   allLessons: LessonRow[]
+  onLessonMutated: () => void
 }
 
 /** One unit's lessons as their own column, per #114/#106: the column header carries "Unit N" so each row inside only needs its own lesson label. */
-function UnitColumn({ unit, unitLessons, allLessons }: UnitColumnProps) {
+function UnitColumn({ unit, unitLessons, allLessons, onLessonMutated }: UnitColumnProps) {
   return (
     <div className="curriculum__unit-column">
       <h2 className="curriculum__unit-header">Unit {unit}</h2>
       <ul className="curriculum__lesson-list">
         {unitLessons.map((lesson) => (
-          <LessonListItem key={lesson.id} lesson={lesson} lessons={allLessons} />
+          <LessonListItem key={lesson.id} lesson={lesson} lessons={allLessons} onLessonMutated={onLessonMutated} />
         ))}
       </ul>
     </div>
@@ -264,6 +268,14 @@ export function Curriculum({ classRow, subject, lessons, onBack }: CurriculumPro
   const [containerWidth, setContainerWidth] = useState<number | null>(null)
   const [addLessonModalOpen, setAddLessonModalOpen] = useState(false)
   const [bulkGenerateModalOpen, setBulkGenerateModalOpen] = useState(false)
+  // Per #164: the ids created by the most recent Bulk Generate run for this
+  // subject, so a one-shot "Undo Bulk Generation" control can appear. Plain
+  // component-local state (no persistence) -- a fresh mount (navigate away
+  // and back) or an unmount naturally has no memory of it. Single-slot, not
+  // a stack: any other lesson-affecting action on the page (add/edit/remove,
+  // or running Bulk Generate again) clears/replaces it, mirroring
+  // ClassBoard's bulkUndo pattern for Bulk Advance (ADR-0005).
+  const [lastBulkGenerateIds, setLastBulkGenerateIds] = useState<string[] | null>(null)
 
   useEffect(() => {
     const el = wrapRef.current
@@ -280,6 +292,14 @@ export function Curriculum({ classRow, subject, lessons, onBack }: CurriculumPro
     containerWidth === null ? unitGroups.length : countVisibleUnitColumns(containerWidth, UNIT_COLUMN_WIDTH + UNIT_COLUMN_GAP)
   const { startIndex, endIndex, canGoPrev, canGoNext, next, prev } = useUnitWindow(unitGroups.length, visibleCount)
   const visibleUnitGroups = unitGroups.slice(startIndex, endIndex)
+
+  async function handleUndoBulkGenerate() {
+    if (!lastBulkGenerateIds) return
+    for (const id of lastBulkGenerateIds) {
+      await deleteLesson(id)
+    }
+    setLastBulkGenerateIds(null)
+  }
 
   return (
     <div className="curriculum">
@@ -305,6 +325,15 @@ export function Curriculum({ classRow, subject, lessons, onBack }: CurriculumPro
               >
                 Bulk Generate
               </button>
+              {lastBulkGenerateIds !== null && lastBulkGenerateIds.length > 0 && (
+                <button
+                  type="button"
+                  className="curriculum__bulk-generate-undo"
+                  onClick={() => void handleUndoBulkGenerate()}
+                >
+                  Undo Bulk Generation
+                </button>
+              )}
             </div>
           </div>
           <p>{classRow.name}</p>
@@ -325,7 +354,13 @@ export function Curriculum({ classRow, subject, lessons, onBack }: CurriculumPro
             )}
             <div className="curriculum__units">
               {visibleUnitGroups.map((group) => (
-                <UnitColumn key={group.unit} unit={group.unit} unitLessons={group.lessons} allLessons={lessons} />
+                <UnitColumn
+                  key={group.unit}
+                  unit={group.unit}
+                  unitLessons={group.lessons}
+                  allLessons={lessons}
+                  onLessonMutated={() => setLastBulkGenerateIds(null)}
+                />
               ))}
             </div>
             {canGoNext && (
@@ -342,10 +377,21 @@ export function Curriculum({ classRow, subject, lessons, onBack }: CurriculumPro
         )}
       </div>
       {addLessonModalOpen && (
-        <AddLessonModal subjectId={subject.id} lessons={lessons} onClose={() => setAddLessonModalOpen(false)} />
+        <AddLessonModal
+          subjectId={subject.id}
+          lessons={lessons}
+          onClose={() => {
+            setAddLessonModalOpen(false)
+            setLastBulkGenerateIds(null)
+          }}
+        />
       )}
       {bulkGenerateModalOpen && (
-        <BulkGenerateModal subjectId={subject.id} onClose={() => setBulkGenerateModalOpen(false)} />
+        <BulkGenerateModal
+          subjectId={subject.id}
+          onClose={() => setBulkGenerateModalOpen(false)}
+          onGenerated={(ids) => setLastBulkGenerateIds(ids.length > 0 ? ids : null)}
+        />
       )}
     </div>
   )
