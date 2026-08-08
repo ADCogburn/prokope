@@ -688,6 +688,46 @@ describe('ClassBoard', () => {
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
   })
 
+  it('shows a quick "Edit curriculum" icon button on the focused panel and calls onCurriculumNavigate with its subject id', async () => {
+    const classRow = await createClass({ user_id: 'user-1', name: 'Homeroom' })
+    const subjectA = await createSubject({ class_id: classRow.id, name: 'Math', position: 0 })
+    const subjectB = await createSubject({ class_id: classRow.id, name: 'Reading', position: 1 })
+    const onCurriculumNavigate = vi.fn()
+
+    renderBoard({
+      classRow,
+      subjects: [subjectA, subjectB],
+      students: [],
+      progress: [],
+      lessons: [],
+      activeSubjectId: subjectA.id,
+      onCurriculumNavigate,
+    })
+
+    const quickLink = screen.getByRole('button', { name: 'Edit curriculum for Math' })
+    fireEvent.click(quickLink)
+
+    expect(onCurriculumNavigate).toHaveBeenCalledWith(subjectA.id)
+  })
+
+  it('does not show the quick "Edit curriculum" icon button for a non-focused panel', async () => {
+    const classRow = await createClass({ user_id: 'user-1', name: 'Homeroom' })
+    const subjectA = await createSubject({ class_id: classRow.id, name: 'Math', position: 0 })
+    const subjectB = await createSubject({ class_id: classRow.id, name: 'Reading', position: 1 })
+
+    renderBoard({
+      classRow,
+      subjects: [subjectA, subjectB],
+      students: [],
+      progress: [],
+      lessons: [],
+      activeSubjectId: subjectA.id,
+    })
+
+    expect(screen.getByRole('button', { name: 'Edit curriculum for Math' })).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Edit curriculum for Reading' })).not.toBeInTheDocument()
+  })
+
   it('right-click -> "Jump to lesson..." -> picking a lesson moves the student directly to it in the real db', async () => {
     const classRow = await createClass({ user_id: 'user-1', name: 'Homeroom' })
     const subject = await createSubject({ class_id: classRow.id, name: 'Math', position: 0 })
