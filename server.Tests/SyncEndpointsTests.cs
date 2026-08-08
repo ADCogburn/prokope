@@ -57,6 +57,96 @@ public class SyncEndpointsTests(DatabaseFixture fixture) : IClassFixture<Databas
     }
 
     [Fact]
+    public async Task Push_creates_a_subject_template_and_its_lessons_in_the_same_batch()
+    {
+        using var client = fixture.CreateClient();
+        var (token, userId) = await LoginAsync(client, "sub-push-template-create");
+        Authorize(client, token);
+
+        var templateRow = NewSubjectTemplate(userId, name: "Math Template");
+        var templateLessonRow = NewSubjectTemplateLesson(templateRow.Id, unit: 1, lessonInUnit: 1);
+
+        // The template's owning row and its child lesson row arrive in the
+        // same push batch -- mirrors #152's precedent for a subject and its
+        // lesson created together (see the subject/lesson case above): the
+        // lesson's ownership check must see the template that was just
+        // created earlier in this same request, not only rows that already
+        // existed server-side beforehand.
+        var response = await client.PostAsJsonAsync("/sync/push", NewBatch(
+            subjectTemplates: [templateRow], subjectTemplateLessons: [templateLessonRow]));
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        var body = await response.Content.ReadFromJsonAsync<SyncBatch>();
+
+        var echoedTemplate = Assert.Single(body!.SubjectTemplates);
+        Assert.Equal(templateRow.Id, echoedTemplate.Id);
+        Assert.Equal("Math Template", echoedTemplate.Name);
+        Assert.Equal(userId, echoedTemplate.UserId);
+
+        var echoedLesson = Assert.Single(body.SubjectTemplateLessons);
+        Assert.Equal(templateLessonRow.Id, echoedLesson.Id);
+        Assert.Equal(templateRow.Id, echoedLesson.SubjectTemplateId);
+        Assert.Equal(templateLessonRow.Title, echoedLesson.Title);
+    }
+
+    [Fact]
+    public async Task Push_rejects_a_subject_template_claimed_for_another_user()
+    {
+        using var client = fixture.CreateClient();
+        var (tokenA, _) = await LoginAsync(client, "sub-template-claim-a");
+        var (_, userIdB) = await LoginAsync(client, "sub-template-claim-b");
+        Authorize(client, tokenA);
+
+        var response = await client.PostAsJsonAsync("/sync/push", NewBatch(
+            subjectTemplates: [NewSubjectTemplate(userIdB)]));
+
+        Assert.Equal(HttpStatusCode.Forbidden, response.StatusCode);
+    }
+
+    [Fact]
+    public async Task Push_rejects_a_subject_template_lesson_referencing_a_template_not_owned_by_the_caller()
+    {
+        using var client = fixture.CreateClient();
+        var (tokenA, userIdA) = await LoginAsync(client, "sub-template-lesson-a");
+        var (tokenB, _) = await LoginAsync(client, "sub-template-lesson-b");
+
+        Authorize(client, tokenA);
+        var templateRow = NewSubjectTemplate(userIdA);
+        await client.PostAsJsonAsync("/sync/push", NewBatch(subjectTemplates: [templateRow]));
+
+        Authorize(client, tokenB);
+        var response = await client.PostAsJsonAsync("/sync/push", NewBatch(
+            subjectTemplateLessons: [NewSubjectTemplateLesson(templateRow.Id)]));
+
+        Assert.Equal(HttpStatusCode.Forbidden, response.StatusCode);
+    }
+
+    [Fact]
+    public async Task Pull_returns_subject_templates_and_lessons_scoped_to_the_caller()
+    {
+        using var client = fixture.CreateClient();
+        var (tokenA, userIdA) = await LoginAsync(client, "sub-template-pull-a");
+        var (tokenB, userIdB) = await LoginAsync(client, "sub-template-pull-b");
+
+        Authorize(client, tokenA);
+        var templateA = NewSubjectTemplate(userIdA, name: "A's Template");
+        var templateLessonA = NewSubjectTemplateLesson(templateA.Id);
+        await client.PostAsJsonAsync("/sync/push", NewBatch(
+            subjectTemplates: [templateA], subjectTemplateLessons: [templateLessonA]));
+
+        Authorize(client, tokenB);
+        var templateB = NewSubjectTemplate(userIdB, name: "B's Template");
+        await client.PostAsJsonAsync("/sync/push", NewBatch(subjectTemplates: [templateB]));
+
+        var pullResponse = await client.GetAsync("/sync/pull");
+        var pullBody = await pullResponse.Content.ReadFromJsonAsync<SyncPullResponse>();
+
+        Assert.Contains(pullBody!.SubjectTemplates, t => t.Id == templateB.Id);
+        Assert.DoesNotContain(pullBody.SubjectTemplates, t => t.Id == templateA.Id);
+        Assert.DoesNotContain(pullBody.SubjectTemplateLessons, l => l.Id == templateLessonA.Id);
+    }
+
+    [Fact]
     public async Task Push_rejects_a_class_claimed_for_another_user()
     {
         using var client = fixture.CreateClient();
@@ -503,6 +593,8 @@ public class SyncEndpointsTests(DatabaseFixture fixture) : IClassFixture<Databas
         List<StudentSyncRow>? students = null,
         List<ProgressSyncRow>? progress = null,
         List<ReviewFlagSyncRow>? reviewFlags = null,
+        List<SubjectTemplateSyncRow>? subjectTemplates = null,
+        List<SubjectTemplateLessonSyncRow>? subjectTemplateLessons = null,
         List<ClassTemplateSyncRow>? classTemplates = null,
         List<ClassTemplateSubjectSyncRow>? classTemplateSubjects = null,
         List<ClassTemplateLessonSyncRow>? classTemplateLessons = null) =>
@@ -513,6 +605,8 @@ public class SyncEndpointsTests(DatabaseFixture fixture) : IClassFixture<Databas
             students ?? [],
             progress ?? [],
             reviewFlags ?? [],
+            subjectTemplates ?? [],
+            subjectTemplateLessons ?? [],
             classTemplates ?? [],
             classTemplateSubjects ?? [],
             classTemplateLessons ?? []);
@@ -547,6 +641,14 @@ public class SyncEndpointsTests(DatabaseFixture fixture) : IClassFixture<Databas
         string hlc = "hlc-1",
         Guid? clientId = null) =>
         new(id ?? Guid.NewGuid(), studentId, lessonId, flagged, hlc, clientId ?? Guid.NewGuid(), DateTimeOffset.UtcNow);
+
+    private static SubjectTemplateSyncRow NewSubjectTemplate(Guid userId, Guid? id = null, string name = "Math Template") =>
+        new(id ?? Guid.NewGuid(), userId, name, DateTimeOffset.UtcNow, DateTimeOffset.UtcNow);
+
+    private static SubjectTemplateLessonSyncRow NewSubjectTemplateLesson(
+        Guid subjectTemplateId, Guid? id = null, int unit = 1, int lessonInUnit = 1) =>
+        new(id ?? Guid.NewGuid(), subjectTemplateId, unit, lessonInUnit, "Fractions", "Intro to fractions",
+            DateTimeOffset.UtcNow, DateTimeOffset.UtcNow);
 
     private static ClassTemplateSyncRow NewClassTemplate(Guid userId, Guid? id = null, string name = "Fall Curriculum") =>
         new(id ?? Guid.NewGuid(), userId, name, DateTimeOffset.UtcNow, DateTimeOffset.UtcNow);

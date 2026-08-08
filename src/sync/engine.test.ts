@@ -60,6 +60,8 @@ function emptyBatch() {
     students: [],
     progress: [],
     review_flags: [],
+    subject_templates: [],
+    subject_template_lessons: [],
     class_templates: [],
     class_template_subjects: [],
     class_template_lessons: [],

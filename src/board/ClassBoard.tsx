@@ -1,13 +1,23 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, type FormEvent } from 'react'
-import type { ClassRow, ProgressRow, ReviewFlagRow, StudentRow, SubjectRow, LessonRow } from '../db/schema'
+import type {
+  ClassRow,
+  ProgressRow,
+  ReviewFlagRow,
+  StudentRow,
+  SubjectRow,
+  LessonRow,
+  SubjectTemplateRow,
+} from '../db/schema'
 import {
   advanceProgress,
+  applySubjectTemplate,
   bulkAdvanceProgress,
   createStudent,
   createSubject,
   deleteStudent,
   findNextLesson,
   jumpToLesson,
+  listSubjectTemplatesForUser,
   positionOf,
   renameClass,
   renameStudent,
@@ -50,12 +60,58 @@ function ChevronIcon({ direction }: { direction: 'left' | 'right' }) {
 interface AddSubjectCardProps {
   classId: string
   position: number
+  userId: string
 }
 
-/** Trailing/alone "+" card for adding a subject, per #58. Calls createSubject directly, consistent with ClassBoard already calling advanceProgress/upsertReviewFlag directly rather than via callback props. */
-function AddSubjectCard({ classId, position }: AddSubjectCardProps) {
+type AddSubjectMode = 'scratch' | 'template'
+
+/**
+ * Trailing/alone "+" card for adding a subject, per #58. Calls createSubject
+ * directly, consistent with ClassBoard already calling
+ * advanceProgress/upsertReviewFlag directly rather than via callback
+ * props.
+ *
+ * Per #167, the form also offers starting from a saved Subject Template:
+ * picking one lists every Template the teacher has ever saved (regardless of
+ * its source Class/Subject) and prefills the name field, which stays
+ * editable. Submitting in that mode creates the Subject and then calls
+ * applySubjectTemplate to bulk-populate its Lessons, as one action from the
+ * teacher's perspective. This is the only path that loads a Template -- it
+ * only ever targets a brand-new, empty Subject.
+ */
+function AddSubjectCard({ classId, position, userId }: AddSubjectCardProps) {
+  const [mode, setMode] = useState<AddSubjectMode>('scratch')
   const [name, setName] = useState('')
   const [submitting, setSubmitting] = useState(false)
+  const [templates, setTemplates] = useState<SubjectTemplateRow[] | undefined>(undefined)
+  const [selectedTemplateId, setSelectedTemplateId] = useState<string | null>(null)
+
+  useEffect(() => {
+    if (mode !== 'template' || templates !== undefined) return
+    let cancelled = false
+    listSubjectTemplatesForUser(userId).then((rows) => {
+      if (!cancelled) setTemplates(rows)
+    })
+    return () => {
+      cancelled = true
+    }
+  }, [mode, templates, userId])
+
+  function reset() {
+    setMode('scratch')
+    setName('')
+    setSelectedTemplateId(null)
+  }
+
+  function handleSelectTemplate(templateId: string) {
+    const template = templates?.find((t) => t.id === templateId)
+    if (!template) return
+    setSelectedTemplateId(templateId)
+    setName(template.name)
+  }
+
+  const canSubmit =
+    !submitting && name.trim() !== '' && (mode === 'scratch' || selectedTemplateId !== null)
 
   return (
     <InlineAddCard addLabel="Add subject" className="class-board__add-card">
@@ -63,16 +119,75 @@ function AddSubjectCard({ classId, position }: AddSubjectCardProps) {
         async function handleSubmit(event: FormEvent) {
           event.preventDefault()
           const trimmed = name.trim()
-          if (trimmed === '' || submitting) return
+          if (!canSubmit || trimmed === '') return
           setSubmitting(true)
-          await createSubject({ class_id: classId, name: trimmed, position })
+          const subject = await createSubject({ class_id: classId, name: trimmed, position })
+          if (mode === 'template' && selectedTemplateId) {
+            await applySubjectTemplate(selectedTemplateId, subject.id)
+          }
           setSubmitting(false)
-          setName('')
+          reset()
           collapse()
         }
 
         return (
           <form className="inline-add-card__form" onSubmit={handleSubmit}>
+            <div className="inline-add-card__mode-toggle" role="radiogroup" aria-label="Subject source">
+              <label>
+                <input
+                  type="radio"
+                  name="add-subject-mode"
+                  value="scratch"
+                  checked={mode === 'scratch'}
+                  onChange={() => {
+                    setMode('scratch')
+                    setSelectedTemplateId(null)
+                    setName('')
+                  }}
+                />
+                Start from scratch
+              </label>
+              <label>
+                <input
+                  type="radio"
+                  name="add-subject-mode"
+                  value="template"
+                  checked={mode === 'template'}
+                  onChange={() => {
+                    setMode('template')
+                    setSelectedTemplateId(null)
+                    setName('')
+                  }}
+                />
+                Start from a Template
+              </label>
+            </div>
+
+            {mode === 'template' &&
+              (templates === undefined ? (
+                <p>Loading Templates…</p>
+              ) : templates.length === 0 ? (
+                <p>No saved Templates yet.</p>
+              ) : (
+                <>
+                  <label htmlFor="new-subject-template">Template</label>
+                  <select
+                    id="new-subject-template"
+                    value={selectedTemplateId ?? ''}
+                    onChange={(event) => handleSelectTemplate(event.target.value)}
+                  >
+                    <option value="" disabled>
+                      Choose a Template
+                    </option>
+                    {templates.map((template) => (
+                      <option key={template.id} value={template.id}>
+                        {template.name}
+                      </option>
+                    ))}
+                  </select>
+                </>
+              ))}
+
             <label htmlFor="new-subject-name">Subject name</label>
             <input
               id="new-subject-name"
@@ -85,13 +200,13 @@ function AddSubjectCard({ classId, position }: AddSubjectCardProps) {
               <button
                 type="button"
                 onClick={() => {
-                  setName('')
+                  reset()
                   collapse()
                 }}
               >
                 Cancel
               </button>
-              <button type="submit" disabled={submitting || name.trim() === ''}>
+              <button type="submit" disabled={!canSubmit}>
                 Add
               </button>
             </div>
@@ -576,7 +691,7 @@ export function ClassBoard({
         </header>
         <div className="class-board__empty-body">
           {studentsPanel}
-          <AddSubjectCard classId={classRow.id} position={0} />
+          <AddSubjectCard classId={classRow.id} position={0} userId={classRow.user_id} />
         </div>
         {removeStudentDialog}
       </div>
@@ -782,7 +897,7 @@ export function ClassBoard({
               )
             })}
             <div className="class-board__add-card-slot" style={{ marginRight: PANEL_GAP }}>
-              <AddSubjectCard classId={classRow.id} position={subjects.length} />
+              <AddSubjectCard classId={classRow.id} position={subjects.length} userId={classRow.user_id} />
             </div>
           </div>
           {index < subjects.length - 1 && (

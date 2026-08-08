@@ -155,6 +155,83 @@ public static class SyncEndpoints
                 lessonResults.Add(entity);
             }
 
+            // subject_template is keyed by user_id directly (per #165), not a
+            // Class/Subject FK chain -- ownership is a direct comparison against
+            // the caller, same shape as the class loop above.
+            var subjectTemplateResults = new List<SubjectTemplate>();
+            var ownedTemplateIds = ownership.SubjectTemplateIds;
+            foreach (var row in request.SubjectTemplates ?? [])
+            {
+                if (row.UserId != userId.Value)
+                {
+                    return Results.StatusCode(StatusCodes.Status403Forbidden);
+                }
+
+                var entity = await db.SubjectTemplates.FindAsync([row.Id], cancellationToken);
+                if (entity is not null && entity.UserId != userId.Value)
+                {
+                    return Results.StatusCode(StatusCodes.Status403Forbidden);
+                }
+
+                if (entity is null)
+                {
+                    entity = new SubjectTemplate
+                    {
+                        Id = row.Id,
+                        UserId = row.UserId,
+                        Name = row.Name,
+                        CreatedAt = row.CreatedAt,
+                    };
+                    db.SubjectTemplates.Add(entity);
+                }
+
+                entity.Name = row.Name;
+                entity.UpdatedAt = DateTimeOffset.UtcNow;
+                ownedTemplateIds.Add(entity.Id);
+                subjectTemplateResults.Add(entity);
+            }
+
+            // subject_template_lesson's owning template may have just been
+            // created earlier in this same push batch (mirrors how subject/
+            // lesson handle a subject created in the same batch above) -- the
+            // ownership set was seeded from existing rows and is extended with
+            // every subject_template processed in this request.
+            var subjectTemplateLessonResults = new List<SubjectTemplateLesson>();
+            foreach (var row in request.SubjectTemplateLessons ?? [])
+            {
+                if (!ownedTemplateIds.Contains(row.SubjectTemplateId))
+                {
+                    return Results.StatusCode(StatusCodes.Status403Forbidden);
+                }
+
+                var entity = await db.SubjectTemplateLessons.FindAsync([row.Id], cancellationToken);
+                if (entity is not null && !ownedTemplateIds.Contains(entity.SubjectTemplateId))
+                {
+                    return Results.StatusCode(StatusCodes.Status403Forbidden);
+                }
+
+                if (entity is null)
+                {
+                    entity = new SubjectTemplateLesson
+                    {
+                        Id = row.Id,
+                        SubjectTemplateId = row.SubjectTemplateId,
+                        Title = row.Title,
+                        Description = row.Description,
+                        CreatedAt = row.CreatedAt,
+                    };
+                    db.SubjectTemplateLessons.Add(entity);
+                }
+
+                entity.SubjectTemplateId = row.SubjectTemplateId;
+                entity.Unit = row.Unit;
+                entity.LessonInUnit = row.LessonInUnit;
+                entity.Title = row.Title;
+                entity.Description = row.Description;
+                entity.UpdatedAt = DateTimeOffset.UtcNow;
+                subjectTemplateLessonResults.Add(entity);
+            }
+
             // progress has no id-based identity of its own as far as merge is
             // concerned -- the (student_id, subject_id) pair is the cell's real
             // identity. Two devices that each created a row for the same cell
@@ -360,6 +437,8 @@ public static class SyncEndpoints
                 studentResults.Select(ToSyncRow).ToList(),
                 progressResults.Select(ToSyncRow).ToList(),
                 reviewFlagResults.Select(ToSyncRow).ToList(),
+                subjectTemplateResults.Select(ToSyncRow).ToList(),
+                subjectTemplateLessonResults.Select(ToSyncRow).ToList(),
                 classTemplateResults.Select(ToSyncRow).ToList(),
                 classTemplateSubjectResults.Select(ToSyncRow).ToList(),
                 classTemplateLessonResults.Select(ToSyncRow).ToList()));
@@ -410,6 +489,12 @@ public static class SyncEndpoints
                     && ownership.LessonIds.Contains(r.LessonId)
                     && r.UpdatedAt > watermarkFloor)
                 .ToListAsync(cancellationToken);
+            var subjectTemplates = await db.SubjectTemplates
+                .Where(t => t.UserId == userId.Value && t.UpdatedAt > watermarkFloor)
+                .ToListAsync(cancellationToken);
+            var subjectTemplateLessons = await db.SubjectTemplateLessons
+                .Where(tl => ownership.SubjectTemplateIds.Contains(tl.SubjectTemplateId) && tl.UpdatedAt > watermarkFloor)
+                .ToListAsync(cancellationToken);
             var classTemplates = await db.ClassTemplates
                 .Where(ct => ct.UserId == userId.Value && ct.UpdatedAt > watermarkFloor)
                 .ToListAsync(cancellationToken);
@@ -428,6 +513,8 @@ public static class SyncEndpoints
                 .Concat(lessons.Select(l => l.UpdatedAt))
                 .Concat(progress.Select(p => p.UpdatedAt))
                 .Concat(reviewFlags.Select(r => r.UpdatedAt))
+                .Concat(subjectTemplates.Select(t => t.UpdatedAt))
+                .Concat(subjectTemplateLessons.Select(tl => tl.UpdatedAt))
                 .Concat(classTemplates.Select(ct => ct.UpdatedAt))
                 .Concat(classTemplateSubjects.Select(cts => cts.UpdatedAt))
                 .Concat(classTemplateLessons.Select(ctl => ctl.UpdatedAt))
@@ -440,6 +527,8 @@ public static class SyncEndpoints
                 students.Select(ToSyncRow).ToList(),
                 progress.Select(ToSyncRow).ToList(),
                 reviewFlags.Select(ToSyncRow).ToList(),
+                subjectTemplates.Select(ToSyncRow).ToList(),
+                subjectTemplateLessons.Select(ToSyncRow).ToList(),
                 classTemplates.Select(ToSyncRow).ToList(),
                 classTemplateSubjects.Select(ToSyncRow).ToList(),
                 classTemplateLessons.Select(ToSyncRow).ToList(),
@@ -492,6 +581,14 @@ public static class SyncEndpoints
             .ToListAsync(cancellationToken))
             .ToHashSet();
 
+        // subject_template is keyed by user_id directly (per #165), not
+        // walked via a Class/Subject FK chain like the sets above.
+        var subjectTemplateIds = (await db.SubjectTemplates
+            .Where(t => t.UserId == userId)
+            .Select(t => t.Id)
+            .ToListAsync(cancellationToken))
+            .ToHashSet();
+
         var classTemplateIds = (await db.ClassTemplates
             .Where(ct => ct.UserId == userId)
             .Select(ct => ct.Id)
@@ -504,7 +601,8 @@ public static class SyncEndpoints
             .ToListAsync(cancellationToken))
             .ToHashSet();
 
-        return new OwnershipSets(classIds, subjectIds, studentIds, lessonIds, classTemplateIds, classTemplateSubjectIds);
+        return new OwnershipSets(
+            classIds, subjectIds, studentIds, lessonIds, subjectTemplateIds, classTemplateIds, classTemplateSubjectIds);
     }
 
     // Same "does the challenger's HLC beat the incumbent's" rule the client
@@ -543,6 +641,13 @@ public static class SyncEndpoints
     private static ReviewFlagSyncRow ToSyncRow(ReviewFlag entity) =>
         new(entity.Id, entity.StudentId, entity.LessonId, entity.Flagged, entity.Hlc, entity.ClientId, entity.UpdatedAt);
 
+    private static SubjectTemplateSyncRow ToSyncRow(SubjectTemplate entity) =>
+        new(entity.Id, entity.UserId, entity.Name, entity.CreatedAt, entity.UpdatedAt);
+
+    private static SubjectTemplateLessonSyncRow ToSyncRow(SubjectTemplateLesson entity) =>
+        new(entity.Id, entity.SubjectTemplateId, entity.Unit, entity.LessonInUnit, entity.Title, entity.Description,
+            entity.CreatedAt, entity.UpdatedAt);
+
     private static ClassTemplateSyncRow ToSyncRow(ClassTemplate entity) =>
         new(entity.Id, entity.UserId, entity.Name, entity.CreatedAt, entity.UpdatedAt);
 
@@ -558,6 +663,7 @@ public static class SyncEndpoints
         HashSet<Guid> SubjectIds,
         HashSet<Guid> StudentIds,
         HashSet<Guid> LessonIds,
+        HashSet<Guid> SubjectTemplateIds,
         HashSet<Guid> ClassTemplateIds,
         HashSet<Guid> ClassTemplateSubjectIds);
 }

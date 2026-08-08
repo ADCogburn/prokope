@@ -8,6 +8,7 @@ import {
   createStudent,
   createSubject,
   listStudentsForClass,
+  saveSubjectTemplate,
   upsertProgressStep,
   upsertReviewFlag,
 } from '../db'
@@ -169,6 +170,150 @@ describe('ClassBoard', () => {
     expect(screen.getByRole('button', { name: '+ Add subject' })).toBeInTheDocument()
     const rows = await db.subject.where('class_id').equals(classRow.id).toArray()
     expect(rows).toHaveLength(1)
+  })
+
+  async function makeSubjectTemplateForUser(userId: string, templateName: string) {
+    const templateClass = await createClass({ user_id: userId, name: 'Template Source Class' })
+    const templateSubject = await createSubject({
+      class_id: templateClass.id,
+      name: 'Template Source Subject',
+      position: 0,
+    })
+    await createLesson({
+      subject_id: templateSubject.id,
+      unit: 1,
+      lesson_in_unit: 1,
+      title: 'Intro',
+      description: 'Intro lesson',
+    })
+    await createLesson({
+      subject_id: templateSubject.id,
+      unit: 1,
+      lesson_in_unit: 2,
+      title: 'Next up',
+      description: 'Second lesson',
+    })
+    return saveSubjectTemplate(templateSubject.id, templateName)
+  }
+
+  it('offers "Start from scratch" vs. "Start from a Template" on the add-subject form, defaulting to scratch', async () => {
+    const classRow = await createClass({ user_id: 'user-1', name: 'Homeroom' })
+
+    renderBoard({
+      classRow,
+      subjects: [],
+      students: [],
+      progress: [],
+      lessons: [],
+      activeSubjectId: undefined,
+    })
+
+    fireEvent.click(screen.getByRole('button', { name: '+ Add subject' }))
+
+    expect(screen.getByRole('radio', { name: 'Start from scratch' })).toBeChecked()
+    expect(screen.getByRole('radio', { name: 'Start from a Template' })).not.toBeChecked()
+    expect(screen.queryByLabelText('Template')).not.toBeInTheDocument()
+  })
+
+  it('choosing "Start from a Template" lists every Subject Template the teacher has ever saved', async () => {
+    const classRow = await createClass({ user_id: 'user-1', name: 'Homeroom' })
+    const template = await makeSubjectTemplateForUser('user-1', 'Math Basics')
+
+    renderBoard({
+      classRow,
+      subjects: [],
+      students: [],
+      progress: [],
+      lessons: [],
+      activeSubjectId: undefined,
+    })
+
+    fireEvent.click(screen.getByRole('button', { name: '+ Add subject' }))
+    fireEvent.click(screen.getByRole('radio', { name: 'Start from a Template' }))
+
+    await waitFor(() => {
+      expect(screen.getByRole('option', { name: template.name })).toBeInTheDocument()
+    })
+  })
+
+  it('selecting a Template prefills the subject name field, which stays editable', async () => {
+    const classRow = await createClass({ user_id: 'user-1', name: 'Homeroom' })
+    const template = await makeSubjectTemplateForUser('user-1', 'Math Basics')
+
+    renderBoard({
+      classRow,
+      subjects: [],
+      students: [],
+      progress: [],
+      lessons: [],
+      activeSubjectId: undefined,
+    })
+
+    fireEvent.click(screen.getByRole('button', { name: '+ Add subject' }))
+    fireEvent.click(screen.getByRole('radio', { name: 'Start from a Template' }))
+
+    await waitFor(() => screen.getByLabelText('Template'))
+    fireEvent.change(screen.getByLabelText('Template'), { target: { value: template.id } })
+
+    expect(screen.getByLabelText('Subject name')).toHaveValue('Math Basics')
+
+    fireEvent.change(screen.getByLabelText('Subject name'), { target: { value: 'Math Basics (Room 5)' } })
+    expect(screen.getByLabelText('Subject name')).toHaveValue('Math Basics (Room 5)')
+  })
+
+  it('submitting in Template mode creates the Subject and populates its Lessons from the Template', async () => {
+    const classRow = await createClass({ user_id: 'user-1', name: 'Homeroom' })
+    const template = await makeSubjectTemplateForUser('user-1', 'Math Basics')
+
+    renderBoard({
+      classRow,
+      subjects: [],
+      students: [],
+      progress: [],
+      lessons: [],
+      activeSubjectId: undefined,
+    })
+
+    fireEvent.click(screen.getByRole('button', { name: '+ Add subject' }))
+    fireEvent.click(screen.getByRole('radio', { name: 'Start from a Template' }))
+
+    await waitFor(() => screen.getByLabelText('Template'))
+    fireEvent.change(screen.getByLabelText('Template'), { target: { value: template.id } })
+    fireEvent.click(screen.getByRole('button', { name: 'Add' }))
+
+    let newSubjectId = ''
+    await waitFor(async () => {
+      const rows = await db.subject.where('class_id').equals(classRow.id).toArray()
+      expect(rows).toHaveLength(1)
+      expect(rows[0]).toMatchObject({ name: 'Math Basics', position: 0 })
+      newSubjectId = rows[0].id
+    })
+
+    // applySubjectTemplate resolves after createSubject, in the same submit
+    // handler -- wait for the Lessons to land rather than asserting
+    // immediately, the same way the subject-creation check above retries.
+    await waitFor(async () => {
+      const lessons = await db.lesson.where('subject_id').equals(newSubjectId).toArray()
+      expect(lessons).toHaveLength(2)
+    })
+
+    const lessons = (await db.lesson.where('subject_id').equals(newSubjectId).toArray()).sort(
+      (a, b) => a.unit - b.unit || a.lesson_in_unit - b.lesson_in_unit,
+    )
+    expect(lessons[0]).toMatchObject({ unit: 1, lesson_in_unit: 1, title: 'Intro', description: 'Intro lesson' })
+    expect(lessons[1]).toMatchObject({
+      unit: 1,
+      lesson_in_unit: 2,
+      title: 'Next up',
+      description: 'Second lesson',
+    })
+
+    // The card clears and collapses after a successful add, same as "start
+    // from scratch" -- this only settles once reset()/collapse() run after
+    // applySubjectTemplate resolves, so it needs its own wait too.
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: '+ Add subject' })).toBeInTheDocument()
+    })
   })
 
   it('shows "This Subject is empty." and a curriculum-navigation link instead of the student list when the panel has zero lessons', async () => {

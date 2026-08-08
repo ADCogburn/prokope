@@ -5,6 +5,8 @@ export type {
   StudentRow,
   ProgressRow,
   ReviewFlagRow,
+  SubjectTemplateRow,
+  SubjectTemplateLessonRow,
   ClassTemplateRow,
   ClassTemplateSubjectRow,
   ClassTemplateLessonRow,
@@ -58,6 +60,11 @@ export type { ProgressStep, BulkAdvanceEntry } from './progress'
 
 export { getReviewFlag, upsertReviewFlag, listReviewFlagsForStudents } from './reviewFlags'
 
-export { saveClassTemplate } from './templates'
+export {
+  saveSubjectTemplate,
+  listSubjectTemplatesForUser,
+  applySubjectTemplate,
+  saveClassTemplate,
+} from './templates'
 
 export { getClientId } from './clientId'

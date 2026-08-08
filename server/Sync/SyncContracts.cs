@@ -45,6 +45,26 @@ public record StudentSyncRow(
     [property: JsonPropertyName("updated_at")] DateTimeOffset UpdatedAt,
     [property: JsonPropertyName("deleted_at")] DateTimeOffset? DeletedAt);
 
+// #165: keyed by user_id directly (not class_id/subject_id), so a Template
+// outlives its source Subject/Class. No deleted_at -- Templates are
+// immutable/create-only per #147, there is no soft-delete path.
+public record SubjectTemplateSyncRow(
+    [property: JsonPropertyName("id")] Guid Id,
+    [property: JsonPropertyName("user_id")] Guid UserId,
+    [property: JsonPropertyName("name")] string Name,
+    [property: JsonPropertyName("created_at")] DateTimeOffset CreatedAt,
+    [property: JsonPropertyName("updated_at")] DateTimeOffset UpdatedAt);
+
+public record SubjectTemplateLessonSyncRow(
+    [property: JsonPropertyName("id")] Guid Id,
+    [property: JsonPropertyName("subject_template_id")] Guid SubjectTemplateId,
+    [property: JsonPropertyName("unit")] int Unit,
+    [property: JsonPropertyName("lesson_in_unit")] int LessonInUnit,
+    [property: JsonPropertyName("title")] string Title,
+    [property: JsonPropertyName("description")] string Description,
+    [property: JsonPropertyName("created_at")] DateTimeOffset CreatedAt,
+    [property: JsonPropertyName("updated_at")] DateTimeOffset UpdatedAt);
+
 public record ProgressSyncRow(
     [property: JsonPropertyName("id")] Guid Id,
     [property: JsonPropertyName("student_id")] Guid StudentId,
@@ -103,6 +123,8 @@ public record SyncBatch(
     [property: JsonPropertyName("students")] List<StudentSyncRow> Students,
     [property: JsonPropertyName("progress")] List<ProgressSyncRow> Progress,
     [property: JsonPropertyName("review_flags")] List<ReviewFlagSyncRow> ReviewFlags,
+    [property: JsonPropertyName("subject_templates")] List<SubjectTemplateSyncRow> SubjectTemplates,
+    [property: JsonPropertyName("subject_template_lessons")] List<SubjectTemplateLessonSyncRow> SubjectTemplateLessons,
     [property: JsonPropertyName("class_templates")] List<ClassTemplateSyncRow> ClassTemplates,
     [property: JsonPropertyName("class_template_subjects")] List<ClassTemplateSubjectSyncRow> ClassTemplateSubjects,
     [property: JsonPropertyName("class_template_lessons")] List<ClassTemplateLessonSyncRow> ClassTemplateLessons);
@@ -114,6 +136,8 @@ public record SyncPullResponse(
     [property: JsonPropertyName("students")] List<StudentSyncRow> Students,
     [property: JsonPropertyName("progress")] List<ProgressSyncRow> Progress,
     [property: JsonPropertyName("review_flags")] List<ReviewFlagSyncRow> ReviewFlags,
+    [property: JsonPropertyName("subject_templates")] List<SubjectTemplateSyncRow> SubjectTemplates,
+    [property: JsonPropertyName("subject_template_lessons")] List<SubjectTemplateLessonSyncRow> SubjectTemplateLessons,
     [property: JsonPropertyName("class_templates")] List<ClassTemplateSyncRow> ClassTemplates,
     [property: JsonPropertyName("class_template_subjects")] List<ClassTemplateSubjectSyncRow> ClassTemplateSubjects,
     [property: JsonPropertyName("class_template_lessons")] List<ClassTemplateLessonSyncRow> ClassTemplateLessons,

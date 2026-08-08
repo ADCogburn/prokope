@@ -13,6 +13,8 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
     public DbSet<Lesson> Lessons => Set<Lesson>();
     public DbSet<Student> Students => Set<Student>();
     public DbSet<Progress> Progress => Set<Progress>();
+    public DbSet<SubjectTemplate> SubjectTemplates => Set<SubjectTemplate>();
+    public DbSet<SubjectTemplateLesson> SubjectTemplateLessons => Set<SubjectTemplateLesson>();
     public DbSet<ReviewFlag> ReviewFlags => Set<ReviewFlag>();
     public DbSet<ClassTemplate> ClassTemplates => Set<ClassTemplate>();
     public DbSet<ClassTemplateSubject> ClassTemplateSubjects => Set<ClassTemplateSubject>();
@@ -68,6 +70,33 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
             entity.HasIndex(e => e.UpdatedAt);
             ConfigureForeignKey<Progress, Student>(entity, e => e.StudentId);
             ConfigureForeignKey<Progress, Subject>(entity, e => e.SubjectId);
+        });
+
+        // #165: SubjectTemplate is keyed by user_id directly, the same shape
+        // as Class -- not derived via a Class/Subject FK chain -- so it can
+        // outlive the Subject it was saved from. No DeletedAt: templates are
+        // immutable/create-only per #147, so there is no soft-delete path.
+        modelBuilder.Entity<SubjectTemplate>(entity =>
+        {
+            entity.ToTable("subject_template");
+            entity.HasKey(e => e.Id);
+            entity.HasIndex(e => e.UpdatedAt);
+            ConfigureForeignKey<SubjectTemplate, User>(entity, e => e.UserId);
+        });
+
+        // Compositional child of SubjectTemplate, same shape as Lesson->Subject,
+        // but cascade-deleted with its parent since neither row is ever soft-
+        // deleted or independently referenced -- there's no #135/ADR-0010-style
+        // reason to keep an orphaned template lesson around.
+        modelBuilder.Entity<SubjectTemplateLesson>(entity =>
+        {
+            entity.ToTable("subject_template_lesson");
+            entity.HasKey(e => e.Id);
+            entity.HasIndex(e => e.UpdatedAt);
+            entity.HasOne<SubjectTemplate>()
+                .WithMany()
+                .HasForeignKey(e => e.SubjectTemplateId)
+                .OnDelete(DeleteBehavior.Cascade);
         });
 
         modelBuilder.Entity<ReviewFlag>(entity =>
