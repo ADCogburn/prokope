@@ -2,6 +2,7 @@
 using System;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 using server.Data;
@@ -11,9 +12,11 @@ using server.Data;
 namespace server.Data.Migrations
 {
     [DbContext(typeof(AppDbContext))]
-    partial class AppDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260807230826_AddSubjectTemplateTables")]
+    partial class AddSubjectTemplateTables
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -123,6 +126,19 @@ namespace server.Data.Migrations
                         .HasColumnType("uuid")
                         .HasColumnName("id");
 
+                    b.Property<bool>("Review")
+                        .HasColumnType("boolean")
+                        .HasColumnName("review");
+
+                    b.Property<Guid>("ReviewClientId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("review_client_id");
+
+                    b.Property<string>("ReviewHlc")
+                        .IsRequired()
+                        .HasColumnType("text")
+                        .HasColumnName("review_hlc");
+
                     b.Property<Guid>("StepClientId")
                         .HasColumnType("uuid")
                         .HasColumnName("step_client_id");
@@ -166,54 +182,6 @@ namespace server.Data.Migrations
                         .HasDatabaseName("ix_progress_student_id_subject_id");
 
                     b.ToTable("progress", (string)null);
-                });
-
-            modelBuilder.Entity("server.Data.Entities.ReviewFlag", b =>
-                {
-                    b.Property<Guid>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("uuid")
-                        .HasColumnName("id");
-
-                    b.Property<Guid>("ClientId")
-                        .HasColumnType("uuid")
-                        .HasColumnName("client_id");
-
-                    b.Property<bool>("Flagged")
-                        .HasColumnType("boolean")
-                        .HasColumnName("flagged");
-
-                    b.Property<string>("Hlc")
-                        .IsRequired()
-                        .HasColumnType("text")
-                        .HasColumnName("hlc");
-
-                    b.Property<Guid>("LessonId")
-                        .HasColumnType("uuid")
-                        .HasColumnName("lesson_id");
-
-                    b.Property<Guid>("StudentId")
-                        .HasColumnType("uuid")
-                        .HasColumnName("student_id");
-
-                    b.Property<DateTimeOffset>("UpdatedAt")
-                        .HasColumnType("timestamp with time zone")
-                        .HasColumnName("updated_at");
-
-                    b.HasKey("Id")
-                        .HasName("pk_review_flag");
-
-                    b.HasIndex("LessonId")
-                        .HasDatabaseName("ix_review_flag_lesson_id");
-
-                    b.HasIndex("UpdatedAt")
-                        .HasDatabaseName("ix_review_flag_updated_at");
-
-                    b.HasIndex("StudentId", "LessonId")
-                        .IsUnique()
-                        .HasDatabaseName("ix_review_flag_student_id_lesson_id");
-
-                    b.ToTable("review_flag", (string)null);
                 });
 
             modelBuilder.Entity("server.Data.Entities.Student", b =>
@@ -458,23 +426,6 @@ namespace server.Data.Migrations
                         .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired()
                         .HasConstraintName("fk_progress_subject_subject_id");
-                });
-
-            modelBuilder.Entity("server.Data.Entities.ReviewFlag", b =>
-                {
-                    b.HasOne("server.Data.Entities.Lesson", null)
-                        .WithMany()
-                        .HasForeignKey("LessonId")
-                        .OnDelete(DeleteBehavior.Restrict)
-                        .IsRequired()
-                        .HasConstraintName("fk_review_flag_lesson_lesson_id");
-
-                    b.HasOne("server.Data.Entities.Student", null)
-                        .WithMany()
-                        .HasForeignKey("StudentId")
-                        .OnDelete(DeleteBehavior.Restrict)
-                        .IsRequired()
-                        .HasConstraintName("fk_review_flag_student_student_id");
                 });
 
             modelBuilder.Entity("server.Data.Entities.Student", b =>

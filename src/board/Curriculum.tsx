@@ -1,11 +1,12 @@
 import { useEffect, useRef, useState, type FormEvent } from 'react'
 import type { ClassRow, LessonRow, SubjectRow } from '../db/schema'
-import { deleteLesson, updateLessonContent } from '../db'
+import { deleteLesson, saveSubjectTemplate, updateLessonContent } from '../db'
 import { ContextMenu } from './ContextMenu'
 import { SubjectNameLabel } from './SubjectNameLabel'
 import { AddLessonModal } from './AddLessonModal'
 import { BulkGenerateModal } from './BulkGenerateModal'
 import { RemoveLessonDialog } from './RemoveLessonDialog'
+import { InlineAddCard } from './InlineAddCard'
 import { groupLessonsByUnit } from './groupLessonsByUnit'
 import { useUnitWindow } from './useUnitWindow'
 import { countVisibleUnitColumns } from './countVisibleUnitColumns'
@@ -240,6 +241,70 @@ function UnitColumn({ unit, unitLessons, allLessons, onLessonMutated }: UnitColu
   )
 }
 
+interface SaveSubjectTemplateCardProps {
+  subjectId: string
+  subjectName: string
+}
+
+/**
+ * Inline-expanding "Save as Template" affordance, per #166/ADR-0003: lets a
+ * teacher checkpoint the Subject's current live Lessons into a reusable
+ * Subject Template (saveSubjectTemplate, #165) at any time, without
+ * touching the live Subject or its Lessons. Mirrors ClassBoard's
+ * AddSubjectCard exactly -- same InlineAddCard usage, Cancel/submit
+ * shape -- except the name field starts pre-filled with the Subject's
+ * current name (still freely editable) rather than blank, since a Template
+ * is commonly saved under a more specific label (e.g. "... - Fall
+ * Semester") than the live Subject's own name.
+ */
+function SaveSubjectTemplateCard({ subjectId, subjectName }: SaveSubjectTemplateCardProps) {
+  const [name, setName] = useState(subjectName)
+  const [submitting, setSubmitting] = useState(false)
+
+  return (
+    <InlineAddCard addLabel="Save as Template" className="curriculum__save-template-card">
+      {({ collapse }) => {
+        async function handleSubmit(event: FormEvent) {
+          event.preventDefault()
+          const trimmed = name.trim()
+          if (trimmed === '' || submitting) return
+          setSubmitting(true)
+          await saveSubjectTemplate(subjectId, trimmed)
+          setSubmitting(false)
+          setName(subjectName)
+          collapse()
+        }
+
+        return (
+          <form className="inline-add-card__form" onSubmit={handleSubmit}>
+            <label htmlFor="save-template-name">Template name</label>
+            <input
+              id="save-template-name"
+              value={name}
+              onChange={(event) => setName(event.target.value)}
+              autoFocus
+            />
+            <div className="inline-add-card__actions">
+              <button
+                type="button"
+                onClick={() => {
+                  setName(subjectName)
+                  collapse()
+                }}
+              >
+                Cancel
+              </button>
+              <button type="submit" disabled={submitting || name.trim() === ''}>
+                Save
+              </button>
+            </div>
+          </form>
+        )
+      }}
+    </InlineAddCard>
+  )
+}
+
 interface CurriculumProps {
   classRow: ClassRow
   subject: SubjectRow
@@ -338,6 +403,7 @@ export function Curriculum({ classRow, subject, lessons, onBack }: CurriculumPro
           </div>
           <p>{classRow.name}</p>
         </div>
+        <SaveSubjectTemplateCard subjectId={subject.id} subjectName={subject.name} />
       </header>
       <div className="curriculum__body">
         {lessons.length > 0 && (

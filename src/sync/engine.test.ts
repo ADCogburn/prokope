@@ -53,7 +53,16 @@ function makeReviewFlag(overrides: Partial<ReviewFlagRow> = {}): ReviewFlagRow {
 }
 
 function emptyBatch() {
-  return { classes: [], subjects: [], lessons: [], students: [], progress: [], review_flags: [] }
+  return {
+    classes: [],
+    subjects: [],
+    lessons: [],
+    students: [],
+    progress: [],
+    review_flags: [],
+    subject_templates: [],
+    subject_template_lessons: [],
+  }
 }
 
 function jsonResponse(body: unknown): Response {
