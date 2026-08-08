@@ -957,6 +957,124 @@ describe('ClassBoard', () => {
     expect(screen.queryByRole('button', { name: 'Generate report' })).not.toBeInTheDocument()
   })
 
+  it('wires up the book icon menu\'s "Save Class Template" item: opens a name form prefilled with the class name', async () => {
+    const classRow = await createClass({ user_id: 'user-1', name: 'Homeroom' })
+    const subject = await createSubject({ class_id: classRow.id, name: 'Math', position: 0 })
+
+    renderBoard({
+      classRow,
+      subjects: [subject],
+      students: [],
+      progress: [],
+      lessons: [],
+      activeSubjectId: subject.id,
+    })
+
+    expect(screen.queryByLabelText('Template name')).not.toBeInTheDocument()
+
+    fireEvent.click(screen.getByRole('button', { name: 'Add lessons menu' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Save Class Template' }))
+
+    expect(screen.queryByRole('button', { name: 'Save Class Template' })).not.toBeInTheDocument()
+    expect(screen.getByLabelText('Template name')).toHaveValue('Homeroom')
+  })
+
+  it('submitting the prefilled template name persists a class_template row (and its subject/lesson rows)', async () => {
+    const classRow = await createClass({ user_id: 'user-1', name: 'Homeroom' })
+    const subject = await createSubject({ class_id: classRow.id, name: 'Math', position: 0 })
+    const lesson = await createLesson({
+      subject_id: subject.id,
+      unit: 1,
+      lesson_in_unit: 1,
+      title: 'Fractions',
+      description: '',
+    })
+
+    renderBoard({
+      classRow,
+      subjects: [subject],
+      students: [],
+      progress: [],
+      lessons: [lesson],
+      activeSubjectId: subject.id,
+    })
+
+    fireEvent.click(screen.getByRole('button', { name: 'Add lessons menu' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Save Class Template' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Save' }))
+
+    await waitFor(async () => {
+      const rows = await db.class_template.where('user_id').equals('user-1').toArray()
+      expect(rows).toHaveLength(1)
+      expect(rows[0]).toMatchObject({ name: 'Homeroom' })
+    })
+
+    const template = (await db.class_template.where('user_id').equals('user-1').toArray())[0]!
+    const templateSubjects = await db.class_template_subject
+      .where('class_template_id')
+      .equals(template.id)
+      .toArray()
+    expect(templateSubjects).toHaveLength(1)
+    expect(templateSubjects[0]).toMatchObject({ name: 'Math', position: 0 })
+
+    const templateLessons = await db.class_template_lesson
+      .where('class_template_subject_id')
+      .equals(templateSubjects[0]!.id)
+      .toArray()
+    expect(templateLessons).toHaveLength(1)
+    expect(templateLessons[0]).toMatchObject({ title: 'Fractions', unit: 1, lesson_in_unit: 1 })
+
+    expect(screen.queryByLabelText('Template name')).not.toBeInTheDocument()
+  })
+
+  it('submitting an edited template name persists that edited name', async () => {
+    const classRow = await createClass({ user_id: 'user-1', name: 'Homeroom' })
+    const subject = await createSubject({ class_id: classRow.id, name: 'Math', position: 0 })
+
+    renderBoard({
+      classRow,
+      subjects: [subject],
+      students: [],
+      progress: [],
+      lessons: [],
+      activeSubjectId: subject.id,
+    })
+
+    fireEvent.click(screen.getByRole('button', { name: 'Add lessons menu' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Save Class Template' }))
+    fireEvent.change(screen.getByLabelText('Template name'), { target: { value: 'End of year snapshot' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Save' }))
+
+    await waitFor(async () => {
+      const rows = await db.class_template.where('user_id').equals('user-1').toArray()
+      expect(rows).toHaveLength(1)
+      expect(rows[0]).toMatchObject({ name: 'End of year snapshot' })
+    })
+    expect(screen.queryByLabelText('Template name')).not.toBeInTheDocument()
+  })
+
+  it('cancelling the Save Class Template form closes it without persisting anything', async () => {
+    const classRow = await createClass({ user_id: 'user-1', name: 'Homeroom' })
+    const subject = await createSubject({ class_id: classRow.id, name: 'Math', position: 0 })
+
+    renderBoard({
+      classRow,
+      subjects: [subject],
+      students: [],
+      progress: [],
+      lessons: [],
+      activeSubjectId: subject.id,
+    })
+
+    fireEvent.click(screen.getByRole('button', { name: 'Add lessons menu' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Save Class Template' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Cancel' }))
+
+    expect(screen.queryByLabelText('Template name')).not.toBeInTheDocument()
+    const rows = await db.class_template.where('user_id').equals('user-1').toArray()
+    expect(rows).toHaveLength(0)
+  })
+
   it('clicking "+ Add student" reveals the inline form', async () => {
     const classRow = await createClass({ user_id: 'user-1', name: 'Homeroom' })
     const subject = await createSubject({ class_id: classRow.id, name: 'Math', position: 0 })

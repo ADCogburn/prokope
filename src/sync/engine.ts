@@ -8,6 +8,9 @@ import {
   getRawReviewFlagByPair,
   listRowsUpdatedSince,
   putRawClass,
+  putRawClassTemplate,
+  putRawClassTemplateLesson,
+  putRawClassTemplateSubject,
   putRawLesson,
   putRawProgress,
   putRawReviewFlag,
@@ -69,7 +72,8 @@ async function applyRemoteReviewFlag(incoming: ReviewFlagRow): Promise<void> {
 // class/subject/lesson/student have no per-field HLC and no conflict
 // resolution at all (per #6/#7) -- same as the server's push handler, this
 // is a plain overwrite-by-id, last-received-wins. subject_template/
-// subject_template_lesson (#165) join this group rather than progress's:
+// subject_template_lesson (#165) and class_template/class_template_subject/
+// class_template_lesson (#168) join this group rather than progress's:
 // they're immutable once created, so two devices would never both create a
 // row sharing an id, meaning there's no conflict for a merge function to
 // resolve in the first place.
@@ -83,6 +87,9 @@ async function applyRemoteBatch(batch: SyncBatch): Promise<void> {
     ...batch.subject_template_lessons.map(putRawSubjectTemplateLesson),
     ...batch.progress.map(applyRemoteProgress),
     ...batch.review_flags.map(applyRemoteReviewFlag),
+    ...batch.class_templates.map(putRawClassTemplate),
+    ...batch.class_template_subjects.map(putRawClassTemplateSubject),
+    ...batch.class_template_lessons.map(putRawClassTemplateLesson),
   ])
 }
 
@@ -95,7 +102,10 @@ function isEmptyBatch(batch: SyncBatch): boolean {
     batch.progress.length === 0 &&
     batch.review_flags.length === 0 &&
     batch.subject_templates.length === 0 &&
-    batch.subject_template_lessons.length === 0
+    batch.subject_template_lessons.length === 0 &&
+    batch.class_templates.length === 0 &&
+    batch.class_template_subjects.length === 0 &&
+    batch.class_template_lessons.length === 0
   )
 }
 
@@ -113,6 +123,9 @@ function batchWatermark(batch: SyncBatch, floor: string): string {
     batch.review_flags,
     batch.subject_templates,
     batch.subject_template_lessons,
+    batch.class_templates,
+    batch.class_template_subjects,
+    batch.class_template_lessons,
   ].reduce((max, rows) => maxUpdatedAt(rows, max), floor)
 }
 

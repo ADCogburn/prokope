@@ -16,6 +16,9 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
     public DbSet<SubjectTemplate> SubjectTemplates => Set<SubjectTemplate>();
     public DbSet<SubjectTemplateLesson> SubjectTemplateLessons => Set<SubjectTemplateLesson>();
     public DbSet<ReviewFlag> ReviewFlags => Set<ReviewFlag>();
+    public DbSet<ClassTemplate> ClassTemplates => Set<ClassTemplate>();
+    public DbSet<ClassTemplateSubject> ClassTemplateSubjects => Set<ClassTemplateSubject>();
+    public DbSet<ClassTemplateLesson> ClassTemplateLessons => Set<ClassTemplateLesson>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -105,18 +108,53 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
             ConfigureForeignKey<ReviewFlag, Student>(entity, e => e.StudentId);
             ConfigureForeignKey<ReviewFlag, Lesson>(entity, e => e.LessonId);
         });
+
+        // #168: class_template/class_template_subject/class_template_lesson
+        // are immutable, create-only rows with no deleted_at -- unlike the
+        // rest of this schema, soft-delete isn't how they'd ever go away, so
+        // ClassTemplateSubject/ClassTemplateLesson cascade-delete on their
+        // parent instead of the RESTRICT every other FK here uses.
+        modelBuilder.Entity<ClassTemplate>(entity =>
+        {
+            entity.ToTable("class_template");
+            entity.HasKey(e => e.Id);
+            entity.HasIndex(e => e.UpdatedAt);
+            ConfigureForeignKey<ClassTemplate, User>(entity, e => e.UserId);
+        });
+
+        modelBuilder.Entity<ClassTemplateSubject>(entity =>
+        {
+            entity.ToTable("class_template_subject");
+            entity.HasKey(e => e.Id);
+            entity.HasIndex(e => e.UpdatedAt);
+            ConfigureForeignKey<ClassTemplateSubject, ClassTemplate>(
+                entity, e => e.ClassTemplateId, DeleteBehavior.Cascade);
+        });
+
+        modelBuilder.Entity<ClassTemplateLesson>(entity =>
+        {
+            entity.ToTable("class_template_lesson");
+            entity.HasKey(e => e.Id);
+            entity.HasIndex(e => e.UpdatedAt);
+            ConfigureForeignKey<ClassTemplateLesson, ClassTemplateSubject>(
+                entity, e => e.ClassTemplateSubjectId, DeleteBehavior.Cascade);
+        });
     }
 
     // Every FK in this schema is a required many-to-one with no inverse navigation
-    // property, and RESTRICT delete (soft-delete via deleted_at is how rows go away).
+    // property. Defaults to RESTRICT (soft-delete via deleted_at is how rows go
+    // away for every other table); the class_template trio above passes Cascade
+    // explicitly since they have no deleted_at to soft-delete through.
     private static void ConfigureForeignKey<TEntity, TParent>(
-        EntityTypeBuilder<TEntity> entity, Expression<Func<TEntity, object?>> foreignKey)
+        EntityTypeBuilder<TEntity> entity,
+        Expression<Func<TEntity, object?>> foreignKey,
+        DeleteBehavior deleteBehavior = DeleteBehavior.Restrict)
         where TEntity : class
         where TParent : class
     {
         entity.HasOne<TParent>()
             .WithMany()
             .HasForeignKey(foreignKey)
-            .OnDelete(DeleteBehavior.Restrict);
+            .OnDelete(deleteBehavior);
     }
 }

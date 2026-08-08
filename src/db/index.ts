@@ -7,6 +7,9 @@ export type {
   ReviewFlagRow,
   SubjectTemplateRow,
   SubjectTemplateLessonRow,
+  ClassTemplateRow,
+  ClassTemplateSubjectRow,
+  ClassTemplateLessonRow,
 } from './schema'
 
 export { createClass, getClass, getClassForUser, deleteClass, renameClass } from './classes'
@@ -57,6 +60,11 @@ export type { ProgressStep, BulkAdvanceEntry } from './progress'
 
 export { getReviewFlag, upsertReviewFlag, listReviewFlagsForStudents } from './reviewFlags'
 
-export { getClientId } from './clientId'
+export {
+  saveSubjectTemplate,
+  listSubjectTemplatesForUser,
+  applySubjectTemplate,
+  saveClassTemplate,
+} from './templates'
 
-export { saveSubjectTemplate, listSubjectTemplatesForUser, applySubjectTemplate } from './templates'
+export { getClientId } from './clientId'
