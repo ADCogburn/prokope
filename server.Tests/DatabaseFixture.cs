@@ -36,6 +36,11 @@ public class DatabaseFixture : IAsyncLifetime
     // this value is never actually used to validate a token audience.
     public const string GoogleClientId = "test-fixture-google-client-id";
 
+    // Program.cs fails fast at startup if Anthropic:ApiKey is unset (see
+    // #196). No AI Bulk Generation behavior calls the real Anthropic API
+    // yet, so this placeholder only needs to satisfy the fail-fast check.
+    public const string AnthropicApiKey = "test-fixture-anthropic-api-key";
+
     // Overridden by DemoAccountDisabledDatabaseFixture to exercise the
     // App:DemoAccountEnabled=false path -- that variant boots its own
     // Postgres container, since the flag is only read by Program.cs at
@@ -51,6 +56,20 @@ public class DatabaseFixture : IAsyncLifetime
 
     public async Task InitializeAsync()
     {
+        // Program.cs reads Anthropic:ApiKey eagerly -- before builder.Build()
+        // runs -- exactly like Google:ClientId. But unlike Google:ClientId,
+        // there's no appsettings.Development.json placeholder to fall back on
+        // (see appsettings.Development.json for why), and the
+        // ConfigureAppConfiguration override below is only merged into
+        // builder.Configuration once Build() runs (same reason
+        // Jwt:SigningKey is read lazily further down in Program.cs), so it
+        // isn't visible to that eager read. An environment variable *is*
+        // picked up by WebApplication.CreateBuilder's default configuration
+        // setup, before any of Program.cs's own code executes, so it's
+        // visible in time. Uses the same Anthropic__ApiKey double-underscore
+        // name Railway uses in production (see server/README.md).
+        Environment.SetEnvironmentVariable("Anthropic__ApiKey", AnthropicApiKey);
+
         await _container.StartAsync();
 
         try
@@ -65,6 +84,7 @@ public class DatabaseFixture : IAsyncLifetime
                         ["Jwt:SigningKey"] = JwtSigningKey,
                         ["Jwt:Issuer"] = JwtIssuer,
                         ["Google:ClientId"] = GoogleClientId,
+                        ["Anthropic:ApiKey"] = AnthropicApiKey,
                         ["App:DemoAccountEnabled"] = DemoAccountEnabled ? "true" : "false",
                     }));
 
