@@ -1,6 +1,7 @@
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Tokens;
+using server.AiBulkGeneration;
 using server.Auth;
 using server.Data;
 using server.Sync;
@@ -39,6 +40,11 @@ if (string.IsNullOrEmpty(anthropicApiKey))
 
 builder.Services.AddScoped<IGoogleTokenVerifier>(_ => new GoogleTokenVerifier(googleClientId));
 builder.Services.AddScoped<ISessionTokenService, JwtSessionTokenService>();
+
+// Placeholder registration -- see AnthropicCurriculumClient.cs. The real
+// Anthropic-backed implementation (ADR-0018) is a later ticket; this only
+// needs to exist so the app boots and the endpoint resolves (#197).
+builder.Services.AddScoped<IAnthropicCurriculumClient, AnthropicCurriculumClient>();
 
 builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
     .AddJwtBearer(options =>
@@ -110,6 +116,7 @@ app.UseAuthorization();
 
 app.MapAuthEndpoints();
 app.MapSyncEndpoints();
+app.MapAiBulkGenerationEndpoints();
 
 // Confirms the process is up (and, since Migrate() above already ran, that
 // migrations succeeded) -- for the docker build+run check and a one-time
