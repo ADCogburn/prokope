@@ -1828,6 +1828,177 @@ describe('ClassBoard', () => {
     expect(row?.name).toBe('Math')
   })
 
+  it('right-clicking a subject panel header shows "Rename subject," "Edit curriculum," "Remove subject" in that order', async () => {
+    const { classRow, subject } = await seedClassWithOneSubjectOneStudent()
+
+    renderBoard({
+      classRow,
+      subjects: [subject],
+      students: [],
+      progress: [],
+      lessons: await db.lesson.toArray(),
+      activeSubjectId: subject.id,
+    })
+
+    fireEvent.contextMenu(screen.getByText('Math'))
+
+    const items = screen.getAllByRole('menuitem').map((item) => item.textContent)
+    expect(items).toEqual(['Rename subject', 'Edit curriculum', 'Remove subject'])
+  })
+
+  it('selecting "Edit curriculum" from the subject panel header navigates without opening a dialog', async () => {
+    const { classRow, subject } = await seedClassWithOneSubjectOneStudent()
+    const onCurriculumNavigate = vi.fn()
+
+    renderBoard({
+      classRow,
+      subjects: [subject],
+      students: [],
+      progress: [],
+      lessons: await db.lesson.toArray(),
+      activeSubjectId: subject.id,
+      onCurriculumNavigate,
+    })
+
+    fireEvent.contextMenu(screen.getByText('Math'))
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Edit curriculum' }))
+
+    expect(onCurriculumNavigate).toHaveBeenCalledWith(subject.id)
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
+  })
+
+  it('selecting "Remove subject" from the panel header opens a confirmation dialog naming that subject', async () => {
+    const { classRow, subject } = await seedClassWithOneSubjectOneStudent()
+
+    renderBoard({
+      classRow,
+      subjects: [subject],
+      students: [],
+      progress: [],
+      lessons: await db.lesson.toArray(),
+      activeSubjectId: subject.id,
+    })
+
+    fireEvent.contextMenu(screen.getByText('Math'))
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Remove subject' }))
+
+    const dialog = screen.getByRole('dialog', { name: 'Remove subject' })
+    expect(within(dialog).getByText('Remove Math?')).toBeInTheDocument()
+
+    const row = await db.subject.get(subject.id)
+    expect(row?.deleted_at).toBeNull()
+  })
+
+  it('confirming subject removal soft-deletes it, drops it from a rerendered carousel, and leaves its lessons untouched', async () => {
+    const { classRow, subject, lesson } = await seedClassWithOneSubjectOneStudent()
+    const otherSubject = await createSubject({ class_id: classRow.id, name: 'Reading', position: 1 })
+
+    const view = renderBoard({
+      classRow,
+      subjects: [subject, otherSubject],
+      students: [],
+      progress: [],
+      lessons: await db.lesson.toArray(),
+      activeSubjectId: subject.id,
+    })
+
+    fireEvent.contextMenu(screen.getByText('Math'))
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Remove subject' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Remove subject' }))
+
+    await waitFor(async () => {
+      const row = await db.subject.get(subject.id)
+      expect(row?.deleted_at).not.toBeNull()
+    })
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
+
+    // No cascade write to the subject's lessons.
+    const lessonRow = await db.lesson.get(lesson.id)
+    expect(lessonRow?.deleted_at).toBeNull()
+
+    view.rerender(
+      <ClassBoard
+        classRow={classRow}
+        subjects={[otherSubject]}
+        students={[]}
+        progress={[]}
+        reviewFlags={[]}
+        lessons={await db.lesson.toArray()}
+        activeSubjectId={otherSubject.id}
+        onSubjectChange={vi.fn()}
+        onCurriculumNavigate={vi.fn()}
+        onReportNavigate={vi.fn()}
+        onStudentNavigate={vi.fn()}
+      />,
+    )
+
+    expect(screen.queryByText('Math')).not.toBeInTheDocument()
+    expect(screen.getByText('Reading')).toBeInTheDocument()
+  })
+
+  it('a backdrop click on the subject removal dialog closes it without touching the database', async () => {
+    const { classRow, subject } = await seedClassWithOneSubjectOneStudent()
+
+    renderBoard({
+      classRow,
+      subjects: [subject],
+      students: [],
+      progress: [],
+      lessons: await db.lesson.toArray(),
+      activeSubjectId: subject.id,
+    })
+
+    fireEvent.contextMenu(screen.getByText('Math'))
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Remove subject' }))
+    fireEvent.click(screen.getByRole('dialog').parentElement!)
+
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
+    const row = await db.subject.get(subject.id)
+    expect(row?.deleted_at).toBeNull()
+  })
+
+  it('pressing Escape on the subject removal dialog closes it without touching the database', async () => {
+    const { classRow, subject } = await seedClassWithOneSubjectOneStudent()
+
+    renderBoard({
+      classRow,
+      subjects: [subject],
+      students: [],
+      progress: [],
+      lessons: await db.lesson.toArray(),
+      activeSubjectId: subject.id,
+    })
+
+    fireEvent.contextMenu(screen.getByText('Math'))
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Remove subject' }))
+    fireEvent.keyDown(document, { key: 'Escape' })
+
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
+    const row = await db.subject.get(subject.id)
+    expect(row?.deleted_at).toBeNull()
+  })
+
+  it('clicking Cancel on the subject removal dialog closes it without touching the database', async () => {
+    const { classRow, subject } = await seedClassWithOneSubjectOneStudent()
+
+    renderBoard({
+      classRow,
+      subjects: [subject],
+      students: [],
+      progress: [],
+      lessons: await db.lesson.toArray(),
+      activeSubjectId: subject.id,
+    })
+
+    fireEvent.contextMenu(screen.getByText('Math'))
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Remove subject' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Cancel' }))
+
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
+    const row = await db.subject.get(subject.id)
+    expect(row?.deleted_at).toBeNull()
+  })
+
   it('right-clicking a student row opens the menu with "Rename student" alongside "Remove student"', async () => {
     const classRow = await createClass({ user_id: 'user-1', name: 'Homeroom' })
     const subject = await createSubject({ class_id: classRow.id, name: 'Math', position: 0 })
