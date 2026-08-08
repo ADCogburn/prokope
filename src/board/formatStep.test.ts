@@ -11,9 +11,6 @@ function progressRow(overrides: Partial<ProgressRow> = {}): ProgressRow {
     step_lesson_in_unit: 2,
     step_hlc: 'hlc',
     step_client_id: 'client',
-    review: false,
-    review_hlc: 'hlc',
-    review_client_id: 'client',
     updated_at: new Date().toISOString(),
     ...overrides,
   }

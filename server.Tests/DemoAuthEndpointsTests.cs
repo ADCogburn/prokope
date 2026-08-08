@@ -67,7 +67,10 @@ public class DemoAuthEndpointsTests(DatabaseFixture fixture) : IClassFixture<Dat
         var progress = await db.Progress.Where(p => subjectIds.Contains(p.SubjectId)).ToListAsync();
         Assert.NotEmpty(lessons);
         Assert.NotEmpty(progress);
-        Assert.Contains(progress, p => p.Review);
+
+        var lessonIds = lessons.Select(l => l.Id).ToHashSet();
+        var reviewFlags = await db.ReviewFlags.Where(r => lessonIds.Contains(r.LessonId)).ToListAsync();
+        Assert.Contains(reviewFlags, r => r.Flagged);
     }
 
     [Fact]

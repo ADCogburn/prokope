@@ -151,6 +151,7 @@ public static class SyncEndpoints
                 entity.Description = row.Description;
                 entity.DeletedAt = row.DeletedAt;
                 entity.UpdatedAt = DateTimeOffset.UtcNow;
+                ownership.LessonIds.Add(entity.Id);
                 lessonResults.Add(entity);
             }
 
@@ -184,9 +185,6 @@ public static class SyncEndpoints
                         StepLessonInUnit = row.StepLessonInUnit,
                         StepHlc = row.StepHlc,
                         StepClientId = row.StepClientId,
-                        Review = row.Review,
-                        ReviewHlc = row.ReviewHlc,
-                        ReviewClientId = row.ReviewClientId,
                         UpdatedAt = DateTimeOffset.UtcNow,
                     };
                     db.Progress.Add(entity);
@@ -201,17 +199,49 @@ public static class SyncEndpoints
                         entity.StepClientId = row.StepClientId;
                         entity.UpdatedAt = DateTimeOffset.UtcNow;
                     }
-
-                    if (HlcWins(row.ReviewHlc, row.ReviewClientId, entity.ReviewHlc, entity.ReviewClientId))
-                    {
-                        entity.Review = row.Review;
-                        entity.ReviewHlc = row.ReviewHlc;
-                        entity.ReviewClientId = row.ReviewClientId;
-                        entity.UpdatedAt = DateTimeOffset.UtcNow;
-                    }
                 }
 
                 progressResults.Add(entity);
+            }
+
+            // #152/ADR-0011: review_flag is keyed by (student_id, lesson_id)
+            // rather than (student_id, subject_id) -- same canonical-id
+            // reconciliation rationale as progress above, just against a
+            // different pair and a different unique index.
+            var reviewFlagResults = new List<ReviewFlag>();
+            foreach (var row in request.ReviewFlags ?? [])
+            {
+                if (!ownership.StudentIds.Contains(row.StudentId) || !ownership.LessonIds.Contains(row.LessonId))
+                {
+                    return Results.StatusCode(StatusCodes.Status403Forbidden);
+                }
+
+                var entity = await db.ReviewFlags.SingleOrDefaultAsync(
+                    r => r.StudentId == row.StudentId && r.LessonId == row.LessonId, cancellationToken);
+
+                if (entity is null)
+                {
+                    entity = new ReviewFlag
+                    {
+                        Id = row.Id,
+                        StudentId = row.StudentId,
+                        LessonId = row.LessonId,
+                        Flagged = row.Flagged,
+                        Hlc = row.Hlc,
+                        ClientId = row.ClientId,
+                        UpdatedAt = DateTimeOffset.UtcNow,
+                    };
+                    db.ReviewFlags.Add(entity);
+                }
+                else if (HlcWins(row.Hlc, row.ClientId, entity.Hlc, entity.ClientId))
+                {
+                    entity.Flagged = row.Flagged;
+                    entity.Hlc = row.Hlc;
+                    entity.ClientId = row.ClientId;
+                    entity.UpdatedAt = DateTimeOffset.UtcNow;
+                }
+
+                reviewFlagResults.Add(entity);
             }
 
             // class_template/class_template_subject/class_template_lesson
@@ -329,6 +359,7 @@ public static class SyncEndpoints
                 lessonResults.Select(ToSyncRow).ToList(),
                 studentResults.Select(ToSyncRow).ToList(),
                 progressResults.Select(ToSyncRow).ToList(),
+                reviewFlagResults.Select(ToSyncRow).ToList(),
                 classTemplateResults.Select(ToSyncRow).ToList(),
                 classTemplateSubjectResults.Select(ToSyncRow).ToList(),
                 classTemplateLessonResults.Select(ToSyncRow).ToList()));
@@ -374,6 +405,11 @@ public static class SyncEndpoints
                     && ownership.SubjectIds.Contains(p.SubjectId)
                     && p.UpdatedAt > watermarkFloor)
                 .ToListAsync(cancellationToken);
+            var reviewFlags = await db.ReviewFlags
+                .Where(r => ownership.StudentIds.Contains(r.StudentId)
+                    && ownership.LessonIds.Contains(r.LessonId)
+                    && r.UpdatedAt > watermarkFloor)
+                .ToListAsync(cancellationToken);
             var classTemplates = await db.ClassTemplates
                 .Where(ct => ct.UserId == userId.Value && ct.UpdatedAt > watermarkFloor)
                 .ToListAsync(cancellationToken);
@@ -391,6 +427,7 @@ public static class SyncEndpoints
                 .Concat(students.Select(st => st.UpdatedAt))
                 .Concat(lessons.Select(l => l.UpdatedAt))
                 .Concat(progress.Select(p => p.UpdatedAt))
+                .Concat(reviewFlags.Select(r => r.UpdatedAt))
                 .Concat(classTemplates.Select(ct => ct.UpdatedAt))
                 .Concat(classTemplateSubjects.Select(cts => cts.UpdatedAt))
                 .Concat(classTemplateLessons.Select(ctl => ctl.UpdatedAt))
@@ -402,6 +439,7 @@ public static class SyncEndpoints
                 lessons.Select(ToSyncRow).ToList(),
                 students.Select(ToSyncRow).ToList(),
                 progress.Select(ToSyncRow).ToList(),
+                reviewFlags.Select(ToSyncRow).ToList(),
                 classTemplates.Select(ToSyncRow).ToList(),
                 classTemplateSubjects.Select(ToSyncRow).ToList(),
                 classTemplateLessons.Select(ToSyncRow).ToList(),
@@ -448,6 +486,12 @@ public static class SyncEndpoints
             .ToListAsync(cancellationToken))
             .ToHashSet();
 
+        var lessonIds = (await db.Lessons
+            .Where(l => subjectIds.Contains(l.SubjectId))
+            .Select(l => l.Id)
+            .ToListAsync(cancellationToken))
+            .ToHashSet();
+
         var classTemplateIds = (await db.ClassTemplates
             .Where(ct => ct.UserId == userId)
             .Select(ct => ct.Id)
@@ -460,7 +504,7 @@ public static class SyncEndpoints
             .ToListAsync(cancellationToken))
             .ToHashSet();
 
-        return new OwnershipSets(classIds, subjectIds, studentIds, classTemplateIds, classTemplateSubjectIds);
+        return new OwnershipSets(classIds, subjectIds, studentIds, lessonIds, classTemplateIds, classTemplateSubjectIds);
     }
 
     // Same "does the challenger's HLC beat the incumbent's" rule the client
@@ -494,7 +538,10 @@ public static class SyncEndpoints
 
     private static ProgressSyncRow ToSyncRow(Progress entity) =>
         new(entity.Id, entity.StudentId, entity.SubjectId, entity.StepUnit, entity.StepLessonInUnit,
-            entity.StepHlc, entity.StepClientId, entity.Review, entity.ReviewHlc, entity.ReviewClientId, entity.UpdatedAt);
+            entity.StepHlc, entity.StepClientId, entity.UpdatedAt);
+
+    private static ReviewFlagSyncRow ToSyncRow(ReviewFlag entity) =>
+        new(entity.Id, entity.StudentId, entity.LessonId, entity.Flagged, entity.Hlc, entity.ClientId, entity.UpdatedAt);
 
     private static ClassTemplateSyncRow ToSyncRow(ClassTemplate entity) =>
         new(entity.Id, entity.UserId, entity.Name, entity.CreatedAt, entity.UpdatedAt);
@@ -510,6 +557,7 @@ public static class SyncEndpoints
         HashSet<Guid> ClassIds,
         HashSet<Guid> SubjectIds,
         HashSet<Guid> StudentIds,
+        HashSet<Guid> LessonIds,
         HashSet<Guid> ClassTemplateIds,
         HashSet<Guid> ClassTemplateSubjectIds);
 }

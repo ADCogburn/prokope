@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it } from 'vitest'
-import { db, type ClassRow, type ProgressRow } from './schema'
+import { db, type ClassRow, type ProgressRow, type ReviewFlagRow } from './schema'
 import {
   listRowsUpdatedSince,
   getRawClass,
@@ -7,6 +7,9 @@ import {
   getRawProgressByPair,
   putRawProgress,
   deleteRawProgress,
+  getRawReviewFlagByPair,
+  putRawReviewFlag,
+  deleteRawReviewFlag,
 } from './sync'
 import { createClass, deleteClass } from './classes'
 
@@ -35,9 +38,19 @@ function makeProgress(overrides: Partial<ProgressRow> = {}): ProgressRow {
     step_lesson_in_unit: 1,
     step_hlc: 'hlc-1',
     step_client_id: 'client-1',
-    review: false,
-    review_hlc: 'hlc-1',
-    review_client_id: 'client-1',
+    updated_at: '2024-01-01T00:00:00.000Z',
+    ...overrides,
+  }
+}
+
+function makeReviewFlag(overrides: Partial<ReviewFlagRow> = {}): ReviewFlagRow {
+  return {
+    id: crypto.randomUUID(),
+    student_id: 'student-1',
+    lesson_id: 'lesson-1',
+    flagged: true,
+    hlc: 'hlc-1',
+    client_id: 'client-1',
     updated_at: '2024-01-01T00:00:00.000Z',
     ...overrides,
   }
@@ -100,5 +113,23 @@ describe('raw accessors', () => {
     await deleteRawProgress(row.id)
 
     expect(await db.progress.get(row.id)).toBeUndefined()
+  })
+
+  it('getRawReviewFlagByPair finds a row by (student_id, lesson_id)', async () => {
+    const row = makeReviewFlag({ student_id: 'student-9', lesson_id: 'lesson-9' })
+    await putRawReviewFlag(row)
+
+    const found = await getRawReviewFlagByPair('student-9', 'lesson-9')
+
+    expect(found?.id).toBe(row.id)
+  })
+
+  it('deleteRawReviewFlag removes the row entirely (no tombstone)', async () => {
+    const row = makeReviewFlag()
+    await putRawReviewFlag(row)
+
+    await deleteRawReviewFlag(row.id)
+
+    expect(await db.review_flag.get(row.id)).toBeUndefined()
   })
 })

@@ -101,11 +101,17 @@ public static class DemoAccountSeeder
             UpdatedAt = now,
         });
 
+        // Tracked by (unit, lesson_in_unit) so the review-flag seeding below
+        // (#152/ADR-0011) can resolve each flagged student's current step to
+        // the lesson id ReviewFlag is now keyed against.
+        var lessonIdsByPosition = new Dictionary<(int Unit, int LessonInUnit), Guid>();
         foreach (var (unit, lessonInUnit, title, description) in lessons)
         {
+            var lessonId = Guid.NewGuid();
+            lessonIdsByPosition[(unit, lessonInUnit)] = lessonId;
             db.Lessons.Add(new Lesson
             {
-                Id = Guid.NewGuid(),
+                Id = lessonId,
                 SubjectId = subjectId,
                 Unit = unit,
                 LessonInUnit = lessonInUnit,
@@ -128,11 +134,26 @@ public static class DemoAccountSeeder
                 StepLessonInUnit = stepLessonInUnit,
                 StepHlc = NextHlc(now, ref hlcCounter),
                 StepClientId = Guid.NewGuid(),
-                Review = review,
-                ReviewHlc = NextHlc(now, ref hlcCounter),
-                ReviewClientId = Guid.NewGuid(),
                 UpdatedAt = now,
             });
+
+            // Interim behavior per #152: only the current-lesson flag is
+            // representable now that review lives on ReviewFlag, keyed by
+            // lesson rather than subject -- so this only seeds a flag when
+            // the student's current step actually lands on a real lesson.
+            if (review && lessonIdsByPosition.TryGetValue((stepUnit, stepLessonInUnit), out var lessonId))
+            {
+                db.ReviewFlags.Add(new ReviewFlag
+                {
+                    Id = Guid.NewGuid(),
+                    StudentId = studentIds[i],
+                    LessonId = lessonId,
+                    Flagged = true,
+                    Hlc = NextHlc(now, ref hlcCounter),
+                    ClientId = Guid.NewGuid(),
+                    UpdatedAt = now,
+                });
+            }
         }
     }
 

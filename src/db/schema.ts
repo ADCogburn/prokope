@@ -43,9 +43,21 @@ export interface ProgressRow {
   step_lesson_in_unit: number
   step_hlc: string
   step_client_id: string
-  review: boolean
-  review_hlc: string
-  review_client_id: string
+  updated_at: string
+}
+
+// #152/ADR-0011: replaces Progress.review/review_hlc/review_client_id with a
+// standalone per-(student, lesson) flag, so a flag can target any lesson --
+// past, current, or upcoming -- independent of the student's current
+// position. Same single-field HLC+client-id LWW-register shape as
+// progress.step*.
+export interface ReviewFlagRow {
+  id: string
+  student_id: string
+  lesson_id: string
+  flagged: boolean
+  hlc: string
+  client_id: string
   updated_at: string
 }
 
@@ -91,6 +103,7 @@ class ProkopeDatabase extends Dexie {
   lesson!: EntityTable<LessonRow, 'id'>
   student!: EntityTable<StudentRow, 'id'>
   progress!: EntityTable<ProgressRow, 'id'>
+  review_flag!: EntityTable<ReviewFlagRow, 'id'>
   class_template!: EntityTable<ClassTemplateRow, 'id'>
   class_template_subject!: EntityTable<ClassTemplateSubjectRow, 'id'>
   class_template_lesson!: EntityTable<ClassTemplateLessonRow, 'id'>
@@ -114,10 +127,18 @@ class ProkopeDatabase extends Dexie {
     this.version(2).stores({
       lesson: 'id, subject_id, [subject_id+unit+lesson_in_unit]',
     })
+    // #152/ADR-0011: review_flag replaces progress.review/review_hlc/
+    // review_client_id entirely (dropped from the progress store below, no
+    // migration of existing flagged data -- see the ADR). Keyed by
+    // (student_id, lesson_id) rather than (student_id, subject_id).
+    this.version(3).stores({
+      progress: 'id, &[student_id+subject_id]',
+      review_flag: 'id, &[student_id+lesson_id]',
+    })
     // #168: Class Templates. Simple indexes only -- these rows are
     // immutable and create-only, so unlike class/subject/lesson there's no
     // soft-delete or position-ordering compound key to support.
-    this.version(3).stores({
+    this.version(4).stores({
       class_template: 'id, user_id',
       class_template_subject: 'id, class_template_id',
       class_template_lesson: 'id, class_template_subject_id',

@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it } from 'vitest'
 import { db } from './schema'
 import {
+  bulkGenerateLessons,
   createLesson,
   deleteLesson,
   findNextLesson,
@@ -468,6 +469,82 @@ describe('updateLessonContent', () => {
 
     const raw = await db.lesson.get(created.id)
     expect(raw?.id).toBe(created.id)
+  })
+})
+
+describe('bulkGenerateLessons', () => {
+  it('fills every position in the 1..N x 1..M grid when the subject starts with no lessons', async () => {
+    const createdIds = await bulkGenerateLessons('subject-1', 2, 3)
+
+    const rows = await listLessonsForSubject('subject-1')
+    const positions = rows.map((r) => `${r.unit}.${r.lesson_in_unit}`).sort()
+    expect(positions).toEqual(['1.1', '1.2', '1.3', '2.1', '2.2', '2.3'])
+    expect(createdIds.sort()).toEqual(rows.map((r) => r.id).sort())
+  })
+
+  it('skips a position that already has a live lesson, leaving its title/description untouched', async () => {
+    const existing = await createLesson(
+      lessonInput({ unit: 1, lesson_in_unit: 1, title: 'Existing title', description: 'Existing description' }),
+    )
+
+    await bulkGenerateLessons('subject-1', 1, 1)
+
+    const raw = await db.lesson.get(existing.id)
+    expect(raw?.title).toBe('Existing title')
+    expect(raw?.description).toBe('Existing description')
+    const rows = await listLessonsForSubject('subject-1')
+    expect(rows.map((r) => r.id)).toEqual([existing.id])
+  })
+
+  it('fills a position whose only occupant is a soft-deleted lesson, leaving that row unchanged', async () => {
+    const removed = await createLesson(
+      lessonInput({ unit: 1, lesson_in_unit: 1, title: 'Old title', description: 'Old description' }),
+    )
+    await deleteLesson(removed.id)
+    const removedBefore = await db.lesson.get(removed.id)
+
+    const createdIds = await bulkGenerateLessons('subject-1', 1, 1)
+
+    const removedAfter = await db.lesson.get(removed.id)
+    expect(removedAfter).toEqual(removedBefore)
+
+    const live = await getLessonByPosition('subject-1', 1, 1)
+    expect(live).toBeDefined()
+    expect(live?.id).not.toBe(removed.id)
+    expect(createdIds).toEqual([live?.id])
+  })
+
+  it('never touches units/lessons outside the requested grid', async () => {
+    const outside = await createLesson(lessonInput({ unit: 8, lesson_in_unit: 1, title: 'Outside grid' }))
+
+    await bulkGenerateLessons('subject-1', 5, 10)
+
+    const raw = await db.lesson.get(outside.id)
+    expect(raw?.title).toBe('Outside grid')
+    expect(raw?.unit).toBe(8)
+    expect(raw?.lesson_in_unit).toBe(1)
+  })
+
+  it('returns exactly the ids of the lessons it created, in a subject with a mix of pre-existing and gap positions', async () => {
+    const existing1 = await createLesson(lessonInput({ unit: 1, lesson_in_unit: 1 }))
+    const existing2 = await createLesson(lessonInput({ unit: 2, lesson_in_unit: 2 }))
+
+    const createdIds = await bulkGenerateLessons('subject-1', 2, 2)
+
+    const rows = await listLessonsForSubject('subject-1')
+    const gapIds = rows.map((r) => r.id).filter((id) => id !== existing1.id && id !== existing2.id)
+    expect(rows.length).toBe(4)
+    expect(createdIds.sort()).toEqual(gapIds.sort())
+    expect(createdIds).not.toContain(existing1.id)
+    expect(createdIds).not.toContain(existing2.id)
+  })
+
+  it('creates rows with title "Untitled" and empty description', async () => {
+    const createdIds = await bulkGenerateLessons('subject-1', 1, 1)
+
+    const raw = await db.lesson.get(createdIds[0])
+    expect(raw?.title).toBe('Untitled')
+    expect(raw?.description).toBe('')
   })
 })
 

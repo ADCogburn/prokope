@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { fireEvent, render, screen, within } from '@testing-library/react'
 import { Reports } from './Reports'
-import type { ClassRow, LessonRow, ProgressRow, StudentRow, SubjectRow } from '../db/schema'
+import type { ClassRow, LessonRow, ProgressRow, ReviewFlagRow, StudentRow, SubjectRow } from '../db/schema'
 
 function classRow(overrides: Partial<ClassRow> = {}): ClassRow {
   return {
@@ -61,6 +61,7 @@ const baseProps = {
   subjects: [subjectRow({ id: 's1', name: 'Math' })],
   lessons: [lessonRow({ id: 'l1', subject_id: 's1' })] as LessonRow[],
   progress: [] as ProgressRow[],
+  reviewFlags: [] as ReviewFlagRow[],
 }
 
 describe('Reports', () => {

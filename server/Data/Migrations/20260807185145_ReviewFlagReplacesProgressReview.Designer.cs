@@ -2,6 +2,7 @@
 using System;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 using server.Data;
@@ -11,9 +12,11 @@ using server.Data;
 namespace server.Data.Migrations
 {
     [DbContext(typeof(AppDbContext))]
-    partial class AppDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260807185145_ReviewFlagReplacesProgressReview")]
+    partial class ReviewFlagReplacesProgressReview
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -60,131 +63,6 @@ namespace server.Data.Migrations
                         .HasDatabaseName("ix_class_user_id");
 
                     b.ToTable("class", (string)null);
-                });
-
-            modelBuilder.Entity("server.Data.Entities.ClassTemplate", b =>
-                {
-                    b.Property<Guid>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("uuid")
-                        .HasColumnName("id");
-
-                    b.Property<DateTimeOffset>("CreatedAt")
-                        .HasColumnType("timestamp with time zone")
-                        .HasColumnName("created_at");
-
-                    b.Property<string>("Name")
-                        .IsRequired()
-                        .HasColumnType("text")
-                        .HasColumnName("name");
-
-                    b.Property<DateTimeOffset>("UpdatedAt")
-                        .HasColumnType("timestamp with time zone")
-                        .HasColumnName("updated_at");
-
-                    b.Property<Guid>("UserId")
-                        .HasColumnType("uuid")
-                        .HasColumnName("user_id");
-
-                    b.HasKey("Id")
-                        .HasName("pk_class_template");
-
-                    b.HasIndex("UpdatedAt")
-                        .HasDatabaseName("ix_class_template_updated_at");
-
-                    b.HasIndex("UserId")
-                        .HasDatabaseName("ix_class_template_user_id");
-
-                    b.ToTable("class_template", (string)null);
-                });
-
-            modelBuilder.Entity("server.Data.Entities.ClassTemplateLesson", b =>
-                {
-                    b.Property<Guid>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("uuid")
-                        .HasColumnName("id");
-
-                    b.Property<Guid>("ClassTemplateSubjectId")
-                        .HasColumnType("uuid")
-                        .HasColumnName("class_template_subject_id");
-
-                    b.Property<DateTimeOffset>("CreatedAt")
-                        .HasColumnType("timestamp with time zone")
-                        .HasColumnName("created_at");
-
-                    b.Property<string>("Description")
-                        .IsRequired()
-                        .HasColumnType("text")
-                        .HasColumnName("description");
-
-                    b.Property<int>("LessonInUnit")
-                        .HasColumnType("integer")
-                        .HasColumnName("lesson_in_unit");
-
-                    b.Property<string>("Title")
-                        .IsRequired()
-                        .HasColumnType("text")
-                        .HasColumnName("title");
-
-                    b.Property<int>("Unit")
-                        .HasColumnType("integer")
-                        .HasColumnName("unit");
-
-                    b.Property<DateTimeOffset>("UpdatedAt")
-                        .HasColumnType("timestamp with time zone")
-                        .HasColumnName("updated_at");
-
-                    b.HasKey("Id")
-                        .HasName("pk_class_template_lesson");
-
-                    b.HasIndex("ClassTemplateSubjectId")
-                        .HasDatabaseName("ix_class_template_lesson_class_template_subject_id");
-
-                    b.HasIndex("UpdatedAt")
-                        .HasDatabaseName("ix_class_template_lesson_updated_at");
-
-                    b.ToTable("class_template_lesson", (string)null);
-                });
-
-            modelBuilder.Entity("server.Data.Entities.ClassTemplateSubject", b =>
-                {
-                    b.Property<Guid>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("uuid")
-                        .HasColumnName("id");
-
-                    b.Property<Guid>("ClassTemplateId")
-                        .HasColumnType("uuid")
-                        .HasColumnName("class_template_id");
-
-                    b.Property<DateTimeOffset>("CreatedAt")
-                        .HasColumnType("timestamp with time zone")
-                        .HasColumnName("created_at");
-
-                    b.Property<string>("Name")
-                        .IsRequired()
-                        .HasColumnType("text")
-                        .HasColumnName("name");
-
-                    b.Property<int>("Position")
-                        .HasColumnType("integer")
-                        .HasColumnName("position");
-
-                    b.Property<DateTimeOffset>("UpdatedAt")
-                        .HasColumnType("timestamp with time zone")
-                        .HasColumnName("updated_at");
-
-                    b.HasKey("Id")
-                        .HasName("pk_class_template_subject");
-
-                    b.HasIndex("ClassTemplateId")
-                        .HasDatabaseName("ix_class_template_subject_class_template_id");
-
-                    b.HasIndex("UpdatedAt")
-                        .HasDatabaseName("ix_class_template_subject_updated_at");
-
-                    b.ToTable("class_template_subject", (string)null);
                 });
 
             modelBuilder.Entity("server.Data.Entities.Lesson", b =>
@@ -471,36 +349,6 @@ namespace server.Data.Migrations
                         .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired()
                         .HasConstraintName("fk_class_users_user_id");
-                });
-
-            modelBuilder.Entity("server.Data.Entities.ClassTemplate", b =>
-                {
-                    b.HasOne("server.Data.Entities.User", null)
-                        .WithMany()
-                        .HasForeignKey("UserId")
-                        .OnDelete(DeleteBehavior.Restrict)
-                        .IsRequired()
-                        .HasConstraintName("fk_class_template_users_user_id");
-                });
-
-            modelBuilder.Entity("server.Data.Entities.ClassTemplateLesson", b =>
-                {
-                    b.HasOne("server.Data.Entities.ClassTemplateSubject", null)
-                        .WithMany()
-                        .HasForeignKey("ClassTemplateSubjectId")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired()
-                        .HasConstraintName("fk_class_template_lesson_class_template_subject_class_template");
-                });
-
-            modelBuilder.Entity("server.Data.Entities.ClassTemplateSubject", b =>
-                {
-                    b.HasOne("server.Data.Entities.ClassTemplate", null)
-                        .WithMany()
-                        .HasForeignKey("ClassTemplateId")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired()
-                        .HasConstraintName("fk_class_template_subject_class_template_class_template_id");
                 });
 
             modelBuilder.Entity("server.Data.Entities.Lesson", b =>

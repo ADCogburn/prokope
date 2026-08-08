@@ -9,8 +9,9 @@ import {
   createSubject,
   listStudentsForClass,
   upsertProgressStep,
+  upsertReviewFlag,
 } from '../db'
-import type { ClassRow, LessonRow, ProgressRow, StudentRow, SubjectRow } from '../db/schema'
+import type { ClassRow, LessonRow, ProgressRow, ReviewFlagRow, StudentRow, SubjectRow } from '../db/schema'
 
 class MockResizeObserver {
   callback: ResizeObserverCallback
@@ -55,6 +56,7 @@ function renderBoard(props: {
   subjects: SubjectRow[]
   students: StudentRow[]
   progress: ProgressRow[]
+  reviewFlags?: ReviewFlagRow[]
   lessons: LessonRow[]
   activeSubjectId: string | undefined
   onSubjectChange?: (id: string) => void
@@ -68,6 +70,7 @@ function renderBoard(props: {
       subjects={props.subjects}
       students={props.students}
       progress={props.progress}
+      reviewFlags={props.reviewFlags ?? []}
       lessons={props.lessons}
       activeSubjectId={props.activeSubjectId}
       onSubjectChange={props.onSubjectChange ?? vi.fn()}
@@ -252,7 +255,34 @@ describe('ClassBoard', () => {
     expect(screen.getByRole('button', { name: 'Complete' })).toBeDisabled()
   })
 
-  it('clicking the review toggle flags the row in the real db', async () => {
+  it('clicking the review toggle flags the student\'s current lesson via ReviewFlag (#152/ADR-0011)', async () => {
+    const { classRow, subject, student, lesson } = await seedClassWithOneSubjectOneStudent()
+    const progress = await upsertProgressStep(student.id, subject.id, {
+      unit: lesson.unit,
+      lesson_in_unit: lesson.lesson_in_unit,
+    })
+
+    renderBoard({
+      classRow,
+      subjects: [subject],
+      students: [student],
+      progress: [progress],
+      lessons: [lesson],
+      activeSubjectId: subject.id,
+    })
+
+    fireEvent.click(screen.getByRole('button', { name: 'Flag for review' }))
+
+    await waitFor(async () => {
+      const row = await db.review_flag
+        .where('[student_id+lesson_id]')
+        .equals([student.id, lesson.id])
+        .first()
+      expect(row?.flagged).toBe(true)
+    })
+  })
+
+  it('the review toggle is a no-op when the student has no current lesson yet (Not started)', async () => {
     const { classRow, subject, student, lesson } = await seedClassWithOneSubjectOneStudent()
 
     renderBoard({
@@ -266,10 +296,101 @@ describe('ClassBoard', () => {
 
     fireEvent.click(screen.getByRole('button', { name: 'Flag for review' }))
 
-    await waitFor(async () => {
-      const row = await db.progress.where('[student_id+subject_id]').equals([student.id, subject.id]).first()
-      expect(row?.review).toBe(true)
+    // No lesson occupies the {0,0} "Not started" position, so there's
+    // nothing to flag yet -- the click must not create any ReviewFlag row.
+    expect(await db.review_flag.count()).toBe(0)
+  })
+
+  it("reflects the current lesson's ReviewFlag state on the Progress Cell toggle, not a flag on a different lesson", async () => {
+    const classRow = await createClass({ user_id: 'user-1', name: 'Homeroom' })
+    const subject = await createSubject({ class_id: classRow.id, name: 'Math', position: 0 })
+    const student = await createStudent({ class_id: classRow.id, name: 'Emily', position: 0 })
+    const first = await createLesson({
+      subject_id: subject.id,
+      unit: 1,
+      lesson_in_unit: 1,
+      title: 'Fractions',
+      description: '',
     })
+    const second = await createLesson({
+      subject_id: subject.id,
+      unit: 1,
+      lesson_in_unit: 2,
+      title: 'Decimals',
+      description: '',
+    })
+    const progress = await upsertProgressStep(student.id, subject.id, {
+      unit: first.unit,
+      lesson_in_unit: first.lesson_in_unit,
+    })
+    const reviewFlag = await upsertReviewFlag(student.id, second.id, true)
+
+    renderBoard({
+      classRow,
+      subjects: [subject],
+      students: [student],
+      progress: [progress],
+      reviewFlags: [reviewFlag],
+      lessons: [first, second],
+      activeSubjectId: subject.id,
+    })
+
+    // Flagged lesson is `second`, but the student's current lesson is
+    // `first` -- the quick-toggle only ever reflects the current lesson.
+    expect(screen.getByRole('button', { name: 'Flag for review' })).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Remove review flag' })).not.toBeInTheDocument()
+  })
+
+  it('shows "N lessons marked for review" in the roster, summed across every subject (#152/ADR-0011)', async () => {
+    const classRow = await createClass({ user_id: 'user-1', name: 'Homeroom' })
+    const math = await createSubject({ class_id: classRow.id, name: 'Math', position: 0 })
+    const reading = await createSubject({ class_id: classRow.id, name: 'Reading', position: 1 })
+    const student = await createStudent({ class_id: classRow.id, name: 'Emily', position: 0 })
+    const mathLesson = await createLesson({
+      subject_id: math.id,
+      unit: 1,
+      lesson_in_unit: 1,
+      title: 'Fractions',
+      description: '',
+    })
+    const readingLesson = await createLesson({
+      subject_id: reading.id,
+      unit: 1,
+      lesson_in_unit: 1,
+      title: 'Phonics',
+      description: '',
+    })
+    const mathFlag = await upsertReviewFlag(student.id, mathLesson.id, true)
+    const readingFlag = await upsertReviewFlag(student.id, readingLesson.id, true)
+
+    renderBoard({
+      classRow,
+      subjects: [math, reading],
+      students: [student],
+      progress: [],
+      reviewFlags: [mathFlag, readingFlag],
+      lessons: [mathLesson, readingLesson],
+      activeSubjectId: math.id,
+    })
+
+    expect(screen.getByText('2 lessons marked for review')).toBeInTheDocument()
+  })
+
+  it('shows the singular "1 lesson marked for review" for exactly one flagged lesson', async () => {
+    const { classRow, subject, student, lesson } = await seedClassWithOneSubjectOneStudent()
+    const reviewFlag = await upsertReviewFlag(student.id, lesson.id, true)
+
+    renderBoard({
+      classRow,
+      subjects: [subject],
+      students: [student],
+      progress: [],
+      reviewFlags: [reviewFlag],
+      lessons: [lesson],
+      activeSubjectId: subject.id,
+    })
+
+    expect(screen.getByText('1 lesson marked for review')).toBeInTheDocument()
   })
 
   it('calls onSubjectChange with a subject id when a dot is clicked', async () => {
@@ -611,7 +732,7 @@ describe('ClassBoard', () => {
   it('clears the Undo control once a single-cell edit touches the same subject\'s progress', async () => {
     const { classRow, subject, student, lesson } = await seedClassWithOneSubjectOneStudent()
 
-    renderBoard({
+    const view = renderBoard({
       classRow,
       subjects: [subject],
       students: [student],
@@ -622,6 +743,28 @@ describe('ClassBoard', () => {
 
     fireEvent.click(screen.getByRole('button', { name: 'Bulk Advance' }))
     await waitFor(() => expect(screen.getByRole('button', { name: 'Undo' })).toBeInTheDocument())
+
+    // ClassBoard is a controlled/presentational component (fed by a live
+    // query in the real app) -- simulate the next render a teacher would
+    // actually see once that query re-fires with Bulk Advance's write, so
+    // the review toggle (which now targets the *current lesson*, #152/
+    // ADR-0011) has one to target.
+    const advanced = await db.progress.where('[student_id+subject_id]').equals([student.id, subject.id]).first()
+    view.rerender(
+      <ClassBoard
+        classRow={classRow}
+        subjects={[subject]}
+        students={[student]}
+        progress={[advanced!]}
+        reviewFlags={[]}
+        lessons={[lesson]}
+        activeSubjectId={subject.id}
+        onSubjectChange={vi.fn()}
+        onCurriculumNavigate={vi.fn()}
+        onReportNavigate={vi.fn()}
+        onStudentNavigate={vi.fn()}
+      />,
+    )
 
     fireEvent.click(screen.getByRole('button', { name: 'Flag for review' }))
 
@@ -860,6 +1003,7 @@ describe('ClassBoard', () => {
         subjects={[subjectA, subjectB]}
         students={allStudents}
         progress={[]}
+        reviewFlags={[]}
         lessons={[lessonA, lessonB]}
         activeSubjectId={subjectA.id}
         onSubjectChange={vi.fn()}
@@ -1039,6 +1183,7 @@ describe('ClassBoard', () => {
         subjects={[subject]}
         students={remaining}
         progress={[]}
+        reviewFlags={[]}
         lessons={[lesson]}
         activeSubjectId={subject.id}
         onSubjectChange={vi.fn()}

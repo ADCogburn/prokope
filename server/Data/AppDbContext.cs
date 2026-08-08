@@ -13,6 +13,7 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
     public DbSet<Lesson> Lessons => Set<Lesson>();
     public DbSet<Student> Students => Set<Student>();
     public DbSet<Progress> Progress => Set<Progress>();
+    public DbSet<ReviewFlag> ReviewFlags => Set<ReviewFlag>();
     public DbSet<ClassTemplate> ClassTemplates => Set<ClassTemplate>();
     public DbSet<ClassTemplateSubject> ClassTemplateSubjects => Set<ClassTemplateSubject>();
     public DbSet<ClassTemplateLesson> ClassTemplateLessons => Set<ClassTemplateLesson>();
@@ -67,6 +68,16 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
             entity.HasIndex(e => e.UpdatedAt);
             ConfigureForeignKey<Progress, Student>(entity, e => e.StudentId);
             ConfigureForeignKey<Progress, Subject>(entity, e => e.SubjectId);
+        });
+
+        modelBuilder.Entity<ReviewFlag>(entity =>
+        {
+            entity.ToTable("review_flag");
+            entity.HasKey(e => e.Id);
+            entity.HasIndex(e => new { e.StudentId, e.LessonId }).IsUnique();
+            entity.HasIndex(e => e.UpdatedAt);
+            ConfigureForeignKey<ReviewFlag, Student>(entity, e => e.StudentId);
+            ConfigureForeignKey<ReviewFlag, Lesson>(entity, e => e.LessonId);
         });
 
         // #168: class_template/class_template_subject/class_template_lesson
