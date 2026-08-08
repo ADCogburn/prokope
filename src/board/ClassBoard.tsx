@@ -11,6 +11,7 @@ import {
   positionOf,
   renameClass,
   renameStudent,
+  saveClassTemplate,
   unAdvanceProgress,
   upsertProgressReview,
   upsertProgressStep,
@@ -94,6 +95,59 @@ function AddSubjectCard({ classId, position }: AddSubjectCardProps) {
         )
       }}
     </InlineAddCard>
+  )
+}
+
+interface SaveClassTemplateFormProps {
+  classId: string
+  initialName: string
+  onClose: () => void
+}
+
+/**
+ * Inline-expanding name form for "Save Class Template" (#169), reachable
+ * from the book-menu dropdown rather than a "+" card -- so it's a bespoke
+ * form, not InlineAddCard (which expects to render its own "+" trigger),
+ * but still an ADR-0003 inline data-entry form rather than a modal. Prefills
+ * with the Class's current live name, freely editable; submitting calls
+ * saveClassTemplate directly (same direct-db-call convention as
+ * AddSubjectCard/AddStudentCard) and closes back down via onClose. Save-only
+ * per ADR-0016 -- no load/apply affordance exists anywhere.
+ */
+function SaveClassTemplateForm({ classId, initialName, onClose }: SaveClassTemplateFormProps) {
+  const [name, setName] = useState(initialName)
+  const [submitting, setSubmitting] = useState(false)
+
+  async function handleSubmit(event: FormEvent) {
+    event.preventDefault()
+    const trimmed = name.trim()
+    if (trimmed === '' || submitting) return
+    setSubmitting(true)
+    await saveClassTemplate(classId, trimmed)
+    setSubmitting(false)
+    onClose()
+  }
+
+  return (
+    <div className="class-board__save-template">
+      <form className="inline-add-card__form" onSubmit={handleSubmit}>
+        <label htmlFor="save-class-template-name">Template name</label>
+        <input
+          id="save-class-template-name"
+          value={name}
+          onChange={(event) => setName(event.target.value)}
+          autoFocus
+        />
+        <div className="inline-add-card__actions">
+          <button type="button" onClick={onClose}>
+            Cancel
+          </button>
+          <button type="submit" disabled={submitting || name.trim() === ''}>
+            Save
+          </button>
+        </div>
+      </form>
+    </div>
   )
 }
 
@@ -322,6 +376,7 @@ export function ClassBoard({
   const panelRects = useRef(new Map<string, DOMRect>())
   const [bookMenuOpen, setBookMenuOpen] = useState(false)
   const [pickerOpen, setPickerOpen] = useState(false)
+  const [savingTemplate, setSavingTemplate] = useState(false)
   const [bulkUndo, setBulkUndo] = useState<{ subjectId: string; entries: BulkAdvanceEntry[] } | null>(null)
   const [jumpPickerRequest, setJumpPickerRequest] = useState<{ studentId: string; subjectId: string } | null>(
     null,
@@ -541,10 +596,27 @@ export function ClassBoard({
                 >
                   Generate report
                 </button>
+                <button
+                  type="button"
+                  className="class-board__book-menu-item"
+                  onClick={() => {
+                    setBookMenuOpen(false)
+                    setSavingTemplate(true)
+                  }}
+                >
+                  Save Class Template
+                </button>
               </div>
             )}
           </div>
         </div>
+        {savingTemplate && (
+          <SaveClassTemplateForm
+            classId={classRow.id}
+            initialName={classRow.name}
+            onClose={() => setSavingTemplate(false)}
+          />
+        )}
         <p>Drag the subject cards left or right to spin through the wheel.</p>
       </header>
       {pickerOpen && (
