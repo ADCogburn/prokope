@@ -36,6 +36,7 @@ import { SubjectNameLabel } from './SubjectNameLabel'
 import { SubjectReorder } from './SubjectReorder'
 import { SubjectPickerModal } from './SubjectPickerModal'
 import { LessonPickerModal } from './LessonPickerModal'
+import { ReviewOtherLessonsModal } from './ReviewOtherLessonsModal'
 import { RemoveStudentDialog } from './RemoveStudentDialog'
 import './ClassBoard.css'
 
@@ -510,6 +511,14 @@ export function ClassBoard({
   const [jumpPickerRequest, setJumpPickerRequest] = useState<{ studentId: string; subjectId: string } | null>(
     null,
   )
+  // #153/ADR-0012: a separate modal instance from jumpPickerRequest, owned
+  // by the board the same way -- one shared instance, opened per-cell via a
+  // request object, scoped to the one student+subject whose cell was
+  // right-clicked (ADR-0005's per-subject scoping, applied per-student too).
+  const [reviewOtherLessonsRequest, setReviewOtherLessonsRequest] = useState<{
+    studentId: string
+    subjectId: string
+  } | null>(null)
   const [removeStudentRequest, setRemoveStudentRequest] = useState<StudentRow | null>(null)
 
   useEffect(() => {
@@ -648,6 +657,16 @@ export function ClassBoard({
     setJumpPickerRequest(null)
   }
 
+  // #153/ADR-0012: toggles the ReviewFlag for any lesson in the subject --
+  // not just the student's current one (contrast handleToggleReview above,
+  // which is the current-lesson-only quick-toggle) -- without ever touching
+  // progress, so a student's position never moves as a side effect of
+  // marking a lesson (including one ahead of them) for review.
+  async function handleToggleLessonReview(studentId: string, lessonId: string) {
+    const current = reviewFlagsByKey.get(reviewFlagKey(studentId, lessonId))
+    await upsertReviewFlag(studentId, lessonId, !current?.flagged)
+  }
+
   async function handleRemoveStudent(studentId: string) {
     await deleteStudent(studentId)
     setRemoveStudentRequest(null)
@@ -784,6 +803,27 @@ export function ClassBoard({
             />
           )
         })()}
+      {reviewOtherLessonsRequest &&
+        (() => {
+          const student = students.find((s) => s.id === reviewOtherLessonsRequest.studentId)
+          const subject = subjects.find((s) => s.id === reviewOtherLessonsRequest.subjectId)
+          if (!student || !subject) return null
+          const subjectLessons = lessons.filter((l) => l.subject_id === subject.id)
+          const flaggedLessonIds = new Set(
+            subjectLessons
+              .filter((lesson) => reviewFlagsByKey.get(reviewFlagKey(student.id, lesson.id))?.flagged)
+              .map((lesson) => lesson.id),
+          )
+          return (
+            <ReviewOtherLessonsModal
+              studentName={student.name}
+              lessons={subjectLessons}
+              flaggedLessonIds={flaggedLessonIds}
+              onToggleLesson={(lesson) => void handleToggleLessonReview(student.id, lesson.id)}
+              onClose={() => setReviewOtherLessonsRequest(null)}
+            />
+          )
+        })()}
       {removeStudentDialog}
       <div className="class-board__body">
         {studentsPanel}
@@ -886,6 +926,9 @@ export function ClassBoard({
                             }
                             onJumpToLesson={() =>
                               setJumpPickerRequest({ studentId: student.id, subjectId: subject.id })
+                            }
+                            onReviewOtherLessons={() =>
+                              setReviewOtherLessonsRequest({ studentId: student.id, subjectId: subject.id })
                             }
                             onUnAdvance={() => void handleUnAdvance(student.id, subject.id)}
                           />
