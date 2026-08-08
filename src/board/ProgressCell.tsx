@@ -29,17 +29,25 @@ interface ProgressCellProps {
   onAdvance: () => void
   onToggleReview: () => void
   onJumpToLesson: () => void
+  onReviewOtherLessons: () => void
   onUnAdvance: () => void
 }
 
 /**
  * One subject x student cell on the class board: current step, a
  * progress-advance control (per #22's addendum), a review-flag toggle, and
- * (per #44, ADR-0006) a right-click menu offering "Jump to lesson..." and
- * (per #77) "Un-advance". onJumpToLesson only reports the request up to the
- * caller -- ProgressCell doesn't know which lesson was picked, since the
- * picker itself is a single modal instance owned by the board, not one per
- * cell. onUnAdvance, by contrast, needs no picker and is invoked directly.
+ * (per #44, ADR-0006) a right-click menu offering "Jump to lesson...",
+ * "Review other lessons" (#153, per ADR-0012), and (per #77) "Un-advance".
+ * onJumpToLesson and onReviewOtherLessons each only report the request up to
+ * the caller -- ProgressCell doesn't know which lesson was picked (or which
+ * lessons get flagged), since each picker/modal is a single instance owned
+ * by the board, not one per cell. onUnAdvance, by contrast, needs no picker
+ * and is invoked directly.
+ *
+ * Per ADR-0012, "Review other lessons" is kept as its own menu item rather
+ * than folded into "Jump to lesson...": a flag-only checklist that never
+ * moves the student's position is a different shape than a select-and-jump
+ * picker, even though both list the same subject's lessons.
  *
  * Per #152/ADR-0011, the review flag no longer drives any background
  * highlight on the cell itself -- only the toggle icon's own fill reflects
@@ -56,6 +64,7 @@ export function ProgressCell({
   onAdvance,
   onToggleReview,
   onJumpToLesson,
+  onReviewOtherLessons,
   onUnAdvance,
 }: ProgressCellProps) {
   const advanceLabel = !hasAnyLessons ? 'No lessons yet' : hasNextLesson ? 'Next lesson' : 'Complete'
@@ -100,6 +109,11 @@ export function ProgressCell({
             {
               label: 'Jump to lesson...',
               onSelect: onJumpToLesson,
+              disabled: subjectLessons.length === 0,
+            },
+            {
+              label: 'Review other lessons',
+              onSelect: onReviewOtherLessons,
               disabled: subjectLessons.length === 0,
             },
             {
