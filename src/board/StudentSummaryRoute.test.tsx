@@ -3,7 +3,7 @@ import { fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { MemoryRouter, Route, Routes } from 'react-router-dom'
 import { StudentSummaryRoute } from './StudentSummaryRoute'
 import { db } from '../db/schema'
-import { createClass, createLesson, createStudent, createSubject, upsertProgressStep } from '../db'
+import { createClass, createLesson, createStudent, createSubject, upsertProgressStep, upsertReviewFlag } from '../db'
 
 afterEach(async () => {
   await Promise.all(db.tables.map((table) => table.clear()))
@@ -104,16 +104,15 @@ describe('StudentSummaryRoute', () => {
       description: '',
     })
     await upsertProgressStep(student.id, math.id, { unit: lesson.unit, lesson_in_unit: lesson.lesson_in_unit })
-    const progress = await db.progress
-      .where('[student_id+subject_id]')
-      .equals([student.id, math.id])
-      .first()
-    await db.progress.update(progress!.id, { review: true })
+    // #152/ADR-0011: review lives on ReviewFlag, keyed by (student, lesson),
+    // rather than on the progress row.
+    await upsertReviewFlag(student.id, lesson.id, true)
 
     renderRoute([`/class/${classRow.id}/student/${student.id}`])
 
-    await waitFor(() => expect(screen.getByText('Math')).toBeInTheDocument())
-    expect(screen.getByText('Math').closest('li')).toHaveClass('student-summary__subject-row--review')
+    await waitFor(() => {
+      expect(screen.getByText('Math').closest('li')).toHaveClass('student-summary__subject-row--review')
+    })
   })
 
   it('the back control navigates to the previous page in browser history, not a fixed route', async () => {

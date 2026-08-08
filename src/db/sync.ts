@@ -1,4 +1,12 @@
-import { db, type ClassRow, type SubjectRow, type LessonRow, type StudentRow, type ProgressRow } from './schema'
+import {
+  db,
+  type ClassRow,
+  type SubjectRow,
+  type LessonRow,
+  type StudentRow,
+  type ProgressRow,
+  type ReviewFlagRow,
+} from './schema'
 
 export interface SyncSnapshot {
   classes: ClassRow[]
@@ -6,6 +14,11 @@ export interface SyncSnapshot {
   lessons: LessonRow[]
   students: StudentRow[]
   progress: ProgressRow[]
+  // snake_case (not reviewFlags) to match the wire JSON key the server's
+  // System.Text.Json emits (server/Sync/SyncContracts.cs's
+  // JsonPropertyName("review_flags")) -- this batch is serialized near-
+  // verbatim over the wire, same rationale as every other field here.
+  review_flags: ReviewFlagRow[]
 }
 
 /**
@@ -19,12 +32,13 @@ export interface SyncSnapshot {
  */
 export async function listRowsUpdatedSince(since: string | null): Promise<SyncSnapshot> {
   const isNewer = (row: { updated_at: string }) => since === null || row.updated_at > since
-  const [classes, subjects, lessons, students, progress] = await Promise.all([
+  const [classes, subjects, lessons, students, progress, reviewFlags] = await Promise.all([
     db.class.toArray(),
     db.subject.toArray(),
     db.lesson.toArray(),
     db.student.toArray(),
     db.progress.toArray(),
+    db.review_flag.toArray(),
   ])
   return {
     classes: classes.filter(isNewer),
@@ -32,6 +46,7 @@ export async function listRowsUpdatedSince(since: string | null): Promise<SyncSn
     lessons: lessons.filter(isNewer),
     students: students.filter(isNewer),
     progress: progress.filter(isNewer),
+    review_flags: reviewFlags.filter(isNewer),
   }
 }
 
@@ -51,6 +66,11 @@ export const getRawProgressByPair = (studentId: string, subjectId: string): Prom
   db.progress.where('[student_id+subject_id]').equals([studentId, subjectId]).first()
 export const putRawProgress = (row: ProgressRow): Promise<string> => db.progress.put(row)
 export const deleteRawProgress = (id: string): Promise<void> => db.progress.delete(id)
+
+export const getRawReviewFlagByPair = (studentId: string, lessonId: string): Promise<ReviewFlagRow | undefined> =>
+  db.review_flag.where('[student_id+lesson_id]').equals([studentId, lessonId]).first()
+export const putRawReviewFlag = (row: ReviewFlagRow): Promise<string> => db.review_flag.put(row)
+export const deleteRawReviewFlag = (id: string): Promise<void> => db.review_flag.delete(id)
 
 // Wipes every local table. Called on account switch (see resetLocalStore in
 // sync/engine.ts) so a previous session's rows -- tagged with a user_id the

@@ -1,4 +1,4 @@
-export type { ClassRow, SubjectRow, LessonRow, StudentRow, ProgressRow } from './schema'
+export type { ClassRow, SubjectRow, LessonRow, StudentRow, ProgressRow, ReviewFlagRow } from './schema'
 
 export { createClass, getClass, getClassForUser, deleteClass, renameClass } from './classes'
 export type { CreateClassInput } from './classes'
@@ -36,7 +36,6 @@ export type { CreateStudentInput } from './students'
 export {
   getProgress,
   upsertProgressStep,
-  upsertProgressReview,
   listProgressForStudents,
   advanceProgress,
   unAdvanceProgress,
@@ -45,5 +44,7 @@ export {
   positionOf,
 } from './progress'
 export type { ProgressStep, BulkAdvanceEntry } from './progress'
+
+export { getReviewFlag, upsertReviewFlag, listReviewFlagsForStudents } from './reviewFlags'
 
 export { getClientId } from './clientId'

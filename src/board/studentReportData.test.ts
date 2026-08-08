@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import type { LessonRow, ProgressRow, StudentRow, SubjectRow } from '../db/schema'
+import type { LessonRow, ProgressRow, ReviewFlagRow, StudentRow, SubjectRow } from '../db/schema'
 import { buildStudentReport } from './studentReportData'
 
 function studentRow(overrides: Partial<StudentRow> = {}): StudentRow {
@@ -52,9 +52,19 @@ function progressRow(overrides: Partial<ProgressRow> = {}): ProgressRow {
     step_lesson_in_unit: 0,
     step_hlc: '',
     step_client_id: '',
-    review: false,
-    review_hlc: '',
-    review_client_id: '',
+    updated_at: new Date().toISOString(),
+    ...overrides,
+  }
+}
+
+function reviewFlagRow(overrides: Partial<ReviewFlagRow> = {}): ReviewFlagRow {
+  return {
+    id: 'review-flag1',
+    student_id: 'student1',
+    lesson_id: 'lesson1',
+    flagged: true,
+    hlc: '',
+    client_id: '',
     updated_at: new Date().toISOString(),
     ...overrides,
   }
@@ -69,7 +79,7 @@ describe('buildStudentReport', () => {
       progressRow({ student_id: student.id, subject_id: 'subj1', step_unit: 1, step_lesson_in_unit: 1 }),
     ]
 
-    const report = buildStudentReport(student, subjects, lessons, progress)
+    const report = buildStudentReport(student, subjects, lessons, progress, [])
 
     expect(report.student).toBe(student)
     expect(report.subjectRows).toEqual([
@@ -82,7 +92,7 @@ describe('buildStudentReport', () => {
     const subjects = [subjectRow({ id: 'subj1', name: 'Math' })]
     const lessons = [lessonRow({ id: 'l1', subject_id: 'subj1' })]
 
-    const report = buildStudentReport(student, subjects, lessons, [])
+    const report = buildStudentReport(student, subjects, lessons, [], [])
 
     expect(report.subjectRows[0]).toEqual({
       subject: subjects[0],
@@ -96,7 +106,7 @@ describe('buildStudentReport', () => {
     const student = studentRow()
     const subjects = [subjectRow({ id: 'subj1', name: 'Math' })]
 
-    const report = buildStudentReport(student, subjects, [], [])
+    const report = buildStudentReport(student, subjects, [], [], [])
 
     expect(report.subjectRows[0]).toEqual({
       subject: subjects[0],
@@ -106,23 +116,35 @@ describe('buildStudentReport', () => {
     })
   })
 
-  it('carries the review flag through from the progress row', () => {
+  it('carries the review flag through when the current lesson has a flagged ReviewFlag row (#152/ADR-0011)', () => {
     const student = studentRow()
     const subjects = [subjectRow({ id: 'subj1', name: 'Math' })]
     const lessons = [lessonRow({ id: 'l1', subject_id: 'subj1', unit: 1, lesson_in_unit: 1, title: 'Fractions' })]
     const progress = [
-      progressRow({
-        student_id: student.id,
-        subject_id: 'subj1',
-        step_unit: 1,
-        step_lesson_in_unit: 1,
-        review: true,
-      }),
+      progressRow({ student_id: student.id, subject_id: 'subj1', step_unit: 1, step_lesson_in_unit: 1 }),
     ]
+    const reviewFlags = [reviewFlagRow({ student_id: student.id, lesson_id: 'l1', flagged: true })]
 
-    const report = buildStudentReport(student, subjects, lessons, progress)
+    const report = buildStudentReport(student, subjects, lessons, progress, reviewFlags)
 
     expect(report.subjectRows[0].reviewFlagged).toBe(true)
+  })
+
+  it('does not show a review flag for a lesson other than the current one', () => {
+    const student = studentRow()
+    const subjects = [subjectRow({ id: 'subj1', name: 'Math' })]
+    const lessons = [
+      lessonRow({ id: 'l1', subject_id: 'subj1', unit: 1, lesson_in_unit: 1, title: 'Fractions' }),
+      lessonRow({ id: 'l2', subject_id: 'subj1', unit: 1, lesson_in_unit: 2, title: 'Decimals' }),
+    ]
+    const progress = [
+      progressRow({ student_id: student.id, subject_id: 'subj1', step_unit: 1, step_lesson_in_unit: 1 }),
+    ]
+    const reviewFlags = [reviewFlagRow({ student_id: student.id, lesson_id: 'l2', flagged: true })]
+
+    const report = buildStudentReport(student, subjects, lessons, progress, reviewFlags)
+
+    expect(report.subjectRows[0].reviewFlagged).toBe(false)
   })
 
   it("only considers this student's own progress rows, ignoring other students' rows for the same subject", () => {
@@ -135,11 +157,11 @@ describe('buildStudentReport', () => {
         subject_id: 'subj1',
         step_unit: 1,
         step_lesson_in_unit: 1,
-        review: true,
       }),
     ]
+    const reviewFlags = [reviewFlagRow({ student_id: 'other-student', lesson_id: 'l1', flagged: true })]
 
-    const report = buildStudentReport(student, subjects, lessons, progress)
+    const report = buildStudentReport(student, subjects, lessons, progress, reviewFlags)
 
     expect(report.subjectRows[0].lessonLabel).toBeUndefined()
     expect(report.subjectRows[0].reviewFlagged).toBe(false)
@@ -152,7 +174,7 @@ describe('buildStudentReport', () => {
       subjectRow({ id: 's2', name: 'Reading', position: 1 }),
     ]
 
-    const report = buildStudentReport(student, subjects, [], [])
+    const report = buildStudentReport(student, subjects, [], [], [])
 
     expect(report.subjectRows.map((row) => row.subject.name)).toEqual(['Math', 'Reading'])
   })

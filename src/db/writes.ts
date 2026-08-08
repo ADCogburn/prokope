@@ -1,6 +1,6 @@
 import { db } from './schema'
 
-const TABLES = [db.class, db.subject, db.lesson, db.student, db.progress]
+const TABLES = [db.class, db.subject, db.lesson, db.student, db.progress, db.review_flag]
 const WRITE_HOOKS = ['creating', 'updating', 'deleting'] as const
 
 /**

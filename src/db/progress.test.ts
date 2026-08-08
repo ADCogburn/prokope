@@ -7,7 +7,6 @@ import {
   jumpToLesson,
   listProgressForStudents,
   unAdvanceProgress,
-  upsertProgressReview,
   upsertProgressStep,
 } from './progress'
 import { getClientId } from './clientId'
@@ -36,26 +35,12 @@ describe('upsertProgressStep', () => {
     expect(row.step_hlc).toBeTruthy()
   })
 
-  it('on first creation, defaults review to false and stamps review_hlc/review_client_id with this same write (required non-nullable columns)', async () => {
-    const row = await upsertProgressStep('student-1', 'subject-1', { unit: 1, lesson_in_unit: 2 })
-
-    expect(row.review).toBe(false)
-    expect(row.review_hlc).toBe(row.step_hlc)
-    expect(row.review_client_id).toBe(row.step_client_id)
-  })
-
-  it('updates step in place on a second write, leaving review/review_hlc/review_client_id untouched', async () => {
+  it('updates step in place on a second write', async () => {
     const created = await upsertProgressStep('student-1', 'subject-1', { unit: 1, lesson_in_unit: 1 })
-    await upsertProgressReview('student-1', 'subject-1', true)
-
-    const afterReview = await getProgress('student-1', 'subject-1')
     const updated = await upsertProgressStep('student-1', 'subject-1', { unit: 2, lesson_in_unit: 1 })
 
     expect(updated.id).toBe(created.id)
     expect(updated.step_unit).toBe(2)
-    expect(updated.review).toBe(afterReview?.review)
-    expect(updated.review_hlc).toBe(afterReview?.review_hlc)
-    expect(updated.review_client_id).toBe(afterReview?.review_client_id)
   })
 
   it('produces monotonically non-decreasing HLC values across sequential writes', async () => {
@@ -69,50 +54,6 @@ describe('upsertProgressStep', () => {
   it('updates in place rather than creating a second row for the same (student, subject) pair', async () => {
     await upsertProgressStep('student-1', 'subject-1', { unit: 1, lesson_in_unit: 1 })
     await upsertProgressStep('student-1', 'subject-1', { unit: 1, lesson_in_unit: 2 })
-
-    const rows = await db.progress
-      .where('[student_id+subject_id]')
-      .equals(['student-1', 'subject-1'])
-      .toArray()
-    expect(rows).toHaveLength(1)
-  })
-})
-
-describe('upsertProgressReview', () => {
-  it('creates a row with a UUID primary key, stamping review_hlc/review_client_id', async () => {
-    const row = await upsertProgressReview('student-1', 'subject-1', true)
-
-    expect(row.id).toMatch(UUID_PATTERN)
-    expect(row.review).toBe(true)
-    expect(row.review_client_id).toBe(getClientId())
-    expect(row.review_hlc).toBeTruthy()
-  })
-
-  it('on first creation, defaults step to {0, 0} and stamps step_hlc/step_client_id with this same write (required non-nullable columns)', async () => {
-    const row = await upsertProgressReview('student-1', 'subject-1', true)
-
-    expect(row.step_unit).toBe(0)
-    expect(row.step_lesson_in_unit).toBe(0)
-    expect(row.step_hlc).toBe(row.review_hlc)
-    expect(row.step_client_id).toBe(row.review_client_id)
-  })
-
-  it('updates review in place on a second write, leaving step/step_hlc/step_client_id untouched', async () => {
-    const created = await upsertProgressStep('student-1', 'subject-1', { unit: 3, lesson_in_unit: 4 })
-
-    const updated = await upsertProgressReview('student-1', 'subject-1', true)
-
-    expect(updated.id).toBe(created.id)
-    expect(updated.review).toBe(true)
-    expect(updated.step_unit).toBe(created.step_unit)
-    expect(updated.step_lesson_in_unit).toBe(created.step_lesson_in_unit)
-    expect(updated.step_hlc).toBe(created.step_hlc)
-    expect(updated.step_client_id).toBe(created.step_client_id)
-  })
-
-  it('updates in place rather than creating a second row for the same (student, subject) pair', async () => {
-    await upsertProgressReview('student-1', 'subject-1', false)
-    await upsertProgressReview('student-1', 'subject-1', true)
 
     const rows = await db.progress
       .where('[student_id+subject_id]')
@@ -200,18 +141,6 @@ describe('advanceProgress', () => {
     const after = await getProgress('student-1', 'subject-1')
     expect(after).toEqual(before)
   })
-
-  it('does not touch review/review_hlc/review_client_id when advancing', async () => {
-    await createLesson(lessonInput({ title: 'Fractions' }))
-    await createLesson(lessonInput({ lesson_in_unit: 2, title: 'Decimals' }))
-    await upsertProgressStep('student-1', 'subject-1', { unit: 1, lesson_in_unit: 1 })
-    await upsertProgressReview('student-1', 'subject-1', true)
-
-    await advanceProgress('student-1', 'subject-1')
-
-    const after = await getProgress('student-1', 'subject-1')
-    expect(after?.review).toBe(true)
-  })
 })
 
 describe('unAdvanceProgress', () => {
@@ -276,18 +205,6 @@ describe('unAdvanceProgress', () => {
     expect(result).toBeUndefined()
     const after = await getProgress('student-1', 'subject-1')
     expect(after).toEqual(before)
-  })
-
-  it('does not touch review/review_hlc/review_client_id when un-advancing', async () => {
-    await createLesson(lessonInput({ title: 'Fractions' }))
-    await createLesson(lessonInput({ lesson_in_unit: 2, title: 'Decimals' }))
-    await upsertProgressStep('student-1', 'subject-1', { unit: 1, lesson_in_unit: 2 })
-    await upsertProgressReview('student-1', 'subject-1', true)
-
-    await unAdvanceProgress('student-1', 'subject-1')
-
-    const after = await getProgress('student-1', 'subject-1')
-    expect(after?.review).toBe(true)
   })
 })
 
@@ -359,17 +276,6 @@ describe('bulkAdvanceProgress', () => {
     expect(second).toMatchObject({ step_unit: 0, step_lesson_in_unit: 0 })
   })
 
-  it('does not touch review/review_hlc/review_client_id when advancing', async () => {
-    await createLesson(lessonInput({ title: 'Fractions' }))
-    await createLesson(lessonInput({ lesson_in_unit: 2, title: 'Decimals' }))
-    await upsertProgressReview('student-1', 'subject-1', true)
-
-    await bulkAdvanceProgress(['student-1'], 'subject-1')
-
-    const after = await getProgress('student-1', 'subject-1')
-    expect(after?.review).toBe(true)
-  })
-
   it('returns an empty array for an empty student list', async () => {
     await createLesson(lessonInput({ title: 'Only lesson' }))
 
@@ -419,16 +325,5 @@ describe('jumpToLesson', () => {
     expect(result.id).toBeTruthy()
     expect(result.step_unit).toBe(2)
     expect(result.step_lesson_in_unit).toBe(3)
-  })
-
-  it('does not touch review/review_hlc/review_client_id on an existing row', async () => {
-    const target = await createLesson(lessonInput({ unit: 2, title: 'Decimals' }))
-    await upsertProgressStep('student-1', 'subject-1', { unit: 1, lesson_in_unit: 1 })
-    await upsertProgressReview('student-1', 'subject-1', true)
-
-    await jumpToLesson('student-1', 'subject-1', target)
-
-    const after = await getProgress('student-1', 'subject-1')
-    expect(after?.review).toBe(true)
   })
 })

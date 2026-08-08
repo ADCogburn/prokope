@@ -11,9 +11,6 @@ function makeRow(overrides: Partial<ProgressRow> = {}): ProgressRow {
     step_lesson_in_unit: 1,
     step_hlc: 'hlc-1',
     step_client_id: 'client-a',
-    review: false,
-    review_hlc: 'hlc-1',
-    review_client_id: 'client-a',
     updated_at: '2024-01-01T00:00:00.000Z',
     ...overrides,
   }
@@ -38,24 +35,6 @@ describe('mergeProgressRows', () => {
 
     expect(merged.step_unit).toBe(5)
     expect(merged.step_hlc).toBe('hlc-9')
-  })
-
-  it('resolves step and review independently -- one can win from incoming while the other loses', () => {
-    const existing = makeRow({ step_hlc: 'hlc-9', review: false, review_hlc: 'hlc-1' })
-    const incoming = makeRow({
-      id: 'incoming-id',
-      step_unit: 42,
-      step_hlc: 'hlc-1',
-      review: true,
-      review_hlc: 'hlc-2',
-    })
-
-    const merged = mergeProgressRows(existing, incoming)
-
-    expect(merged.step_hlc).toBe('hlc-9')
-    expect(merged.step_unit).toBe(existing.step_unit)
-    expect(merged.review).toBe(true)
-    expect(merged.review_hlc).toBe('hlc-2')
   })
 
   it('tie-breaks an exactly-equal HLC by client_id', () => {
