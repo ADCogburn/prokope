@@ -4,6 +4,7 @@ import { deleteLesson, updateLessonContent } from '../db'
 import { ContextMenu } from './ContextMenu'
 import { SubjectNameLabel } from './SubjectNameLabel'
 import { AddLessonModal } from './AddLessonModal'
+import { BulkGenerateModal } from './BulkGenerateModal'
 import { RemoveLessonDialog } from './RemoveLessonDialog'
 import { groupLessonsByUnit } from './groupLessonsByUnit'
 import { useUnitWindow } from './useUnitWindow'
@@ -262,6 +263,7 @@ export function Curriculum({ classRow, subject, lessons, onBack }: CurriculumPro
   const wrapRef = useRef<HTMLDivElement>(null)
   const [containerWidth, setContainerWidth] = useState<number | null>(null)
   const [addLessonModalOpen, setAddLessonModalOpen] = useState(false)
+  const [bulkGenerateModalOpen, setBulkGenerateModalOpen] = useState(false)
 
   useEffect(() => {
     const el = wrapRef.current
@@ -288,13 +290,22 @@ export function Curriculum({ classRow, subject, lessons, onBack }: CurriculumPro
           </button>
           <div className="curriculum__title-row">
             <SubjectNameLabel subject={subject} tag="h1" showPencil />
-            <button
-              type="button"
-              className="inline-add-card curriculum__header-add"
-              onClick={() => setAddLessonModalOpen(true)}
-            >
-              + Add lesson
-            </button>
+            <div className="curriculum__header-actions">
+              <button
+                type="button"
+                className="inline-add-card curriculum__header-add"
+                onClick={() => setAddLessonModalOpen(true)}
+              >
+                + Add lesson
+              </button>
+              <button
+                type="button"
+                className="inline-add-card curriculum__header-add"
+                onClick={() => setBulkGenerateModalOpen(true)}
+              >
+                Bulk Generate
+              </button>
+            </div>
           </div>
           <p>{classRow.name}</p>
         </div>
@@ -332,6 +343,9 @@ export function Curriculum({ classRow, subject, lessons, onBack }: CurriculumPro
       </div>
       {addLessonModalOpen && (
         <AddLessonModal subjectId={subject.id} lessons={lessons} onClose={() => setAddLessonModalOpen(false)} />
+      )}
+      {bulkGenerateModalOpen && (
+        <BulkGenerateModal subjectId={subject.id} onClose={() => setBulkGenerateModalOpen(false)} />
       )}
     </div>
   )
