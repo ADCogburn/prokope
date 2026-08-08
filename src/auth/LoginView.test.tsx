@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { render, screen, waitFor } from '@testing-library/react'
 import { LoginView } from './LoginView'
 import { AuthProvider } from './AuthContext'
+import { AUTH_TOKEN_STORAGE_KEY } from './token'
 
 // Google Identity Services is third-party infra: simulate its callback
 // firing with a fake credential string rather than loading the real script,
@@ -67,6 +68,15 @@ describe('LoginView', () => {
         expect.objectContaining({ method: 'POST' }),
       ),
     )
+
+    // LoginView's callback fires login() fire-and-forget (void login(...)),
+    // and login() keeps running past the fetch call -- through
+    // resetLocalStore()'s Dexie work -- before it persists the token. Waiting
+    // only for the fetch call above lets the test (and its jsdom env) tear
+    // down while that tail is still in flight, so resetLocalStore() later
+    // hits a torn-down `localStorage` as an unhandled rejection. Wait for the
+    // token to land so the test doesn't finish until login() fully settles.
+    await waitFor(() => expect(localStorage.getItem(AUTH_TOKEN_STORAGE_KEY)).toBe('issued-token'))
   })
 
   it('renders an "Explore as Guest" button that calls POST /auth/demo', async () => {
@@ -91,6 +101,11 @@ describe('LoginView', () => {
         expect.objectContaining({ method: 'POST' }),
       ),
     )
+
+    // Same race as the Google credential test above: loginAsDemo() keeps
+    // running past the fetch call, through resetLocalStore(), before it
+    // persists the token.
+    await waitFor(() => expect(localStorage.getItem(AUTH_TOKEN_STORAGE_KEY)).toBe('demo-token'))
   })
 
   it('shows a graceful error when demo sign-in fails', async () => {
