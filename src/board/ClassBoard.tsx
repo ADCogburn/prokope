@@ -877,11 +877,26 @@ export function ClassBoard({
                   style={{ width: panelWidth, marginRight: PANEL_GAP, opacity: i === index ? 1 : 0.45 }}
                 >
                   <div className="class-board__panel-header">
-                    <SubjectNameLabel
-                      subject={subject}
-                      onNavigateToCurriculum={() => onCurriculumNavigate(subject.id)}
-                      onRequestRemove={() => setRemoveSubjectRequest(subject)}
-                    />
+                    <span className="class-board__subject-name-group">
+                      <SubjectNameLabel
+                        subject={subject}
+                        onNavigateToCurriculum={() => onCurriculumNavigate(subject.id)}
+                        onRequestRemove={() => setRemoveSubjectRequest(subject)}
+                      />
+                      {i === index && (
+                        <button
+                          type="button"
+                          aria-label={`Edit curriculum for ${subject.name}`}
+                          className="class-board__curriculum-quick-link"
+                          onClick={() => onCurriculumNavigate(subject.id)}
+                          onPointerDown={(event) => event.stopPropagation()}
+                          onPointerUp={(event) => event.stopPropagation()}
+                          onPointerMove={(event) => event.stopPropagation()}
+                        >
+                          <span aria-hidden="true">📝</span>
+                        </button>
+                      )}
+                    </span>
                     {i === index && (
                       <div className="class-board__bulk-advance-group">
                         <button
