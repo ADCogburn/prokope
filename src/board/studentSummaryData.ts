@@ -1,5 +1,5 @@
 import { formatLessonLabel, positionOf } from '../db'
-import type { LessonRow, ProgressRow, StudentRow, SubjectRow } from '../db/schema'
+import type { LessonRow, ProgressRow, ReviewFlagRow, StudentRow, SubjectRow } from '../db/schema'
 
 export interface StudentSummarySubjectRow {
   subject: SubjectRow
@@ -24,12 +24,18 @@ export interface StudentSummaryData {
  * ADR-0009. Student Summary is the intended growth point for future
  * student-detail features and shouldn't couple that growth to the printable
  * report's scope, or vice versa.
+ *
+ * `reviewFlagged` here is interim, current-lesson-only behavior per #152:
+ * ReviewFlag is keyed by (student, lesson), so this only surfaces whether
+ * the *current* lesson in each subject carries a flag -- the full
+ * flagged-lesson list (past and upcoming lessons too) is #153's scope.
  */
 export function buildStudentSummary(
   student: StudentRow,
   subjects: SubjectRow[],
   lessons: LessonRow[],
   progress: ProgressRow[],
+  reviewFlags: ReviewFlagRow[],
 ): StudentSummaryData {
   const subjectRows = subjects.map((subject) => {
     const subjectLessons = lessons.filter((lesson) => lesson.subject_id === subject.id)
@@ -38,12 +44,17 @@ export function buildStudentSummary(
     const currentLesson = subjectLessons.find(
       (lesson) => lesson.unit === step.unit && lesson.lesson_in_unit === step.lesson_in_unit,
     )
+    const reviewFlagged = currentLesson
+      ? reviewFlags.some(
+          (row) => row.student_id === student.id && row.lesson_id === currentLesson.id && row.flagged,
+        )
+      : false
 
     return {
       subject,
       lessonLabel: currentLesson ? formatLessonLabel(currentLesson) : undefined,
       hasLessons: subjectLessons.length > 0,
-      reviewFlagged: Boolean(progressRow?.review),
+      reviewFlagged,
     }
   })
 

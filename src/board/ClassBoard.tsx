@@ -1,5 +1,13 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, type FormEvent } from 'react'
-import type { ClassRow, ProgressRow, StudentRow, SubjectRow, LessonRow, SubjectTemplateRow } from '../db/schema'
+import type {
+  ClassRow,
+  ProgressRow,
+  ReviewFlagRow,
+  StudentRow,
+  SubjectRow,
+  LessonRow,
+  SubjectTemplateRow,
+} from '../db/schema'
 import {
   advanceProgress,
   applySubjectTemplate,
@@ -14,7 +22,7 @@ import {
   renameClass,
   renameStudent,
   unAdvanceProgress,
-  upsertProgressReview,
+  upsertReviewFlag,
   upsertProgressStep,
   type BulkAdvanceEntry,
 } from '../db'
@@ -36,6 +44,10 @@ function progressKey(studentId: string, subjectId: string) {
   return `${studentId}:${subjectId}`
 }
 
+function reviewFlagKey(studentId: string, lessonId: string) {
+  return `${studentId}:${lessonId}`
+}
+
 function ChevronIcon({ direction }: { direction: 'left' | 'right' }) {
   return (
     <svg viewBox="0 0 24 24" aria-hidden="true">
@@ -55,7 +67,7 @@ type AddSubjectMode = 'scratch' | 'template'
 /**
  * Trailing/alone "+" card for adding a subject, per #58. Calls createSubject
  * directly, consistent with ClassBoard already calling
- * advanceProgress/upsertProgressReview directly rather than via callback
+ * advanceProgress/upsertReviewFlag directly rather than via callback
  * props.
  *
  * Per #167, the form also offers starting from a saved Subject Template:
@@ -275,6 +287,10 @@ interface StudentRosterRowProps {
  * removal request up to ClassBoard, which owns the confirmation dialog;
  * renaming, being non-destructive, is handled entirely within the row.
  *
+ * `reviewCount` is the student's total flagged-lesson count across every
+ * subject (#152/ADR-0011) -- summed by the caller from ReviewFlag rows, not
+ * a per-subject "flagged subject" count (there is no such thing anymore).
+ *
  * Per #108, left-clicking the row (outside inline-rename mode) reports a
  * navigate-to-Student-Summary request the same way. That click handler
  * lives on an inner wrapper around just the avatar/name/review-count --
@@ -319,7 +335,11 @@ function StudentRosterRow({ student, reviewCount, onRequestRemove, onNavigate }:
               student.name
             )}
           </div>
-          {reviewCount > 0 && <div className="class-board__review-count">{reviewCount} flagged for review</div>}
+          {reviewCount > 0 && (
+            <div className="class-board__review-count">
+              {reviewCount} lesson{reviewCount === 1 ? '' : 's'} marked for review
+            </div>
+          )}
         </div>
       </div>
       {menuPosition && (
@@ -395,6 +415,7 @@ interface ClassBoardProps {
   subjects: SubjectRow[]
   students: StudentRow[]
   progress: ProgressRow[]
+  reviewFlags: ReviewFlagRow[]
   lessons: LessonRow[]
   activeSubjectId: string | undefined
   onSubjectChange: (subjectId: string) => void
@@ -415,6 +436,7 @@ export function ClassBoard({
   subjects,
   students,
   progress,
+  reviewFlags,
   lessons,
   activeSubjectId,
   onSubjectChange,
@@ -453,6 +475,14 @@ export function ClassBoard({
     }
     return map
   }, [progress])
+
+  const reviewFlagsByKey = useMemo(() => {
+    const map = new Map<string, ReviewFlagRow>()
+    for (const row of reviewFlags) {
+      map.set(reviewFlagKey(row.student_id, row.lesson_id), row)
+    }
+    return map
+  }, [reviewFlags])
 
   const initialIndex = Math.max(
     0,
@@ -527,9 +557,12 @@ export function ClassBoard({
     }
   }
 
-  async function handleToggleReview(studentId: string, subjectId: string) {
-    const current = progressByKey.get(progressKey(studentId, subjectId))
-    await upsertProgressReview(studentId, subjectId, !current?.review)
+  // #152/ADR-0011: the quick-toggle flags the student's *current* lesson in
+  // this subject, resolved by the caller (below) from their progress step --
+  // ProgressCell itself no longer knows about lessons or ReviewFlag.
+  async function handleToggleReview(studentId: string, lessonId: string, subjectId: string) {
+    const current = reviewFlagsByKey.get(reviewFlagKey(studentId, lessonId))
+    await upsertReviewFlag(studentId, lessonId, !current?.flagged)
     if (bulkUndo?.subjectId === subjectId) {
       setBulkUndo(null)
     }
@@ -571,9 +604,7 @@ export function ClassBoard({
   const studentsPanel = (
     <div className="class-board__students">
       {students.map((student) => {
-        const reviewCount = subjects.filter(
-          (subject) => progressByKey.get(progressKey(student.id, subject.id))?.review,
-        ).length
+        const reviewCount = reviewFlags.filter((row) => row.student_id === student.id && row.flagged).length
         return (
           <StudentRosterRow
             key={student.id}
@@ -755,17 +786,32 @@ export function ClassBoard({
                     ) : (
                       students.map((student) => {
                         const studentProgress = progressByKey.get(progressKey(student.id, subject.id))
-                        const nextLesson = findNextLesson(subjectLessons, subject.id, positionOf(studentProgress))
+                        const position = positionOf(studentProgress)
+                        const nextLesson = findNextLesson(subjectLessons, subject.id, position)
+                        // The quick-toggle only ever targets the student's
+                        // *current* lesson (#152/ADR-0011) -- undefined at
+                        // the {0,0} "Not started" sentinel or when no lesson
+                        // occupies that exact position, in which case there
+                        // is nothing to flag yet.
+                        const currentLesson = subjectLessons.find(
+                          (lesson) => lesson.unit === position.unit && lesson.lesson_in_unit === position.lesson_in_unit,
+                        )
+                        const isFlagged = currentLesson
+                          ? Boolean(reviewFlagsByKey.get(reviewFlagKey(student.id, currentLesson.id))?.flagged)
+                          : false
                         return (
                           <ProgressCell
                             key={student.id}
                             studentName={student.name}
                             progress={studentProgress}
+                            isFlagged={isFlagged}
                             hasNextLesson={nextLesson !== undefined}
                             hasAnyLessons={subjectLessons.length > 0}
                             subjectLessons={subjectLessons}
                             onAdvance={() => void handleAdvance(student.id, subject.id)}
-                            onToggleReview={() => void handleToggleReview(student.id, subject.id)}
+                            onToggleReview={() =>
+                              currentLesson && void handleToggleReview(student.id, currentLesson.id, subject.id)
+                            }
                             onJumpToLesson={() =>
                               setJumpPickerRequest({ studentId: student.id, subjectId: subject.id })
                             }

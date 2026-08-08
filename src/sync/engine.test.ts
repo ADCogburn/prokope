@@ -1,7 +1,14 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { db } from '../db/schema'
-import type { ClassRow, ProgressRow } from '../db'
-import { getRawClass, getRawProgressByPair, putRawClass, putRawProgress } from '../db/sync'
+import type { ClassRow, ProgressRow, ReviewFlagRow } from '../db'
+import {
+  getRawClass,
+  getRawProgressByPair,
+  getRawReviewFlagByPair,
+  putRawClass,
+  putRawProgress,
+  putRawReviewFlag,
+} from '../db/sync'
 import { AUTH_TOKEN_STORAGE_KEY } from '../auth/token'
 import { push, pull, resetLocalStore } from './engine'
 import { getPushWatermark, getPullWatermark, setPullWatermark, setPushWatermark } from './watermarks'
@@ -27,9 +34,19 @@ function makeProgress(overrides: Partial<ProgressRow> = {}): ProgressRow {
     step_lesson_in_unit: 1,
     step_hlc: 'hlc-1',
     step_client_id: 'client-a',
-    review: false,
-    review_hlc: 'hlc-1',
-    review_client_id: 'client-a',
+    updated_at: '2024-01-01T00:00:00.000Z',
+    ...overrides,
+  }
+}
+
+function makeReviewFlag(overrides: Partial<ReviewFlagRow> = {}): ReviewFlagRow {
+  return {
+    id: 'review-flag-1',
+    student_id: 'student-1',
+    lesson_id: 'lesson-1',
+    flagged: false,
+    hlc: 'hlc-1',
+    client_id: 'client-a',
     updated_at: '2024-01-01T00:00:00.000Z',
     ...overrides,
   }
@@ -42,6 +59,7 @@ function emptyBatch() {
     lessons: [],
     students: [],
     progress: [],
+    review_flags: [],
     subject_templates: [],
     subject_template_lessons: [],
   }
@@ -65,6 +83,7 @@ describe('resetLocalStore', () => {
   it('clears every Dexie table and both watermarks', async () => {
     await putRawClass(makeClass())
     await putRawProgress(makeProgress())
+    await putRawReviewFlag(makeReviewFlag())
     setPushWatermark('2024-03-01T00:00:00.000Z')
     setPullWatermark('2024-03-01T00:00:00.000Z')
 
@@ -72,6 +91,7 @@ describe('resetLocalStore', () => {
 
     expect(await db.class.count()).toBe(0)
     expect(await db.progress.count()).toBe(0)
+    expect(await db.review_flag.count()).toBe(0)
     expect(getPushWatermark()).toBeNull()
     expect(getPullWatermark()).toBeNull()
   })
@@ -154,6 +174,20 @@ describe('push', () => {
     const reconciled = await getRawProgressByPair(sent.student_id, sent.subject_id)
     expect(reconciled?.id).toBe('device-a-id')
   })
+
+  it('reconciles a review_flag row onto the server-echoed canonical id when it differs from the id sent (#152/ADR-0011)', async () => {
+    localStorage.setItem(AUTH_TOKEN_STORAGE_KEY, 'a-token')
+    const sent = makeReviewFlag({ id: 'device-b-id', updated_at: '2024-03-01T00:00:00.000Z' })
+    await putRawReviewFlag(sent)
+    const canonical = { ...sent, id: 'device-a-id' }
+    vi.mocked(fetch).mockResolvedValueOnce(jsonResponse({ ...emptyBatch(), review_flags: [canonical] }))
+
+    await push()
+
+    expect(await db.review_flag.get('device-b-id')).toBeUndefined()
+    const reconciled = await getRawReviewFlagByPair(sent.student_id, sent.lesson_id)
+    expect(reconciled?.id).toBe('device-a-id')
+  })
 })
 
 describe('pull', () => {
@@ -217,14 +251,12 @@ describe('pull', () => {
 
   it('merges an incoming progress row per-field rather than overwriting local edits', async () => {
     localStorage.setItem(AUTH_TOKEN_STORAGE_KEY, 'a-token')
-    const local = makeProgress({ step_hlc: 'hlc-9', step_unit: 42, review_hlc: 'hlc-1' })
+    const local = makeProgress({ step_hlc: 'hlc-9', step_unit: 42 })
     await putRawProgress(local)
     const incoming = makeProgress({
       id: 'other-device-id',
       step_hlc: 'hlc-1',
       step_unit: 1,
-      review_hlc: 'hlc-9',
-      review: true,
     })
     vi.mocked(fetch).mockResolvedValueOnce(
       jsonResponse({ ...emptyBatch(), progress: [incoming], watermark: '2024-05-01T00:00:00.000Z' }),
@@ -234,6 +266,58 @@ describe('pull', () => {
 
     const merged = await getRawProgressByPair(local.student_id, local.subject_id)
     expect(merged?.step_unit).toBe(42)
-    expect(merged?.review).toBe(true)
+    expect(merged?.step_hlc).toBe('hlc-9')
+  })
+
+  // #152/ADR-0011: review_flag gets the same per-field HLC merge treatment
+  // as progress.step, just against its own (student_id, lesson_id) pair.
+  describe('review_flag merge (#152/ADR-0011)', () => {
+    it('same-side-wins: keeps the local flagged/hlc when the incoming hlc sorts earlier', async () => {
+      localStorage.setItem(AUTH_TOKEN_STORAGE_KEY, 'a-token')
+      const local = makeReviewFlag({ flagged: true, hlc: 'hlc-9' })
+      await putRawReviewFlag(local)
+      const incoming = makeReviewFlag({ id: 'other-device-id', flagged: false, hlc: 'hlc-1' })
+      vi.mocked(fetch).mockResolvedValueOnce(
+        jsonResponse({ ...emptyBatch(), review_flags: [incoming], watermark: '2024-05-01T00:00:00.000Z' }),
+      )
+
+      await pull()
+
+      const merged = await getRawReviewFlagByPair(local.student_id, local.lesson_id)
+      expect(merged?.flagged).toBe(true)
+      expect(merged?.hlc).toBe('hlc-9')
+    })
+
+    it('other-side-wins: takes the incoming flagged/hlc rather than overwriting local edits blindly', async () => {
+      localStorage.setItem(AUTH_TOKEN_STORAGE_KEY, 'a-token')
+      const local = makeReviewFlag({ flagged: false, hlc: 'hlc-1' })
+      await putRawReviewFlag(local)
+      const incoming = makeReviewFlag({ id: 'other-device-id', flagged: true, hlc: 'hlc-9' })
+      vi.mocked(fetch).mockResolvedValueOnce(
+        jsonResponse({ ...emptyBatch(), review_flags: [incoming], watermark: '2024-05-01T00:00:00.000Z' }),
+      )
+
+      await pull()
+
+      const merged = await getRawReviewFlagByPair(local.student_id, local.lesson_id)
+      expect(merged?.flagged).toBe(true)
+      expect(merged?.hlc).toBe('hlc-9')
+    })
+
+    it('tie-breaks an exactly-equal hlc by client_id', async () => {
+      localStorage.setItem(AUTH_TOKEN_STORAGE_KEY, 'a-token')
+      const local = makeReviewFlag({ flagged: false, hlc: 'hlc-1', client_id: 'aaaa' })
+      await putRawReviewFlag(local)
+      const incoming = makeReviewFlag({ id: 'other-device-id', flagged: true, hlc: 'hlc-1', client_id: 'zzzz' })
+      vi.mocked(fetch).mockResolvedValueOnce(
+        jsonResponse({ ...emptyBatch(), review_flags: [incoming], watermark: '2024-05-01T00:00:00.000Z' }),
+      )
+
+      await pull()
+
+      const merged = await getRawReviewFlagByPair(local.student_id, local.lesson_id)
+      expect(merged?.flagged).toBe(true)
+      expect(merged?.client_id).toBe('zzzz')
+    })
   })
 })

@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { db, type ClassRow, type ProgressRow } from './schema'
+import { db, type ClassRow, type ProgressRow, type ReviewFlagRow } from './schema'
 import { onLocalWrite } from './writes'
 
 function makeClass(overrides: Partial<ClassRow> = {}): ClassRow {
@@ -23,9 +23,19 @@ function makeProgress(overrides: Partial<ProgressRow> = {}): ProgressRow {
     step_lesson_in_unit: 1,
     step_hlc: 'hlc-1',
     step_client_id: 'client-a',
-    review: false,
-    review_hlc: 'hlc-1',
-    review_client_id: 'client-a',
+    updated_at: '2024-01-01T00:00:00.000Z',
+    ...overrides,
+  }
+}
+
+function makeReviewFlag(overrides: Partial<ReviewFlagRow> = {}): ReviewFlagRow {
+  return {
+    id: 'review-flag-1',
+    student_id: 'student-1',
+    lesson_id: 'lesson-1',
+    flagged: true,
+    hlc: 'hlc-1',
+    client_id: 'client-a',
     updated_at: '2024-01-01T00:00:00.000Z',
     ...overrides,
   }
@@ -70,6 +80,15 @@ describe('onLocalWrite', () => {
     onLocalWrite(callback)
 
     await db.progress.add(makeProgress())
+
+    expect(callback).toHaveBeenCalled()
+  })
+
+  it('fires for writes to review_flag (#152/ADR-0011)', async () => {
+    const callback = vi.fn()
+    onLocalWrite(callback)
+
+    await db.review_flag.add(makeReviewFlag())
 
     expect(callback).toHaveBeenCalled()
   })

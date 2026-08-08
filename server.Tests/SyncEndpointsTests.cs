@@ -24,9 +24,10 @@ public class SyncEndpointsTests(DatabaseFixture fixture) : IClassFixture<Databas
         var studentRow = NewStudent(classRow.Id, name: "Alex");
         var lessonRow = NewLesson(subjectRow.Id, unit: 1, lessonInUnit: 1);
         var progressRow = NewProgress(studentRow.Id, subjectRow.Id);
+        var reviewFlagRow = NewReviewFlag(studentRow.Id, lessonRow.Id);
 
         var response = await client.PostAsJsonAsync("/sync/push", new SyncBatch(
-            [classRow], [subjectRow], [lessonRow], [studentRow], [progressRow], [], []));
+            [classRow], [subjectRow], [lessonRow], [studentRow], [progressRow], [reviewFlagRow], [], []));
 
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
         var body = await response.Content.ReadFromJsonAsync<SyncBatch>();
@@ -47,6 +48,11 @@ public class SyncEndpointsTests(DatabaseFixture fixture) : IClassFixture<Databas
         var echoedProgress = Assert.Single(body.Progress);
         Assert.Equal(progressRow.Id, echoedProgress.Id);
         Assert.Equal(progressRow.StepHlc, echoedProgress.StepHlc);
+
+        var echoedReviewFlag = Assert.Single(body.ReviewFlags);
+        Assert.Equal(reviewFlagRow.Id, echoedReviewFlag.Id);
+        Assert.True(echoedReviewFlag.Flagged);
+        Assert.Equal(reviewFlagRow.Hlc, echoedReviewFlag.Hlc);
     }
 
     [Fact]
@@ -66,7 +72,7 @@ public class SyncEndpointsTests(DatabaseFixture fixture) : IClassFixture<Databas
         // created earlier in this same request, not only rows that already
         // existed server-side beforehand.
         var response = await client.PostAsJsonAsync("/sync/push", new SyncBatch(
-            [], [], [], [], [], [templateRow], [templateLessonRow]));
+            [], [], [], [], [], [], [templateRow], [templateLessonRow]));
 
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
         var body = await response.Content.ReadFromJsonAsync<SyncBatch>();
@@ -91,7 +97,7 @@ public class SyncEndpointsTests(DatabaseFixture fixture) : IClassFixture<Databas
         Authorize(client, tokenA);
 
         var response = await client.PostAsJsonAsync("/sync/push", new SyncBatch(
-            [], [], [], [], [], [NewSubjectTemplate(userIdB)], []));
+            [], [], [], [], [], [], [NewSubjectTemplate(userIdB)], []));
 
         Assert.Equal(HttpStatusCode.Forbidden, response.StatusCode);
     }
@@ -105,11 +111,11 @@ public class SyncEndpointsTests(DatabaseFixture fixture) : IClassFixture<Databas
 
         Authorize(client, tokenA);
         var templateRow = NewSubjectTemplate(userIdA);
-        await client.PostAsJsonAsync("/sync/push", new SyncBatch([], [], [], [], [], [templateRow], []));
+        await client.PostAsJsonAsync("/sync/push", new SyncBatch([], [], [], [], [], [], [templateRow], []));
 
         Authorize(client, tokenB);
         var response = await client.PostAsJsonAsync("/sync/push", new SyncBatch(
-            [], [], [], [], [], [], [NewSubjectTemplateLesson(templateRow.Id)]));
+            [], [], [], [], [], [], [], [NewSubjectTemplateLesson(templateRow.Id)]));
 
         Assert.Equal(HttpStatusCode.Forbidden, response.StatusCode);
     }
@@ -125,11 +131,11 @@ public class SyncEndpointsTests(DatabaseFixture fixture) : IClassFixture<Databas
         var templateA = NewSubjectTemplate(userIdA, name: "A's Template");
         var templateLessonA = NewSubjectTemplateLesson(templateA.Id);
         await client.PostAsJsonAsync("/sync/push", new SyncBatch(
-            [], [], [], [], [], [templateA], [templateLessonA]));
+            [], [], [], [], [], [], [templateA], [templateLessonA]));
 
         Authorize(client, tokenB);
         var templateB = NewSubjectTemplate(userIdB, name: "B's Template");
-        await client.PostAsJsonAsync("/sync/push", new SyncBatch([], [], [], [], [], [templateB], []));
+        await client.PostAsJsonAsync("/sync/push", new SyncBatch([], [], [], [], [], [], [templateB], []));
 
         var pullResponse = await client.GetAsync("/sync/pull");
         var pullBody = await pullResponse.Content.ReadFromJsonAsync<SyncPullResponse>();
@@ -149,7 +155,7 @@ public class SyncEndpointsTests(DatabaseFixture fixture) : IClassFixture<Databas
 
         // Authenticated as A but the payload claims the row belongs to B.
         var response = await client.PostAsJsonAsync("/sync/push", new SyncBatch(
-            [NewClass(userIdB)], [], [], [], [], [], []));
+            [NewClass(userIdB)], [], [], [], [], [], [], []));
 
         Assert.Equal(HttpStatusCode.Forbidden, response.StatusCode);
     }
@@ -163,13 +169,13 @@ public class SyncEndpointsTests(DatabaseFixture fixture) : IClassFixture<Databas
 
         Authorize(client, tokenA);
         var classRow = NewClass(userIdA);
-        await client.PostAsJsonAsync("/sync/push", new SyncBatch([classRow], [], [], [], [], [], []));
+        await client.PostAsJsonAsync("/sync/push", new SyncBatch([classRow], [], [], [], [], [], [], []));
 
         // B claims the row as their own (row.UserId == B), but the row already
         // exists server-side under A's ownership.
         Authorize(client, tokenB);
         var response = await client.PostAsJsonAsync("/sync/push", new SyncBatch(
-            [classRow with { UserId = userIdB }], [], [], [], [], [], []));
+            [classRow with { UserId = userIdB }], [], [], [], [], [], [], []));
 
         Assert.Equal(HttpStatusCode.Forbidden, response.StatusCode);
     }
@@ -183,17 +189,40 @@ public class SyncEndpointsTests(DatabaseFixture fixture) : IClassFixture<Databas
 
         Authorize(client, tokenA);
         var classRow = NewClass(userIdA);
-        await client.PostAsJsonAsync("/sync/push", new SyncBatch([classRow], [], [], [], [], [], []));
+        await client.PostAsJsonAsync("/sync/push", new SyncBatch([classRow], [], [], [], [], [], [], []));
 
         Authorize(client, tokenB);
         var response = await client.PostAsJsonAsync("/sync/push", new SyncBatch(
-            [], [NewSubject(classRow.Id)], [], [], [], [], []));
+            [], [NewSubject(classRow.Id)], [], [], [], [], [], []));
 
         Assert.Equal(HttpStatusCode.Forbidden, response.StatusCode);
     }
 
     [Fact]
-    public async Task Push_merges_progress_fields_independently_by_hlc()
+    public async Task Push_rejects_a_review_flag_referencing_a_lesson_not_owned_by_the_caller()
+    {
+        using var client = fixture.CreateClient();
+        var (tokenA, userIdA) = await LoginAsync(client, "sub-review-flag-owner-a");
+        var (tokenB, userIdB) = await LoginAsync(client, "sub-review-flag-owner-b");
+
+        Authorize(client, tokenA);
+        var classA = NewClass(userIdA);
+        var subjectA = NewSubject(classA.Id);
+        var lessonA = NewLesson(subjectA.Id);
+        var studentA = NewStudent(classA.Id);
+        await client.PostAsJsonAsync("/sync/push", new SyncBatch(
+            [classA], [subjectA], [lessonA], [studentA], [], [], [], []));
+
+        // B has no relationship to A's lesson or student at all.
+        Authorize(client, tokenB);
+        var response = await client.PostAsJsonAsync("/sync/push", new SyncBatch(
+            [], [], [], [], [], [NewReviewFlag(studentA.Id, lessonA.Id)], [], []));
+
+        Assert.Equal(HttpStatusCode.Forbidden, response.StatusCode);
+    }
+
+    [Fact]
+    public async Task Push_merges_progress_step_by_hlc()
     {
         using var client = fixture.CreateClient();
         var (token, userId) = await LoginAsync(client, "sub-progress-merge");
@@ -203,26 +232,20 @@ public class SyncEndpointsTests(DatabaseFixture fixture) : IClassFixture<Databas
         var subjectRow = NewSubject(classRow.Id);
         var studentRow = NewStudent(classRow.Id);
         await client.PostAsJsonAsync("/sync/push", new SyncBatch(
-            [classRow], [subjectRow], [], [studentRow], [], [], []));
+            [classRow], [subjectRow], [], [studentRow], [], [], [], []));
 
-        var firstDeviceRow = NewProgress(
-            studentRow.Id, subjectRow.Id,
-            stepUnit: 1, stepHlc: "hlc-1",
-            review: false, reviewHlc: "hlc-1");
+        var firstDeviceRow = NewProgress(studentRow.Id, subjectRow.Id, stepUnit: 1, stepHlc: "hlc-1");
         var firstResponse = await client.PostAsJsonAsync("/sync/push", new SyncBatch(
-            [], [], [], [], [firstDeviceRow], [], []));
+            [], [], [], [], [firstDeviceRow], [], [], []));
         var firstBody = await firstResponse.Content.ReadFromJsonAsync<SyncBatch>();
         var canonicalId = Assert.Single(firstBody!.Progress).Id;
 
         // A second device, never having synced with the first, independently
         // created its own row (different id) for the same (student, subject)
-        // cell -- an older step (loses) and a newer review (wins).
-        var secondDeviceRow = NewProgress(
-            studentRow.Id, subjectRow.Id,
-            stepUnit: 99, stepHlc: "hlc-0",
-            review: true, reviewHlc: "hlc-2");
+        // cell, with an older step -- it should lose the merge.
+        var secondDeviceRow = NewProgress(studentRow.Id, subjectRow.Id, stepUnit: 99, stepHlc: "hlc-0");
         var secondResponse = await client.PostAsJsonAsync("/sync/push", new SyncBatch(
-            [], [], [], [], [secondDeviceRow], [], []));
+            [], [], [], [], [secondDeviceRow], [], [], []));
 
         Assert.Equal(HttpStatusCode.OK, secondResponse.StatusCode);
         var secondBody = await secondResponse.Content.ReadFromJsonAsync<SyncBatch>();
@@ -231,8 +254,122 @@ public class SyncEndpointsTests(DatabaseFixture fixture) : IClassFixture<Databas
         Assert.Equal(canonicalId, merged.Id);
         Assert.Equal(1, merged.StepUnit);
         Assert.Equal("hlc-1", merged.StepHlc);
-        Assert.True(merged.Review);
-        Assert.Equal("hlc-2", merged.ReviewHlc);
+    }
+
+    // #152/ADR-0011: review_flag gets the same per-field HLC+client-id LWW
+    // merge Progress.Step already has, just against its own
+    // (student_id, lesson_id) pair. These three cases mirror
+    // Push_merges_progress_step_by_hlc's shape: the incumbent (server-side)
+    // row winning, the incoming (pushed) row winning, and an exact-HLC tie
+    // resolved by client_id.
+
+    [Fact]
+    public async Task Push_review_flag_merge_same_side_wins_when_the_incumbents_hlc_is_newer()
+    {
+        using var client = fixture.CreateClient();
+        var (token, userId) = await LoginAsync(client, "sub-review-flag-same-side");
+        Authorize(client, token);
+
+        var classRow = NewClass(userId);
+        var subjectRow = NewSubject(classRow.Id);
+        var lessonRow = NewLesson(subjectRow.Id);
+        var studentRow = NewStudent(classRow.Id);
+        await client.PostAsJsonAsync("/sync/push", new SyncBatch(
+            [classRow], [subjectRow], [lessonRow], [studentRow], [], [], [], []));
+
+        var incumbent = NewReviewFlag(studentRow.Id, lessonRow.Id, flagged: true, hlc: "hlc-9");
+        var createResponse = await client.PostAsJsonAsync("/sync/push", new SyncBatch(
+            [], [], [], [], [], [incumbent], [], []));
+        var createBody = await createResponse.Content.ReadFromJsonAsync<SyncBatch>();
+        var canonicalId = Assert.Single(createBody!.ReviewFlags).Id;
+
+        // A challenger with an older hlc pushes for the same (student, lesson)
+        // pair under a different id -- the incumbent's value must survive.
+        var challenger = NewReviewFlag(studentRow.Id, lessonRow.Id, flagged: false, hlc: "hlc-1");
+        var response = await client.PostAsJsonAsync("/sync/push", new SyncBatch(
+            [], [], [], [], [], [challenger], [], []));
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        var body = await response.Content.ReadFromJsonAsync<SyncBatch>();
+        var merged = Assert.Single(body!.ReviewFlags);
+
+        Assert.Equal(canonicalId, merged.Id);
+        Assert.True(merged.Flagged);
+        Assert.Equal("hlc-9", merged.Hlc);
+    }
+
+    [Fact]
+    public async Task Push_review_flag_merge_other_side_wins_when_the_incoming_hlc_is_newer()
+    {
+        using var client = fixture.CreateClient();
+        var (token, userId) = await LoginAsync(client, "sub-review-flag-other-side");
+        Authorize(client, token);
+
+        var classRow = NewClass(userId);
+        var subjectRow = NewSubject(classRow.Id);
+        var lessonRow = NewLesson(subjectRow.Id);
+        var studentRow = NewStudent(classRow.Id);
+        await client.PostAsJsonAsync("/sync/push", new SyncBatch(
+            [classRow], [subjectRow], [lessonRow], [studentRow], [], [], [], []));
+
+        var incumbent = NewReviewFlag(studentRow.Id, lessonRow.Id, flagged: false, hlc: "hlc-1");
+        var createResponse = await client.PostAsJsonAsync("/sync/push", new SyncBatch(
+            [], [], [], [], [], [incumbent], [], []));
+        var createBody = await createResponse.Content.ReadFromJsonAsync<SyncBatch>();
+        var canonicalId = Assert.Single(createBody!.ReviewFlags).Id;
+
+        // A challenger with a newer hlc pushes for the same pair under a
+        // different id -- it should win and become the canonical value.
+        var challenger = NewReviewFlag(studentRow.Id, lessonRow.Id, flagged: true, hlc: "hlc-9");
+        var response = await client.PostAsJsonAsync("/sync/push", new SyncBatch(
+            [], [], [], [], [], [challenger], [], []));
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        var body = await response.Content.ReadFromJsonAsync<SyncBatch>();
+        var merged = Assert.Single(body!.ReviewFlags);
+
+        Assert.Equal(canonicalId, merged.Id);
+        Assert.True(merged.Flagged);
+        Assert.Equal("hlc-9", merged.Hlc);
+    }
+
+    [Fact]
+    public async Task Push_review_flag_merge_tie_breaks_by_client_id_when_hlcs_are_equal()
+    {
+        using var client = fixture.CreateClient();
+        var (token, userId) = await LoginAsync(client, "sub-review-flag-tie-break");
+        Authorize(client, token);
+
+        var classRow = NewClass(userId);
+        var subjectRow = NewSubject(classRow.Id);
+        var lessonRow = NewLesson(subjectRow.Id);
+        var studentRow = NewStudent(classRow.Id);
+        await client.PostAsJsonAsync("/sync/push", new SyncBatch(
+            [classRow], [subjectRow], [lessonRow], [studentRow], [], [], [], []));
+
+        var lowClientId = new Guid("00000000-0000-0000-0000-000000000001");
+        var highClientId = new Guid("ffffffff-ffff-ffff-ffff-ffffffffffff");
+
+        var incumbent = NewReviewFlag(
+            studentRow.Id, lessonRow.Id, flagged: false, hlc: "hlc-1", clientId: lowClientId);
+        var createResponse = await client.PostAsJsonAsync("/sync/push", new SyncBatch(
+            [], [], [], [], [], [incumbent], [], []));
+        var createBody = await createResponse.Content.ReadFromJsonAsync<SyncBatch>();
+        var canonicalId = Assert.Single(createBody!.ReviewFlags).Id;
+
+        // Same hlc as the incumbent -- the higher client_id must win the tie.
+        var challenger = NewReviewFlag(
+            studentRow.Id, lessonRow.Id, flagged: true, hlc: "hlc-1", clientId: highClientId);
+        var response = await client.PostAsJsonAsync("/sync/push", new SyncBatch(
+            [], [], [], [], [], [challenger], [], []));
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        var body = await response.Content.ReadFromJsonAsync<SyncBatch>();
+        var merged = Assert.Single(body!.ReviewFlags);
+
+        Assert.Equal(canonicalId, merged.Id);
+        Assert.True(merged.Flagged);
+        Assert.Equal(highClientId, merged.ClientId);
     }
 
     [Fact]
@@ -244,11 +381,11 @@ public class SyncEndpointsTests(DatabaseFixture fixture) : IClassFixture<Databas
 
         Authorize(client, tokenA);
         var classA = NewClass(userIdA, name: "A's class");
-        await client.PostAsJsonAsync("/sync/push", new SyncBatch([classA], [], [], [], [], [], []));
+        await client.PostAsJsonAsync("/sync/push", new SyncBatch([classA], [], [], [], [], [], [], []));
 
         Authorize(client, tokenB);
         var classB = NewClass(userIdB, name: "B's class");
-        await client.PostAsJsonAsync("/sync/push", new SyncBatch([classB], [], [], [], [], [], []));
+        await client.PostAsJsonAsync("/sync/push", new SyncBatch([classB], [], [], [], [], [], [], []));
 
         var pullResponse = await client.GetAsync("/sync/pull");
         var pullBody = await pullResponse.Content.ReadFromJsonAsync<SyncPullResponse>();
@@ -265,14 +402,14 @@ public class SyncEndpointsTests(DatabaseFixture fixture) : IClassFixture<Databas
         Authorize(client, token);
 
         var firstClass = NewClass(userId, name: "First");
-        await client.PostAsJsonAsync("/sync/push", new SyncBatch([firstClass], [], [], [], [], [], []));
+        await client.PostAsJsonAsync("/sync/push", new SyncBatch([firstClass], [], [], [], [], [], [], []));
 
         var firstPull = await client.GetAsync("/sync/pull");
         var firstPullBody = await firstPull.Content.ReadFromJsonAsync<SyncPullResponse>();
         Assert.Contains(firstPullBody!.Classes, c => c.Id == firstClass.Id);
 
         var secondClass = NewClass(userId, name: "Second");
-        await client.PostAsJsonAsync("/sync/push", new SyncBatch([secondClass], [], [], [], [], [], []));
+        await client.PostAsJsonAsync("/sync/push", new SyncBatch([secondClass], [], [], [], [], [], [], []));
 
         var watermark = Uri.EscapeDataString(firstPullBody.Watermark.ToString("o"));
         var secondPull = await client.GetAsync($"/sync/pull?since={watermark}");
@@ -294,8 +431,9 @@ public class SyncEndpointsTests(DatabaseFixture fixture) : IClassFixture<Databas
         var studentRow = NewStudent(classRow.Id);
         var lessonRow = NewLesson(subjectRow.Id);
         var progressRow = NewProgress(studentRow.Id, subjectRow.Id);
+        var reviewFlagRow = NewReviewFlag(studentRow.Id, lessonRow.Id);
         await client.PostAsJsonAsync("/sync/push", new SyncBatch(
-            [classRow], [subjectRow], [lessonRow], [studentRow], [progressRow], [], []));
+            [classRow], [subjectRow], [lessonRow], [studentRow], [progressRow], [reviewFlagRow], [], []));
 
         var response = await client.GetAsync("/sync/pull");
         var body = await response.Content.ReadFromJsonAsync<SyncPullResponse>();
@@ -305,6 +443,7 @@ public class SyncEndpointsTests(DatabaseFixture fixture) : IClassFixture<Databas
         Assert.Contains(body.Students, s => s.Id == studentRow.Id);
         Assert.Contains(body.Lessons, l => l.Id == lessonRow.Id);
         Assert.Contains(body.Progress, p => p.Id == progressRow.Id);
+        Assert.Contains(body.ReviewFlags, r => r.Id == reviewFlagRow.Id);
     }
 
     private static async Task<(string Token, Guid UserId)> LoginAsync(HttpClient client, string subjectSeed)
@@ -337,11 +476,17 @@ public class SyncEndpointsTests(DatabaseFixture fixture) : IClassFixture<Databas
         Guid? id = null,
         int stepUnit = 1,
         int stepLessonInUnit = 1,
-        string stepHlc = "hlc-1",
-        bool review = false,
-        string reviewHlc = "hlc-1") =>
-        new(id ?? Guid.NewGuid(), studentId, subjectId, stepUnit, stepLessonInUnit, stepHlc, Guid.NewGuid(),
-            review, reviewHlc, Guid.NewGuid(), DateTimeOffset.UtcNow);
+        string stepHlc = "hlc-1") =>
+        new(id ?? Guid.NewGuid(), studentId, subjectId, stepUnit, stepLessonInUnit, stepHlc, Guid.NewGuid(), DateTimeOffset.UtcNow);
+
+    private static ReviewFlagSyncRow NewReviewFlag(
+        Guid studentId,
+        Guid lessonId,
+        Guid? id = null,
+        bool flagged = true,
+        string hlc = "hlc-1",
+        Guid? clientId = null) =>
+        new(id ?? Guid.NewGuid(), studentId, lessonId, flagged, hlc, clientId ?? Guid.NewGuid(), DateTimeOffset.UtcNow);
 
     private static SubjectTemplateSyncRow NewSubjectTemplate(Guid userId, Guid? id = null, string name = "Math Template") =>
         new(id ?? Guid.NewGuid(), userId, name, DateTimeOffset.UtcNow, DateTimeOffset.UtcNow);

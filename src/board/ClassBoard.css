@@ -345,10 +345,6 @@
   border-bottom: none;
 }
 
-.progress-cell--review {
-  background: var(--review-bg);
-}
-
 .progress-cell__student {
   font-size: 16px;
   color: var(--text-h);

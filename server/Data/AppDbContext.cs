@@ -15,6 +15,7 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
     public DbSet<Progress> Progress => Set<Progress>();
     public DbSet<SubjectTemplate> SubjectTemplates => Set<SubjectTemplate>();
     public DbSet<SubjectTemplateLesson> SubjectTemplateLessons => Set<SubjectTemplateLesson>();
+    public DbSet<ReviewFlag> ReviewFlags => Set<ReviewFlag>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -93,6 +94,16 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
                 .WithMany()
                 .HasForeignKey(e => e.SubjectTemplateId)
                 .OnDelete(DeleteBehavior.Cascade);
+        });
+
+        modelBuilder.Entity<ReviewFlag>(entity =>
+        {
+            entity.ToTable("review_flag");
+            entity.HasKey(e => e.Id);
+            entity.HasIndex(e => new { e.StudentId, e.LessonId }).IsUnique();
+            entity.HasIndex(e => e.UpdatedAt);
+            ConfigureForeignKey<ReviewFlag, Student>(entity, e => e.StudentId);
+            ConfigureForeignKey<ReviewFlag, Lesson>(entity, e => e.LessonId);
         });
     }
 

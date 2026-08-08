@@ -1,8 +1,9 @@
 import type { ProgressRow } from '../db'
 
 /**
- * The HLC-based LWW-Register CRDT merge decided in #2/#6: step and review
- * are independent per-field registers, each won by whichever side's HLC
+ * The HLC-based LWW-Register CRDT merge decided in #2/#6, now covering just
+ * step since #152/ADR-0011 moved review off Progress onto its own
+ * ReviewFlag entity (see mergeReviewFlags.ts): won by whichever side's HLC
  * sorts later (hlc.ts's padded encoding makes this a plain string compare),
  * tie-broken by client_id so two devices racing on the same field always
  * agree on the winner. Mirrored by the server's HlcWins in
@@ -20,12 +21,6 @@ export function mergeProgressRows(existing: ProgressRow, incoming: ProgressRow):
     existing.step_hlc,
     existing.step_client_id,
   )
-  const reviewFromIncoming = hlcWins(
-    incoming.review_hlc,
-    incoming.review_client_id,
-    existing.review_hlc,
-    existing.review_client_id,
-  )
 
   return {
     id: incoming.id,
@@ -35,9 +30,6 @@ export function mergeProgressRows(existing: ProgressRow, incoming: ProgressRow):
     step_lesson_in_unit: stepFromIncoming ? incoming.step_lesson_in_unit : existing.step_lesson_in_unit,
     step_hlc: stepFromIncoming ? incoming.step_hlc : existing.step_hlc,
     step_client_id: stepFromIncoming ? incoming.step_client_id : existing.step_client_id,
-    review: reviewFromIncoming ? incoming.review : existing.review,
-    review_hlc: reviewFromIncoming ? incoming.review_hlc : existing.review_hlc,
-    review_client_id: reviewFromIncoming ? incoming.review_client_id : existing.review_client_id,
     updated_at: incoming.updated_at > existing.updated_at ? incoming.updated_at : existing.updated_at,
   }
 }

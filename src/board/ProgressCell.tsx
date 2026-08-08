@@ -16,6 +16,13 @@ function FlagIcon() {
 interface ProgressCellProps {
   studentName: string
   progress: ProgressRow | undefined
+  /**
+   * Whether the ReviewFlag for the student's *current* lesson in this
+   * subject is set -- computed by the caller (ClassBoard), since it needs
+   * the ReviewFlag rows for the whole board, not just this cell (#152/
+   * ADR-0011). No longer derived from progress.review, which was retired.
+   */
+  isFlagged: boolean
   hasNextLesson: boolean
   hasAnyLessons: boolean
   subjectLessons: LessonRow[]
@@ -33,10 +40,16 @@ interface ProgressCellProps {
  * caller -- ProgressCell doesn't know which lesson was picked, since the
  * picker itself is a single modal instance owned by the board, not one per
  * cell. onUnAdvance, by contrast, needs no picker and is invoked directly.
+ *
+ * Per #152/ADR-0011, the review flag no longer drives any background
+ * highlight on the cell itself -- only the toggle icon's own fill reflects
+ * `isFlagged`. Not shown as a highlight on Class Board subject panels; see
+ * CONTEXT.md's "Review flag" glossary entry.
  */
 export function ProgressCell({
   studentName,
   progress,
+  isFlagged,
   hasNextLesson,
   hasAnyLessons,
   subjectLessons,
@@ -46,14 +59,13 @@ export function ProgressCell({
   onUnAdvance,
 }: ProgressCellProps) {
   const advanceLabel = !hasAnyLessons ? 'No lessons yet' : hasNextLesson ? 'Next lesson' : 'Complete'
-  const isFlagged = Boolean(progress?.review)
   const [menuPosition, setMenuPosition] = useState<{ x: number; y: number } | null>(null)
   const position = positionOf(progress)
   const isNotStarted = position.unit === 0 && position.lesson_in_unit === 0
 
   return (
     <div
-      className={`progress-cell${isFlagged ? ' progress-cell--review' : ''}`}
+      className="progress-cell"
       onContextMenu={(event) => {
         event.preventDefault()
         setMenuPosition({ x: event.clientX, y: event.clientY })

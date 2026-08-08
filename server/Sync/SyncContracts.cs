@@ -73,9 +73,18 @@ public record ProgressSyncRow(
     [property: JsonPropertyName("step_lesson_in_unit")] int StepLessonInUnit,
     [property: JsonPropertyName("step_hlc")] string StepHlc,
     [property: JsonPropertyName("step_client_id")] Guid StepClientId,
-    [property: JsonPropertyName("review")] bool Review,
-    [property: JsonPropertyName("review_hlc")] string ReviewHlc,
-    [property: JsonPropertyName("review_client_id")] Guid ReviewClientId,
+    [property: JsonPropertyName("updated_at")] DateTimeOffset UpdatedAt);
+
+// #152/ADR-0011: replaces Progress.Review/ReviewHlc/ReviewClientId with a
+// standalone per-(student, lesson) flag, same single-field HLC+client-id
+// LWW-register shape as Progress.Step*.
+public record ReviewFlagSyncRow(
+    [property: JsonPropertyName("id")] Guid Id,
+    [property: JsonPropertyName("student_id")] Guid StudentId,
+    [property: JsonPropertyName("lesson_id")] Guid LessonId,
+    [property: JsonPropertyName("flagged")] bool Flagged,
+    [property: JsonPropertyName("hlc")] string Hlc,
+    [property: JsonPropertyName("client_id")] Guid ClientId,
     [property: JsonPropertyName("updated_at")] DateTimeOffset UpdatedAt);
 
 public record SyncBatch(
@@ -84,6 +93,7 @@ public record SyncBatch(
     [property: JsonPropertyName("lessons")] List<LessonSyncRow> Lessons,
     [property: JsonPropertyName("students")] List<StudentSyncRow> Students,
     [property: JsonPropertyName("progress")] List<ProgressSyncRow> Progress,
+    [property: JsonPropertyName("review_flags")] List<ReviewFlagSyncRow> ReviewFlags,
     [property: JsonPropertyName("subject_templates")] List<SubjectTemplateSyncRow> SubjectTemplates,
     [property: JsonPropertyName("subject_template_lessons")] List<SubjectTemplateLessonSyncRow> SubjectTemplateLessons);
 
@@ -93,6 +103,7 @@ public record SyncPullResponse(
     [property: JsonPropertyName("lessons")] List<LessonSyncRow> Lessons,
     [property: JsonPropertyName("students")] List<StudentSyncRow> Students,
     [property: JsonPropertyName("progress")] List<ProgressSyncRow> Progress,
+    [property: JsonPropertyName("review_flags")] List<ReviewFlagSyncRow> ReviewFlags,
     [property: JsonPropertyName("subject_templates")] List<SubjectTemplateSyncRow> SubjectTemplates,
     [property: JsonPropertyName("subject_template_lessons")] List<SubjectTemplateLessonSyncRow> SubjectTemplateLessons,
     [property: JsonPropertyName("watermark")] DateTimeOffset Watermark);

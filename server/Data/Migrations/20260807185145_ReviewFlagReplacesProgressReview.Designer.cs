@@ -2,6 +2,7 @@
 using System;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 using server.Data;
@@ -11,9 +12,11 @@ using server.Data;
 namespace server.Data.Migrations
 {
     [DbContext(typeof(AppDbContext))]
-    partial class AppDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260807185145_ReviewFlagReplacesProgressReview")]
+    partial class ReviewFlagReplacesProgressReview
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -304,91 +307,6 @@ namespace server.Data.Migrations
                     b.ToTable("subject", (string)null);
                 });
 
-            modelBuilder.Entity("server.Data.Entities.SubjectTemplate", b =>
-                {
-                    b.Property<Guid>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("uuid")
-                        .HasColumnName("id");
-
-                    b.Property<DateTimeOffset>("CreatedAt")
-                        .HasColumnType("timestamp with time zone")
-                        .HasColumnName("created_at");
-
-                    b.Property<string>("Name")
-                        .IsRequired()
-                        .HasColumnType("text")
-                        .HasColumnName("name");
-
-                    b.Property<DateTimeOffset>("UpdatedAt")
-                        .HasColumnType("timestamp with time zone")
-                        .HasColumnName("updated_at");
-
-                    b.Property<Guid>("UserId")
-                        .HasColumnType("uuid")
-                        .HasColumnName("user_id");
-
-                    b.HasKey("Id")
-                        .HasName("pk_subject_template");
-
-                    b.HasIndex("UpdatedAt")
-                        .HasDatabaseName("ix_subject_template_updated_at");
-
-                    b.HasIndex("UserId")
-                        .HasDatabaseName("ix_subject_template_user_id");
-
-                    b.ToTable("subject_template", (string)null);
-                });
-
-            modelBuilder.Entity("server.Data.Entities.SubjectTemplateLesson", b =>
-                {
-                    b.Property<Guid>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("uuid")
-                        .HasColumnName("id");
-
-                    b.Property<DateTimeOffset>("CreatedAt")
-                        .HasColumnType("timestamp with time zone")
-                        .HasColumnName("created_at");
-
-                    b.Property<string>("Description")
-                        .IsRequired()
-                        .HasColumnType("text")
-                        .HasColumnName("description");
-
-                    b.Property<int>("LessonInUnit")
-                        .HasColumnType("integer")
-                        .HasColumnName("lesson_in_unit");
-
-                    b.Property<Guid>("SubjectTemplateId")
-                        .HasColumnType("uuid")
-                        .HasColumnName("subject_template_id");
-
-                    b.Property<string>("Title")
-                        .IsRequired()
-                        .HasColumnType("text")
-                        .HasColumnName("title");
-
-                    b.Property<int>("Unit")
-                        .HasColumnType("integer")
-                        .HasColumnName("unit");
-
-                    b.Property<DateTimeOffset>("UpdatedAt")
-                        .HasColumnType("timestamp with time zone")
-                        .HasColumnName("updated_at");
-
-                    b.HasKey("Id")
-                        .HasName("pk_subject_template_lesson");
-
-                    b.HasIndex("SubjectTemplateId")
-                        .HasDatabaseName("ix_subject_template_lesson_subject_template_id");
-
-                    b.HasIndex("UpdatedAt")
-                        .HasDatabaseName("ix_subject_template_lesson_updated_at");
-
-                    b.ToTable("subject_template_lesson", (string)null);
-                });
-
             modelBuilder.Entity("server.Data.Entities.User", b =>
                 {
                     b.Property<Guid>("Id")
@@ -495,26 +413,6 @@ namespace server.Data.Migrations
                         .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired()
                         .HasConstraintName("fk_subject_class_class_id");
-                });
-
-            modelBuilder.Entity("server.Data.Entities.SubjectTemplate", b =>
-                {
-                    b.HasOne("server.Data.Entities.User", null)
-                        .WithMany()
-                        .HasForeignKey("UserId")
-                        .OnDelete(DeleteBehavior.Restrict)
-                        .IsRequired()
-                        .HasConstraintName("fk_subject_template_users_user_id");
-                });
-
-            modelBuilder.Entity("server.Data.Entities.SubjectTemplateLesson", b =>
-                {
-                    b.HasOne("server.Data.Entities.SubjectTemplate", null)
-                        .WithMany()
-                        .HasForeignKey("SubjectTemplateId")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired()
-                        .HasConstraintName("fk_subject_template_lesson_subject_template_subject_template_id");
                 });
 #pragma warning restore 612, 618
         }

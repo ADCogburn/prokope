@@ -1,5 +1,5 @@
 import { formatLessonLabel, positionOf } from '../db'
-import type { LessonRow, ProgressRow, StudentRow, SubjectRow } from '../db/schema'
+import type { LessonRow, ProgressRow, ReviewFlagRow, StudentRow, SubjectRow } from '../db/schema'
 
 export interface StudentReportSubjectRow {
   subject: SubjectRow
@@ -14,12 +14,22 @@ export interface StudentReportData {
   subjectRows: StudentReportSubjectRow[]
 }
 
-/** Per-student printable report data, per #11: current lesson (by title) and review-flag status for every subject, as of generation time. `subjects` order is preserved (already the teacher's configured position order). */
+/**
+ * Per-student printable report data, per #11: current lesson (by title) and
+ * review-flag status for every subject, as of generation time. `subjects`
+ * order is preserved (already the teacher's configured position order).
+ *
+ * `reviewFlagged` is interim, current-lesson-only behavior per #152:
+ * ReviewFlag is keyed by (student, lesson), so this only surfaces whether
+ * the *current* lesson in each subject carries a flag -- the full
+ * flagged-lesson list is out of scope here.
+ */
 export function buildStudentReport(
   student: StudentRow,
   subjects: SubjectRow[],
   lessons: LessonRow[],
   progress: ProgressRow[],
+  reviewFlags: ReviewFlagRow[],
 ): StudentReportData {
   const subjectRows = subjects.map((subject) => {
     const subjectLessons = lessons.filter((lesson) => lesson.subject_id === subject.id)
@@ -28,12 +38,17 @@ export function buildStudentReport(
     const currentLesson = subjectLessons.find(
       (lesson) => lesson.unit === step.unit && lesson.lesson_in_unit === step.lesson_in_unit,
     )
+    const reviewFlagged = currentLesson
+      ? reviewFlags.some(
+          (row) => row.student_id === student.id && row.lesson_id === currentLesson.id && row.flagged,
+        )
+      : false
 
     return {
       subject,
       lessonLabel: currentLesson ? formatLessonLabel(currentLesson) : undefined,
       hasLessons: subjectLessons.length > 0,
-      reviewFlagged: Boolean(progressRow?.review),
+      reviewFlagged,
     }
   })
 

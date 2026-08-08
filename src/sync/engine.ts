@@ -1,13 +1,16 @@
 import { AUTH_TOKEN_STORAGE_KEY } from '../auth/token'
-import type { ProgressRow } from '../db'
+import type { ProgressRow, ReviewFlagRow } from '../db'
 import {
   clearAllTables,
   deleteRawProgress,
+  deleteRawReviewFlag,
   getRawProgressByPair,
+  getRawReviewFlagByPair,
   listRowsUpdatedSince,
   putRawClass,
   putRawLesson,
   putRawProgress,
+  putRawReviewFlag,
   putRawStudent,
   putRawSubject,
   putRawSubjectTemplate,
@@ -15,6 +18,7 @@ import {
 } from '../db/sync'
 import { pullChanges, pushChanges, type SyncBatch } from './api'
 import { mergeProgressRows } from './mergeProgress'
+import { mergeReviewFlagRows } from './mergeReviewFlags'
 import { clearWatermarks, getPullWatermark, getPushWatermark, setPullWatermark, setPushWatermark } from './watermarks'
 
 /**
@@ -46,6 +50,22 @@ async function applyRemoteProgress(incoming: ProgressRow): Promise<void> {
   await putRawProgress(merged)
 }
 
+// #152/ADR-0011: same reconciliation shape as applyRemoteProgress, just
+// against review_flag's own (student_id, lesson_id) pair and merge function.
+async function applyRemoteReviewFlag(incoming: ReviewFlagRow): Promise<void> {
+  const existing = await getRawReviewFlagByPair(incoming.student_id, incoming.lesson_id)
+  if (!existing) {
+    await putRawReviewFlag(incoming)
+    return
+  }
+
+  const merged = mergeReviewFlagRows(existing, incoming)
+  if (existing.id !== merged.id) {
+    await deleteRawReviewFlag(existing.id)
+  }
+  await putRawReviewFlag(merged)
+}
+
 // class/subject/lesson/student have no per-field HLC and no conflict
 // resolution at all (per #6/#7) -- same as the server's push handler, this
 // is a plain overwrite-by-id, last-received-wins. subject_template/
@@ -62,6 +82,7 @@ async function applyRemoteBatch(batch: SyncBatch): Promise<void> {
     ...batch.subject_templates.map(putRawSubjectTemplate),
     ...batch.subject_template_lessons.map(putRawSubjectTemplateLesson),
     ...batch.progress.map(applyRemoteProgress),
+    ...batch.review_flags.map(applyRemoteReviewFlag),
   ])
 }
 
@@ -72,6 +93,7 @@ function isEmptyBatch(batch: SyncBatch): boolean {
     batch.lessons.length === 0 &&
     batch.students.length === 0 &&
     batch.progress.length === 0 &&
+    batch.review_flags.length === 0 &&
     batch.subject_templates.length === 0 &&
     batch.subject_template_lessons.length === 0
   )
@@ -88,6 +110,7 @@ function batchWatermark(batch: SyncBatch, floor: string): string {
     batch.lessons,
     batch.students,
     batch.progress,
+    batch.review_flags,
     batch.subject_templates,
     batch.subject_template_lessons,
   ].reduce((max, rows) => maxUpdatedAt(rows, max), floor)
