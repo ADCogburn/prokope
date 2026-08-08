@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from 'vitest'
+﻿import { describe, expect, it, vi } from 'vitest'
 import { fireEvent, render, screen } from '@testing-library/react'
 import { ProgressCell } from './ProgressCell'
 import type { LessonRow, ProgressRow } from '../db/schema'
@@ -45,6 +45,7 @@ describe('ProgressCell', () => {
         onAdvance={vi.fn()}
         onToggleReview={vi.fn()}
         onJumpToLesson={vi.fn()}
+        onReviewOtherLessons={vi.fn()}
         onUnAdvance={vi.fn()}
       />,
     )
@@ -64,6 +65,7 @@ describe('ProgressCell', () => {
         onAdvance={vi.fn()}
         onToggleReview={vi.fn()}
         onJumpToLesson={vi.fn()}
+        onReviewOtherLessons={vi.fn()}
         onUnAdvance={vi.fn()}
       />,
     )
@@ -83,6 +85,7 @@ describe('ProgressCell', () => {
         onAdvance={vi.fn()}
         onToggleReview={vi.fn()}
         onJumpToLesson={vi.fn()}
+        onReviewOtherLessons={vi.fn()}
         onUnAdvance={vi.fn()}
       />,
     )
@@ -103,6 +106,7 @@ describe('ProgressCell', () => {
         onAdvance={onAdvance}
         onToggleReview={vi.fn()}
         onJumpToLesson={vi.fn()}
+        onReviewOtherLessons={vi.fn()}
         onUnAdvance={vi.fn()}
       />,
     )
@@ -124,6 +128,7 @@ describe('ProgressCell', () => {
         onAdvance={vi.fn()}
         onToggleReview={onToggleReview}
         onJumpToLesson={vi.fn()}
+        onReviewOtherLessons={vi.fn()}
         onUnAdvance={vi.fn()}
       />,
     )
@@ -145,6 +150,7 @@ describe('ProgressCell', () => {
         onAdvance={vi.fn()}
         onToggleReview={vi.fn()}
         onJumpToLesson={vi.fn()}
+        onReviewOtherLessons={vi.fn()}
         onUnAdvance={vi.fn()}
       />,
     )
@@ -165,6 +171,7 @@ describe('ProgressCell', () => {
         onAdvance={vi.fn()}
         onToggleReview={vi.fn()}
         onJumpToLesson={vi.fn()}
+        onReviewOtherLessons={vi.fn()}
         onUnAdvance={vi.fn()}
       />,
     )
@@ -185,6 +192,7 @@ describe('ProgressCell', () => {
         onAdvance={vi.fn()}
         onToggleReview={vi.fn()}
         onJumpToLesson={vi.fn()}
+        onReviewOtherLessons={vi.fn()}
         onUnAdvance={vi.fn()}
       />,
     )
@@ -205,6 +213,7 @@ describe('ProgressCell', () => {
         onAdvance={vi.fn()}
         onToggleReview={vi.fn()}
         onJumpToLesson={vi.fn()}
+        onReviewOtherLessons={vi.fn()}
         onUnAdvance={vi.fn()}
       />,
     )
@@ -228,6 +237,7 @@ describe('ProgressCell', () => {
         onAdvance={vi.fn()}
         onToggleReview={vi.fn()}
         onJumpToLesson={vi.fn()}
+        onReviewOtherLessons={vi.fn()}
         onUnAdvance={vi.fn()}
       />,
     )
@@ -250,6 +260,7 @@ describe('ProgressCell', () => {
         onAdvance={vi.fn()}
         onToggleReview={vi.fn()}
         onJumpToLesson={onJumpToLesson}
+        onReviewOtherLessons={vi.fn()}
         onUnAdvance={vi.fn()}
       />,
     )
@@ -272,6 +283,7 @@ describe('ProgressCell', () => {
         onAdvance={vi.fn()}
         onToggleReview={vi.fn()}
         onJumpToLesson={vi.fn()}
+        onReviewOtherLessons={vi.fn()}
         onUnAdvance={vi.fn()}
       />,
     )
@@ -293,6 +305,7 @@ describe('ProgressCell', () => {
         onAdvance={vi.fn()}
         onToggleReview={vi.fn()}
         onJumpToLesson={vi.fn()}
+        onReviewOtherLessons={vi.fn()}
         onUnAdvance={vi.fn()}
       />,
     )
@@ -314,6 +327,7 @@ describe('ProgressCell', () => {
         onAdvance={vi.fn()}
         onToggleReview={vi.fn()}
         onJumpToLesson={vi.fn()}
+        onReviewOtherLessons={vi.fn()}
         onUnAdvance={vi.fn()}
       />,
     )
@@ -336,6 +350,7 @@ describe('ProgressCell', () => {
         onAdvance={vi.fn()}
         onToggleReview={vi.fn()}
         onJumpToLesson={vi.fn()}
+        onReviewOtherLessons={vi.fn()}
         onUnAdvance={onUnAdvance}
       />,
     )
@@ -344,5 +359,81 @@ describe('ProgressCell', () => {
     fireEvent.click(screen.getByRole('menuitem', { name: 'Un-advance' }))
 
     expect(onUnAdvance).toHaveBeenCalledTimes(1)
+  })
+
+  it('right-click opens a context menu with a "Review other lessons" item, distinct from "Jump to lesson..." (#153)', () => {
+    render(
+      <ProgressCell
+        studentName="Emily"
+        progress={undefined}
+        isFlagged={false}
+        hasNextLesson
+        hasAnyLessons
+        subjectLessons={[lessonRow()]}
+        onAdvance={vi.fn()}
+        onToggleReview={vi.fn()}
+        onJumpToLesson={vi.fn()}
+        onReviewOtherLessons={vi.fn()}
+        onUnAdvance={vi.fn()}
+      />,
+    )
+
+    expect(screen.queryByRole('menuitem', { name: 'Review other lessons' })).not.toBeInTheDocument()
+
+    fireEvent.contextMenu(screen.getByText('Emily'))
+
+    const jumpItem = screen.getByRole('menuitem', { name: 'Jump to lesson...' })
+    const reviewItem = screen.getByRole('menuitem', { name: 'Review other lessons' })
+    expect(jumpItem).toBeInTheDocument()
+    expect(reviewItem).toBeInTheDocument()
+    expect(reviewItem).not.toBe(jumpItem)
+  })
+
+  it('disables "Review other lessons" when the subject has no lessons', () => {
+    render(
+      <ProgressCell
+        studentName="Emily"
+        progress={undefined}
+        isFlagged={false}
+        hasNextLesson={false}
+        hasAnyLessons={false}
+        subjectLessons={[]}
+        onAdvance={vi.fn()}
+        onToggleReview={vi.fn()}
+        onJumpToLesson={vi.fn()}
+        onReviewOtherLessons={vi.fn()}
+        onUnAdvance={vi.fn()}
+      />,
+    )
+
+    fireEvent.contextMenu(screen.getByText('Emily'))
+
+    expect(screen.getByRole('menuitem', { name: 'Review other lessons' })).toBeDisabled()
+  })
+
+  it('calls onReviewOtherLessons when "Review other lessons" is selected, without calling onJumpToLesson', () => {
+    const onReviewOtherLessons = vi.fn()
+    const onJumpToLesson = vi.fn()
+    render(
+      <ProgressCell
+        studentName="Emily"
+        progress={undefined}
+        isFlagged={false}
+        hasNextLesson
+        hasAnyLessons
+        subjectLessons={[lessonRow()]}
+        onAdvance={vi.fn()}
+        onToggleReview={vi.fn()}
+        onJumpToLesson={onJumpToLesson}
+        onReviewOtherLessons={onReviewOtherLessons}
+        onUnAdvance={vi.fn()}
+      />,
+    )
+
+    fireEvent.contextMenu(screen.getByText('Emily'))
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Review other lessons' }))
+
+    expect(onReviewOtherLessons).toHaveBeenCalledTimes(1)
+    expect(onJumpToLesson).not.toHaveBeenCalled()
   })
 })
