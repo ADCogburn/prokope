@@ -62,6 +62,131 @@ namespace server.Data.Migrations
                     b.ToTable("class", (string)null);
                 });
 
+            modelBuilder.Entity("server.Data.Entities.ClassTemplate", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasColumnType("text")
+                        .HasColumnName("name");
+
+                    b.Property<DateTimeOffset>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("updated_at");
+
+                    b.Property<Guid>("UserId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("user_id");
+
+                    b.HasKey("Id")
+                        .HasName("pk_class_template");
+
+                    b.HasIndex("UpdatedAt")
+                        .HasDatabaseName("ix_class_template_updated_at");
+
+                    b.HasIndex("UserId")
+                        .HasDatabaseName("ix_class_template_user_id");
+
+                    b.ToTable("class_template", (string)null);
+                });
+
+            modelBuilder.Entity("server.Data.Entities.ClassTemplateLesson", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<Guid>("ClassTemplateSubjectId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("class_template_subject_id");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at");
+
+                    b.Property<string>("Description")
+                        .IsRequired()
+                        .HasColumnType("text")
+                        .HasColumnName("description");
+
+                    b.Property<int>("LessonInUnit")
+                        .HasColumnType("integer")
+                        .HasColumnName("lesson_in_unit");
+
+                    b.Property<string>("Title")
+                        .IsRequired()
+                        .HasColumnType("text")
+                        .HasColumnName("title");
+
+                    b.Property<int>("Unit")
+                        .HasColumnType("integer")
+                        .HasColumnName("unit");
+
+                    b.Property<DateTimeOffset>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("updated_at");
+
+                    b.HasKey("Id")
+                        .HasName("pk_class_template_lesson");
+
+                    b.HasIndex("ClassTemplateSubjectId")
+                        .HasDatabaseName("ix_class_template_lesson_class_template_subject_id");
+
+                    b.HasIndex("UpdatedAt")
+                        .HasDatabaseName("ix_class_template_lesson_updated_at");
+
+                    b.ToTable("class_template_lesson", (string)null);
+                });
+
+            modelBuilder.Entity("server.Data.Entities.ClassTemplateSubject", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<Guid>("ClassTemplateId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("class_template_id");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasColumnType("text")
+                        .HasColumnName("name");
+
+                    b.Property<int>("Position")
+                        .HasColumnType("integer")
+                        .HasColumnName("position");
+
+                    b.Property<DateTimeOffset>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("updated_at");
+
+                    b.HasKey("Id")
+                        .HasName("pk_class_template_subject");
+
+                    b.HasIndex("ClassTemplateId")
+                        .HasDatabaseName("ix_class_template_subject_class_template_id");
+
+                    b.HasIndex("UpdatedAt")
+                        .HasDatabaseName("ix_class_template_subject_updated_at");
+
+                    b.ToTable("class_template_subject", (string)null);
+                });
+
             modelBuilder.Entity("server.Data.Entities.Lesson", b =>
                 {
                     b.Property<Guid>("Id")
@@ -123,19 +248,6 @@ namespace server.Data.Migrations
                         .HasColumnType("uuid")
                         .HasColumnName("id");
 
-                    b.Property<bool>("Review")
-                        .HasColumnType("boolean")
-                        .HasColumnName("review");
-
-                    b.Property<Guid>("ReviewClientId")
-                        .HasColumnType("uuid")
-                        .HasColumnName("review_client_id");
-
-                    b.Property<string>("ReviewHlc")
-                        .IsRequired()
-                        .HasColumnType("text")
-                        .HasColumnName("review_hlc");
-
                     b.Property<Guid>("StepClientId")
                         .HasColumnType("uuid")
                         .HasColumnName("step_client_id");
@@ -179,6 +291,54 @@ namespace server.Data.Migrations
                         .HasDatabaseName("ix_progress_student_id_subject_id");
 
                     b.ToTable("progress", (string)null);
+                });
+
+            modelBuilder.Entity("server.Data.Entities.ReviewFlag", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<Guid>("ClientId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("client_id");
+
+                    b.Property<bool>("Flagged")
+                        .HasColumnType("boolean")
+                        .HasColumnName("flagged");
+
+                    b.Property<string>("Hlc")
+                        .IsRequired()
+                        .HasColumnType("text")
+                        .HasColumnName("hlc");
+
+                    b.Property<Guid>("LessonId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("lesson_id");
+
+                    b.Property<Guid>("StudentId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("student_id");
+
+                    b.Property<DateTimeOffset>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("updated_at");
+
+                    b.HasKey("Id")
+                        .HasName("pk_review_flag");
+
+                    b.HasIndex("LessonId")
+                        .HasDatabaseName("ix_review_flag_lesson_id");
+
+                    b.HasIndex("UpdatedAt")
+                        .HasDatabaseName("ix_review_flag_updated_at");
+
+                    b.HasIndex("StudentId", "LessonId")
+                        .IsUnique()
+                        .HasDatabaseName("ix_review_flag_student_id_lesson_id");
+
+                    b.ToTable("review_flag", (string)null);
                 });
 
             modelBuilder.Entity("server.Data.Entities.Student", b =>
@@ -269,6 +429,91 @@ namespace server.Data.Migrations
                     b.ToTable("subject", (string)null);
                 });
 
+            modelBuilder.Entity("server.Data.Entities.SubjectTemplate", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasColumnType("text")
+                        .HasColumnName("name");
+
+                    b.Property<DateTimeOffset>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("updated_at");
+
+                    b.Property<Guid>("UserId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("user_id");
+
+                    b.HasKey("Id")
+                        .HasName("pk_subject_template");
+
+                    b.HasIndex("UpdatedAt")
+                        .HasDatabaseName("ix_subject_template_updated_at");
+
+                    b.HasIndex("UserId")
+                        .HasDatabaseName("ix_subject_template_user_id");
+
+                    b.ToTable("subject_template", (string)null);
+                });
+
+            modelBuilder.Entity("server.Data.Entities.SubjectTemplateLesson", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at");
+
+                    b.Property<string>("Description")
+                        .IsRequired()
+                        .HasColumnType("text")
+                        .HasColumnName("description");
+
+                    b.Property<int>("LessonInUnit")
+                        .HasColumnType("integer")
+                        .HasColumnName("lesson_in_unit");
+
+                    b.Property<Guid>("SubjectTemplateId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("subject_template_id");
+
+                    b.Property<string>("Title")
+                        .IsRequired()
+                        .HasColumnType("text")
+                        .HasColumnName("title");
+
+                    b.Property<int>("Unit")
+                        .HasColumnType("integer")
+                        .HasColumnName("unit");
+
+                    b.Property<DateTimeOffset>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("updated_at");
+
+                    b.HasKey("Id")
+                        .HasName("pk_subject_template_lesson");
+
+                    b.HasIndex("SubjectTemplateId")
+                        .HasDatabaseName("ix_subject_template_lesson_subject_template_id");
+
+                    b.HasIndex("UpdatedAt")
+                        .HasDatabaseName("ix_subject_template_lesson_updated_at");
+
+                    b.ToTable("subject_template_lesson", (string)null);
+                });
+
             modelBuilder.Entity("server.Data.Entities.User", b =>
                 {
                     b.Property<Guid>("Id")
@@ -313,6 +558,36 @@ namespace server.Data.Migrations
                         .HasConstraintName("fk_class_users_user_id");
                 });
 
+            modelBuilder.Entity("server.Data.Entities.ClassTemplate", b =>
+                {
+                    b.HasOne("server.Data.Entities.User", null)
+                        .WithMany()
+                        .HasForeignKey("UserId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired()
+                        .HasConstraintName("fk_class_template_users_user_id");
+                });
+
+            modelBuilder.Entity("server.Data.Entities.ClassTemplateLesson", b =>
+                {
+                    b.HasOne("server.Data.Entities.ClassTemplateSubject", null)
+                        .WithMany()
+                        .HasForeignKey("ClassTemplateSubjectId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired()
+                        .HasConstraintName("fk_class_template_lesson_class_template_subject_class_template");
+                });
+
+            modelBuilder.Entity("server.Data.Entities.ClassTemplateSubject", b =>
+                {
+                    b.HasOne("server.Data.Entities.ClassTemplate", null)
+                        .WithMany()
+                        .HasForeignKey("ClassTemplateId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired()
+                        .HasConstraintName("fk_class_template_subject_class_template_class_template_id");
+                });
+
             modelBuilder.Entity("server.Data.Entities.Lesson", b =>
                 {
                     b.HasOne("server.Data.Entities.Subject", null)
@@ -340,6 +615,23 @@ namespace server.Data.Migrations
                         .HasConstraintName("fk_progress_subject_subject_id");
                 });
 
+            modelBuilder.Entity("server.Data.Entities.ReviewFlag", b =>
+                {
+                    b.HasOne("server.Data.Entities.Lesson", null)
+                        .WithMany()
+                        .HasForeignKey("LessonId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired()
+                        .HasConstraintName("fk_review_flag_lesson_lesson_id");
+
+                    b.HasOne("server.Data.Entities.Student", null)
+                        .WithMany()
+                        .HasForeignKey("StudentId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired()
+                        .HasConstraintName("fk_review_flag_student_student_id");
+                });
+
             modelBuilder.Entity("server.Data.Entities.Student", b =>
                 {
                     b.HasOne("server.Data.Entities.Class", null)
@@ -358,6 +650,26 @@ namespace server.Data.Migrations
                         .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired()
                         .HasConstraintName("fk_subject_class_class_id");
+                });
+
+            modelBuilder.Entity("server.Data.Entities.SubjectTemplate", b =>
+                {
+                    b.HasOne("server.Data.Entities.User", null)
+                        .WithMany()
+                        .HasForeignKey("UserId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired()
+                        .HasConstraintName("fk_subject_template_users_user_id");
+                });
+
+            modelBuilder.Entity("server.Data.Entities.SubjectTemplateLesson", b =>
+                {
+                    b.HasOne("server.Data.Entities.SubjectTemplate", null)
+                        .WithMany()
+                        .HasForeignKey("SubjectTemplateId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired()
+                        .HasConstraintName("fk_subject_template_lesson_subject_template_subject_template_id");
                 });
 #pragma warning restore 612, 618
         }

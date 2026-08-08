@@ -12,9 +12,6 @@ function progressRow(overrides: Partial<ProgressRow> = {}): ProgressRow {
     step_lesson_in_unit: 2,
     step_hlc: 'hlc',
     step_client_id: 'client',
-    review: false,
-    review_hlc: 'hlc',
-    review_client_id: 'client',
     updated_at: new Date().toISOString(),
     ...overrides,
   }
@@ -41,6 +38,7 @@ describe('ProgressCell', () => {
       <ProgressCell
         studentName="Emily"
         progress={undefined}
+        isFlagged={false}
         hasNextLesson
         hasAnyLessons
         subjectLessons={[lessonRow()]}
@@ -59,6 +57,7 @@ describe('ProgressCell', () => {
       <ProgressCell
         studentName="Emily"
         progress={progressRow()}
+        isFlagged={false}
         hasNextLesson={false}
         hasAnyLessons
         subjectLessons={[lessonRow()]}
@@ -77,6 +76,7 @@ describe('ProgressCell', () => {
       <ProgressCell
         studentName="Emily"
         progress={undefined}
+        isFlagged={false}
         hasNextLesson={false}
         hasAnyLessons={false}
         subjectLessons={[]}
@@ -96,6 +96,7 @@ describe('ProgressCell', () => {
       <ProgressCell
         studentName="Emily"
         progress={undefined}
+        isFlagged={false}
         hasNextLesson
         hasAnyLessons
         subjectLessons={[lessonRow()]}
@@ -115,7 +116,8 @@ describe('ProgressCell', () => {
     render(
       <ProgressCell
         studentName="Emily"
-        progress={progressRow({ review: true })}
+        progress={progressRow()}
+        isFlagged={true}
         hasNextLesson
         hasAnyLessons
         subjectLessons={[lessonRow()]}
@@ -135,7 +137,8 @@ describe('ProgressCell', () => {
     render(
       <ProgressCell
         studentName="Emily"
-        progress={progressRow({ review: false })}
+        progress={progressRow()}
+        isFlagged={false}
         hasNextLesson
         hasAnyLessons
         subjectLessons={[lessonRow()]}
@@ -154,7 +157,8 @@ describe('ProgressCell', () => {
     render(
       <ProgressCell
         studentName="Emily"
-        progress={progressRow({ review: true })}
+        progress={progressRow()}
+        isFlagged={true}
         hasNextLesson
         hasAnyLessons
         subjectLessons={[lessonRow()]}
@@ -169,11 +173,32 @@ describe('ProgressCell', () => {
     expect(button.className).toContain('progress-cell__review-toggle--active')
   })
 
+  it('does not apply any background-highlight class to the cell regardless of flagged state (#152/ADR-0011)', () => {
+    const { container } = render(
+      <ProgressCell
+        studentName="Emily"
+        progress={progressRow()}
+        isFlagged={true}
+        hasNextLesson
+        hasAnyLessons
+        subjectLessons={[lessonRow()]}
+        onAdvance={vi.fn()}
+        onToggleReview={vi.fn()}
+        onJumpToLesson={vi.fn()}
+        onUnAdvance={vi.fn()}
+      />,
+    )
+
+    const cell = container.querySelector('.progress-cell')
+    expect(cell?.className).toBe('progress-cell')
+  })
+
   it('right-click opens a context menu with a "Jump to lesson..." item', () => {
     render(
       <ProgressCell
         studentName="Emily"
         progress={undefined}
+        isFlagged={false}
         hasNextLesson
         hasAnyLessons
         subjectLessons={[lessonRow()]}
@@ -196,6 +221,7 @@ describe('ProgressCell', () => {
       <ProgressCell
         studentName="Emily"
         progress={undefined}
+        isFlagged={false}
         hasNextLesson={false}
         hasAnyLessons={false}
         subjectLessons={[]}
@@ -217,6 +243,7 @@ describe('ProgressCell', () => {
       <ProgressCell
         studentName="Emily"
         progress={undefined}
+        isFlagged={false}
         hasNextLesson
         hasAnyLessons
         subjectLessons={[lessonRow()]}
@@ -238,6 +265,7 @@ describe('ProgressCell', () => {
       <ProgressCell
         studentName="Emily"
         progress={progressRow({ step_unit: 1, step_lesson_in_unit: 2 })}
+        isFlagged={false}
         hasNextLesson
         hasAnyLessons
         subjectLessons={[lessonRow()]}
@@ -258,6 +286,7 @@ describe('ProgressCell', () => {
       <ProgressCell
         studentName="Emily"
         progress={undefined}
+        isFlagged={false}
         hasNextLesson
         hasAnyLessons
         subjectLessons={[lessonRow()]}
@@ -278,6 +307,7 @@ describe('ProgressCell', () => {
       <ProgressCell
         studentName="Emily"
         progress={progressRow({ step_unit: 0, step_lesson_in_unit: 0 })}
+        isFlagged={false}
         hasNextLesson
         hasAnyLessons
         subjectLessons={[lessonRow()]}
@@ -299,6 +329,7 @@ describe('ProgressCell', () => {
       <ProgressCell
         studentName="Emily"
         progress={progressRow({ step_unit: 1, step_lesson_in_unit: 2 })}
+        isFlagged={false}
         hasNextLesson
         hasAnyLessons
         subjectLessons={[lessonRow()]}

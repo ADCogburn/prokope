@@ -1,18 +1,29 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, type FormEvent } from 'react'
-import type { ClassRow, ProgressRow, StudentRow, SubjectRow, LessonRow } from '../db/schema'
+import type {
+  ClassRow,
+  ProgressRow,
+  ReviewFlagRow,
+  StudentRow,
+  SubjectRow,
+  LessonRow,
+  SubjectTemplateRow,
+} from '../db/schema'
 import {
   advanceProgress,
+  applySubjectTemplate,
   bulkAdvanceProgress,
   createStudent,
   createSubject,
   deleteStudent,
   findNextLesson,
   jumpToLesson,
+  listSubjectTemplatesForUser,
   positionOf,
   renameClass,
   renameStudent,
+  saveClassTemplate,
   unAdvanceProgress,
-  upsertProgressReview,
+  upsertReviewFlag,
   upsertProgressStep,
   type BulkAdvanceEntry,
 } from '../db'
@@ -34,6 +45,10 @@ function progressKey(studentId: string, subjectId: string) {
   return `${studentId}:${subjectId}`
 }
 
+function reviewFlagKey(studentId: string, lessonId: string) {
+  return `${studentId}:${lessonId}`
+}
+
 function ChevronIcon({ direction }: { direction: 'left' | 'right' }) {
   return (
     <svg viewBox="0 0 24 24" aria-hidden="true">
@@ -45,12 +60,58 @@ function ChevronIcon({ direction }: { direction: 'left' | 'right' }) {
 interface AddSubjectCardProps {
   classId: string
   position: number
+  userId: string
 }
 
-/** Trailing/alone "+" card for adding a subject, per #58. Calls createSubject directly, consistent with ClassBoard already calling advanceProgress/upsertProgressReview directly rather than via callback props. */
-function AddSubjectCard({ classId, position }: AddSubjectCardProps) {
+type AddSubjectMode = 'scratch' | 'template'
+
+/**
+ * Trailing/alone "+" card for adding a subject, per #58. Calls createSubject
+ * directly, consistent with ClassBoard already calling
+ * advanceProgress/upsertReviewFlag directly rather than via callback
+ * props.
+ *
+ * Per #167, the form also offers starting from a saved Subject Template:
+ * picking one lists every Template the teacher has ever saved (regardless of
+ * its source Class/Subject) and prefills the name field, which stays
+ * editable. Submitting in that mode creates the Subject and then calls
+ * applySubjectTemplate to bulk-populate its Lessons, as one action from the
+ * teacher's perspective. This is the only path that loads a Template -- it
+ * only ever targets a brand-new, empty Subject.
+ */
+function AddSubjectCard({ classId, position, userId }: AddSubjectCardProps) {
+  const [mode, setMode] = useState<AddSubjectMode>('scratch')
   const [name, setName] = useState('')
   const [submitting, setSubmitting] = useState(false)
+  const [templates, setTemplates] = useState<SubjectTemplateRow[] | undefined>(undefined)
+  const [selectedTemplateId, setSelectedTemplateId] = useState<string | null>(null)
+
+  useEffect(() => {
+    if (mode !== 'template' || templates !== undefined) return
+    let cancelled = false
+    listSubjectTemplatesForUser(userId).then((rows) => {
+      if (!cancelled) setTemplates(rows)
+    })
+    return () => {
+      cancelled = true
+    }
+  }, [mode, templates, userId])
+
+  function reset() {
+    setMode('scratch')
+    setName('')
+    setSelectedTemplateId(null)
+  }
+
+  function handleSelectTemplate(templateId: string) {
+    const template = templates?.find((t) => t.id === templateId)
+    if (!template) return
+    setSelectedTemplateId(templateId)
+    setName(template.name)
+  }
+
+  const canSubmit =
+    !submitting && name.trim() !== '' && (mode === 'scratch' || selectedTemplateId !== null)
 
   return (
     <InlineAddCard addLabel="Add subject" className="class-board__add-card">
@@ -58,16 +119,75 @@ function AddSubjectCard({ classId, position }: AddSubjectCardProps) {
         async function handleSubmit(event: FormEvent) {
           event.preventDefault()
           const trimmed = name.trim()
-          if (trimmed === '' || submitting) return
+          if (!canSubmit || trimmed === '') return
           setSubmitting(true)
-          await createSubject({ class_id: classId, name: trimmed, position })
+          const subject = await createSubject({ class_id: classId, name: trimmed, position })
+          if (mode === 'template' && selectedTemplateId) {
+            await applySubjectTemplate(selectedTemplateId, subject.id)
+          }
           setSubmitting(false)
-          setName('')
+          reset()
           collapse()
         }
 
         return (
           <form className="inline-add-card__form" onSubmit={handleSubmit}>
+            <div className="inline-add-card__mode-toggle" role="radiogroup" aria-label="Subject source">
+              <label>
+                <input
+                  type="radio"
+                  name="add-subject-mode"
+                  value="scratch"
+                  checked={mode === 'scratch'}
+                  onChange={() => {
+                    setMode('scratch')
+                    setSelectedTemplateId(null)
+                    setName('')
+                  }}
+                />
+                Start from scratch
+              </label>
+              <label>
+                <input
+                  type="radio"
+                  name="add-subject-mode"
+                  value="template"
+                  checked={mode === 'template'}
+                  onChange={() => {
+                    setMode('template')
+                    setSelectedTemplateId(null)
+                    setName('')
+                  }}
+                />
+                Start from a Template
+              </label>
+            </div>
+
+            {mode === 'template' &&
+              (templates === undefined ? (
+                <p>Loading Templates…</p>
+              ) : templates.length === 0 ? (
+                <p>No saved Templates yet.</p>
+              ) : (
+                <>
+                  <label htmlFor="new-subject-template">Template</label>
+                  <select
+                    id="new-subject-template"
+                    value={selectedTemplateId ?? ''}
+                    onChange={(event) => handleSelectTemplate(event.target.value)}
+                  >
+                    <option value="" disabled>
+                      Choose a Template
+                    </option>
+                    {templates.map((template) => (
+                      <option key={template.id} value={template.id}>
+                        {template.name}
+                      </option>
+                    ))}
+                  </select>
+                </>
+              ))}
+
             <label htmlFor="new-subject-name">Subject name</label>
             <input
               id="new-subject-name"
@@ -80,13 +200,13 @@ function AddSubjectCard({ classId, position }: AddSubjectCardProps) {
               <button
                 type="button"
                 onClick={() => {
-                  setName('')
+                  reset()
                   collapse()
                 }}
               >
                 Cancel
               </button>
-              <button type="submit" disabled={submitting || name.trim() === ''}>
+              <button type="submit" disabled={!canSubmit}>
                 Add
               </button>
             </div>
@@ -94,6 +214,59 @@ function AddSubjectCard({ classId, position }: AddSubjectCardProps) {
         )
       }}
     </InlineAddCard>
+  )
+}
+
+interface SaveClassTemplateFormProps {
+  classId: string
+  initialName: string
+  onClose: () => void
+}
+
+/**
+ * Inline-expanding name form for "Save Class Template" (#169), reachable
+ * from the book-menu dropdown rather than a "+" card -- so it's a bespoke
+ * form, not InlineAddCard (which expects to render its own "+" trigger),
+ * but still an ADR-0003 inline data-entry form rather than a modal. Prefills
+ * with the Class's current live name, freely editable; submitting calls
+ * saveClassTemplate directly (same direct-db-call convention as
+ * AddSubjectCard/AddStudentCard) and closes back down via onClose. Save-only
+ * per ADR-0016 -- no load/apply affordance exists anywhere.
+ */
+function SaveClassTemplateForm({ classId, initialName, onClose }: SaveClassTemplateFormProps) {
+  const [name, setName] = useState(initialName)
+  const [submitting, setSubmitting] = useState(false)
+
+  async function handleSubmit(event: FormEvent) {
+    event.preventDefault()
+    const trimmed = name.trim()
+    if (trimmed === '' || submitting) return
+    setSubmitting(true)
+    await saveClassTemplate(classId, trimmed)
+    setSubmitting(false)
+    onClose()
+  }
+
+  return (
+    <div className="class-board__save-template">
+      <form className="inline-add-card__form" onSubmit={handleSubmit}>
+        <label htmlFor="save-class-template-name">Template name</label>
+        <input
+          id="save-class-template-name"
+          value={name}
+          onChange={(event) => setName(event.target.value)}
+          autoFocus
+        />
+        <div className="inline-add-card__actions">
+          <button type="button" onClick={onClose}>
+            Cancel
+          </button>
+          <button type="submit" disabled={submitting || name.trim() === ''}>
+            Save
+          </button>
+        </div>
+      </form>
+    </div>
   )
 }
 
@@ -168,6 +341,10 @@ interface StudentRosterRowProps {
  * removal request up to ClassBoard, which owns the confirmation dialog;
  * renaming, being non-destructive, is handled entirely within the row.
  *
+ * `reviewCount` is the student's total flagged-lesson count across every
+ * subject (#152/ADR-0011) -- summed by the caller from ReviewFlag rows, not
+ * a per-subject "flagged subject" count (there is no such thing anymore).
+ *
  * Per #108, left-clicking the row (outside inline-rename mode) reports a
  * navigate-to-Student-Summary request the same way. That click handler
  * lives on an inner wrapper around just the avatar/name/review-count --
@@ -212,7 +389,11 @@ function StudentRosterRow({ student, reviewCount, onRequestRemove, onNavigate }:
               student.name
             )}
           </div>
-          {reviewCount > 0 && <div className="class-board__review-count">{reviewCount} flagged for review</div>}
+          {reviewCount > 0 && (
+            <div className="class-board__review-count">
+              {reviewCount} lesson{reviewCount === 1 ? '' : 's'} marked for review
+            </div>
+          )}
         </div>
       </div>
       {menuPosition && (
@@ -288,6 +469,7 @@ interface ClassBoardProps {
   subjects: SubjectRow[]
   students: StudentRow[]
   progress: ProgressRow[]
+  reviewFlags: ReviewFlagRow[]
   lessons: LessonRow[]
   activeSubjectId: string | undefined
   onSubjectChange: (subjectId: string) => void
@@ -308,6 +490,7 @@ export function ClassBoard({
   subjects,
   students,
   progress,
+  reviewFlags,
   lessons,
   activeSubjectId,
   onSubjectChange,
@@ -322,6 +505,7 @@ export function ClassBoard({
   const panelRects = useRef(new Map<string, DOMRect>())
   const [bookMenuOpen, setBookMenuOpen] = useState(false)
   const [pickerOpen, setPickerOpen] = useState(false)
+  const [savingTemplate, setSavingTemplate] = useState(false)
   const [bulkUndo, setBulkUndo] = useState<{ subjectId: string; entries: BulkAdvanceEntry[] } | null>(null)
   const [jumpPickerRequest, setJumpPickerRequest] = useState<{ studentId: string; subjectId: string } | null>(
     null,
@@ -346,6 +530,14 @@ export function ClassBoard({
     }
     return map
   }, [progress])
+
+  const reviewFlagsByKey = useMemo(() => {
+    const map = new Map<string, ReviewFlagRow>()
+    for (const row of reviewFlags) {
+      map.set(reviewFlagKey(row.student_id, row.lesson_id), row)
+    }
+    return map
+  }, [reviewFlags])
 
   const initialIndex = Math.max(
     0,
@@ -420,9 +612,12 @@ export function ClassBoard({
     }
   }
 
-  async function handleToggleReview(studentId: string, subjectId: string) {
-    const current = progressByKey.get(progressKey(studentId, subjectId))
-    await upsertProgressReview(studentId, subjectId, !current?.review)
+  // #152/ADR-0011: the quick-toggle flags the student's *current* lesson in
+  // this subject, resolved by the caller (below) from their progress step --
+  // ProgressCell itself no longer knows about lessons or ReviewFlag.
+  async function handleToggleReview(studentId: string, lessonId: string, subjectId: string) {
+    const current = reviewFlagsByKey.get(reviewFlagKey(studentId, lessonId))
+    await upsertReviewFlag(studentId, lessonId, !current?.flagged)
     if (bulkUndo?.subjectId === subjectId) {
       setBulkUndo(null)
     }
@@ -464,9 +659,7 @@ export function ClassBoard({
   const studentsPanel = (
     <div className="class-board__students">
       {students.map((student) => {
-        const reviewCount = subjects.filter(
-          (subject) => progressByKey.get(progressKey(student.id, subject.id))?.review,
-        ).length
+        const reviewCount = reviewFlags.filter((row) => row.student_id === student.id && row.flagged).length
         return (
           <StudentRosterRow
             key={student.id}
@@ -498,7 +691,7 @@ export function ClassBoard({
         </header>
         <div className="class-board__empty-body">
           {studentsPanel}
-          <AddSubjectCard classId={classRow.id} position={0} />
+          <AddSubjectCard classId={classRow.id} position={0} userId={classRow.user_id} />
         </div>
         {removeStudentDialog}
       </div>
@@ -541,10 +734,27 @@ export function ClassBoard({
                 >
                   Generate report
                 </button>
+                <button
+                  type="button"
+                  className="class-board__book-menu-item"
+                  onClick={() => {
+                    setBookMenuOpen(false)
+                    setSavingTemplate(true)
+                  }}
+                >
+                  Save Class Template
+                </button>
               </div>
             )}
           </div>
         </div>
+        {savingTemplate && (
+          <SaveClassTemplateForm
+            classId={classRow.id}
+            initialName={classRow.name}
+            onClose={() => setSavingTemplate(false)}
+          />
+        )}
         <p>Drag the subject cards left or right to spin through the wheel.</p>
       </header>
       {pickerOpen && (
@@ -648,17 +858,32 @@ export function ClassBoard({
                     ) : (
                       students.map((student) => {
                         const studentProgress = progressByKey.get(progressKey(student.id, subject.id))
-                        const nextLesson = findNextLesson(subjectLessons, subject.id, positionOf(studentProgress))
+                        const position = positionOf(studentProgress)
+                        const nextLesson = findNextLesson(subjectLessons, subject.id, position)
+                        // The quick-toggle only ever targets the student's
+                        // *current* lesson (#152/ADR-0011) -- undefined at
+                        // the {0,0} "Not started" sentinel or when no lesson
+                        // occupies that exact position, in which case there
+                        // is nothing to flag yet.
+                        const currentLesson = subjectLessons.find(
+                          (lesson) => lesson.unit === position.unit && lesson.lesson_in_unit === position.lesson_in_unit,
+                        )
+                        const isFlagged = currentLesson
+                          ? Boolean(reviewFlagsByKey.get(reviewFlagKey(student.id, currentLesson.id))?.flagged)
+                          : false
                         return (
                           <ProgressCell
                             key={student.id}
                             studentName={student.name}
                             progress={studentProgress}
+                            isFlagged={isFlagged}
                             hasNextLesson={nextLesson !== undefined}
                             hasAnyLessons={subjectLessons.length > 0}
                             subjectLessons={subjectLessons}
                             onAdvance={() => void handleAdvance(student.id, subject.id)}
-                            onToggleReview={() => void handleToggleReview(student.id, subject.id)}
+                            onToggleReview={() =>
+                              currentLesson && void handleToggleReview(student.id, currentLesson.id, subject.id)
+                            }
                             onJumpToLesson={() =>
                               setJumpPickerRequest({ studentId: student.id, subjectId: subject.id })
                             }
@@ -672,7 +897,7 @@ export function ClassBoard({
               )
             })}
             <div className="class-board__add-card-slot" style={{ marginRight: PANEL_GAP }}>
-              <AddSubjectCard classId={classRow.id} position={subjects.length} />
+              <AddSubjectCard classId={classRow.id} position={subjects.length} userId={classRow.user_id} />
             </div>
           </div>
           {index < subjects.length - 1 && (

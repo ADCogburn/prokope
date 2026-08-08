@@ -1,18 +1,27 @@
 import { AUTH_TOKEN_STORAGE_KEY } from '../auth/token'
-import type { ProgressRow } from '../db'
+import type { ProgressRow, ReviewFlagRow } from '../db'
 import {
   clearAllTables,
   deleteRawProgress,
+  deleteRawReviewFlag,
   getRawProgressByPair,
+  getRawReviewFlagByPair,
   listRowsUpdatedSince,
   putRawClass,
+  putRawClassTemplate,
+  putRawClassTemplateLesson,
+  putRawClassTemplateSubject,
   putRawLesson,
   putRawProgress,
+  putRawReviewFlag,
   putRawStudent,
   putRawSubject,
+  putRawSubjectTemplate,
+  putRawSubjectTemplateLesson,
 } from '../db/sync'
 import { pullChanges, pushChanges, type SyncBatch } from './api'
 import { mergeProgressRows } from './mergeProgress'
+import { mergeReviewFlagRows } from './mergeReviewFlags'
 import { clearWatermarks, getPullWatermark, getPushWatermark, setPullWatermark, setPushWatermark } from './watermarks'
 
 /**
@@ -44,16 +53,43 @@ async function applyRemoteProgress(incoming: ProgressRow): Promise<void> {
   await putRawProgress(merged)
 }
 
+// #152/ADR-0011: same reconciliation shape as applyRemoteProgress, just
+// against review_flag's own (student_id, lesson_id) pair and merge function.
+async function applyRemoteReviewFlag(incoming: ReviewFlagRow): Promise<void> {
+  const existing = await getRawReviewFlagByPair(incoming.student_id, incoming.lesson_id)
+  if (!existing) {
+    await putRawReviewFlag(incoming)
+    return
+  }
+
+  const merged = mergeReviewFlagRows(existing, incoming)
+  if (existing.id !== merged.id) {
+    await deleteRawReviewFlag(existing.id)
+  }
+  await putRawReviewFlag(merged)
+}
+
 // class/subject/lesson/student have no per-field HLC and no conflict
 // resolution at all (per #6/#7) -- same as the server's push handler, this
-// is a plain overwrite-by-id, last-received-wins.
+// is a plain overwrite-by-id, last-received-wins. subject_template/
+// subject_template_lesson (#165) and class_template/class_template_subject/
+// class_template_lesson (#168) join this group rather than progress's:
+// they're immutable once created, so two devices would never both create a
+// row sharing an id, meaning there's no conflict for a merge function to
+// resolve in the first place.
 async function applyRemoteBatch(batch: SyncBatch): Promise<void> {
   await Promise.all([
     ...batch.classes.map(putRawClass),
     ...batch.subjects.map(putRawSubject),
     ...batch.lessons.map(putRawLesson),
     ...batch.students.map(putRawStudent),
+    ...batch.subject_templates.map(putRawSubjectTemplate),
+    ...batch.subject_template_lessons.map(putRawSubjectTemplateLesson),
     ...batch.progress.map(applyRemoteProgress),
+    ...batch.review_flags.map(applyRemoteReviewFlag),
+    ...batch.class_templates.map(putRawClassTemplate),
+    ...batch.class_template_subjects.map(putRawClassTemplateSubject),
+    ...batch.class_template_lessons.map(putRawClassTemplateLesson),
   ])
 }
 
@@ -63,7 +99,13 @@ function isEmptyBatch(batch: SyncBatch): boolean {
     batch.subjects.length === 0 &&
     batch.lessons.length === 0 &&
     batch.students.length === 0 &&
-    batch.progress.length === 0
+    batch.progress.length === 0 &&
+    batch.review_flags.length === 0 &&
+    batch.subject_templates.length === 0 &&
+    batch.subject_template_lessons.length === 0 &&
+    batch.class_templates.length === 0 &&
+    batch.class_template_subjects.length === 0 &&
+    batch.class_template_lessons.length === 0
   )
 }
 
@@ -72,10 +114,19 @@ function maxUpdatedAt(rows: { updated_at: string }[], floor: string): string {
 }
 
 function batchWatermark(batch: SyncBatch, floor: string): string {
-  return [batch.classes, batch.subjects, batch.lessons, batch.students, batch.progress].reduce(
-    (max, rows) => maxUpdatedAt(rows, max),
-    floor,
-  )
+  return [
+    batch.classes,
+    batch.subjects,
+    batch.lessons,
+    batch.students,
+    batch.progress,
+    batch.review_flags,
+    batch.subject_templates,
+    batch.subject_template_lessons,
+    batch.class_templates,
+    batch.class_template_subjects,
+    batch.class_template_lessons,
+  ].reduce((max, rows) => maxUpdatedAt(rows, max), floor)
 }
 
 function getToken(): string | null {

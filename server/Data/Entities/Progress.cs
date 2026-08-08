@@ -9,8 +9,5 @@ public class Progress
     public int StepLessonInUnit { get; set; }
     public required string StepHlc { get; set; }
     public Guid StepClientId { get; set; }
-    public bool Review { get; set; }
-    public required string ReviewHlc { get; set; }
-    public Guid ReviewClientId { get; set; }
     public DateTimeOffset UpdatedAt { get; set; }
 }

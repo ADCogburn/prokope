@@ -151,7 +151,85 @@ public static class SyncEndpoints
                 entity.Description = row.Description;
                 entity.DeletedAt = row.DeletedAt;
                 entity.UpdatedAt = DateTimeOffset.UtcNow;
+                ownership.LessonIds.Add(entity.Id);
                 lessonResults.Add(entity);
+            }
+
+            // subject_template is keyed by user_id directly (per #165), not a
+            // Class/Subject FK chain -- ownership is a direct comparison against
+            // the caller, same shape as the class loop above.
+            var subjectTemplateResults = new List<SubjectTemplate>();
+            var ownedTemplateIds = ownership.SubjectTemplateIds;
+            foreach (var row in request.SubjectTemplates ?? [])
+            {
+                if (row.UserId != userId.Value)
+                {
+                    return Results.StatusCode(StatusCodes.Status403Forbidden);
+                }
+
+                var entity = await db.SubjectTemplates.FindAsync([row.Id], cancellationToken);
+                if (entity is not null && entity.UserId != userId.Value)
+                {
+                    return Results.StatusCode(StatusCodes.Status403Forbidden);
+                }
+
+                if (entity is null)
+                {
+                    entity = new SubjectTemplate
+                    {
+                        Id = row.Id,
+                        UserId = row.UserId,
+                        Name = row.Name,
+                        CreatedAt = row.CreatedAt,
+                    };
+                    db.SubjectTemplates.Add(entity);
+                }
+
+                entity.Name = row.Name;
+                entity.UpdatedAt = DateTimeOffset.UtcNow;
+                ownedTemplateIds.Add(entity.Id);
+                subjectTemplateResults.Add(entity);
+            }
+
+            // subject_template_lesson's owning template may have just been
+            // created earlier in this same push batch (mirrors how subject/
+            // lesson handle a subject created in the same batch above) -- the
+            // ownership set was seeded from existing rows and is extended with
+            // every subject_template processed in this request.
+            var subjectTemplateLessonResults = new List<SubjectTemplateLesson>();
+            foreach (var row in request.SubjectTemplateLessons ?? [])
+            {
+                if (!ownedTemplateIds.Contains(row.SubjectTemplateId))
+                {
+                    return Results.StatusCode(StatusCodes.Status403Forbidden);
+                }
+
+                var entity = await db.SubjectTemplateLessons.FindAsync([row.Id], cancellationToken);
+                if (entity is not null && !ownedTemplateIds.Contains(entity.SubjectTemplateId))
+                {
+                    return Results.StatusCode(StatusCodes.Status403Forbidden);
+                }
+
+                if (entity is null)
+                {
+                    entity = new SubjectTemplateLesson
+                    {
+                        Id = row.Id,
+                        SubjectTemplateId = row.SubjectTemplateId,
+                        Title = row.Title,
+                        Description = row.Description,
+                        CreatedAt = row.CreatedAt,
+                    };
+                    db.SubjectTemplateLessons.Add(entity);
+                }
+
+                entity.SubjectTemplateId = row.SubjectTemplateId;
+                entity.Unit = row.Unit;
+                entity.LessonInUnit = row.LessonInUnit;
+                entity.Title = row.Title;
+                entity.Description = row.Description;
+                entity.UpdatedAt = DateTimeOffset.UtcNow;
+                subjectTemplateLessonResults.Add(entity);
             }
 
             // progress has no id-based identity of its own as far as merge is
@@ -184,9 +262,6 @@ public static class SyncEndpoints
                         StepLessonInUnit = row.StepLessonInUnit,
                         StepHlc = row.StepHlc,
                         StepClientId = row.StepClientId,
-                        Review = row.Review,
-                        ReviewHlc = row.ReviewHlc,
-                        ReviewClientId = row.ReviewClientId,
                         UpdatedAt = DateTimeOffset.UtcNow,
                     };
                     db.Progress.Add(entity);
@@ -201,17 +276,156 @@ public static class SyncEndpoints
                         entity.StepClientId = row.StepClientId;
                         entity.UpdatedAt = DateTimeOffset.UtcNow;
                     }
-
-                    if (HlcWins(row.ReviewHlc, row.ReviewClientId, entity.ReviewHlc, entity.ReviewClientId))
-                    {
-                        entity.Review = row.Review;
-                        entity.ReviewHlc = row.ReviewHlc;
-                        entity.ReviewClientId = row.ReviewClientId;
-                        entity.UpdatedAt = DateTimeOffset.UtcNow;
-                    }
                 }
 
                 progressResults.Add(entity);
+            }
+
+            // #152/ADR-0011: review_flag is keyed by (student_id, lesson_id)
+            // rather than (student_id, subject_id) -- same canonical-id
+            // reconciliation rationale as progress above, just against a
+            // different pair and a different unique index.
+            var reviewFlagResults = new List<ReviewFlag>();
+            foreach (var row in request.ReviewFlags ?? [])
+            {
+                if (!ownership.StudentIds.Contains(row.StudentId) || !ownership.LessonIds.Contains(row.LessonId))
+                {
+                    return Results.StatusCode(StatusCodes.Status403Forbidden);
+                }
+
+                var entity = await db.ReviewFlags.SingleOrDefaultAsync(
+                    r => r.StudentId == row.StudentId && r.LessonId == row.LessonId, cancellationToken);
+
+                if (entity is null)
+                {
+                    entity = new ReviewFlag
+                    {
+                        Id = row.Id,
+                        StudentId = row.StudentId,
+                        LessonId = row.LessonId,
+                        Flagged = row.Flagged,
+                        Hlc = row.Hlc,
+                        ClientId = row.ClientId,
+                        UpdatedAt = DateTimeOffset.UtcNow,
+                    };
+                    db.ReviewFlags.Add(entity);
+                }
+                else if (HlcWins(row.Hlc, row.ClientId, entity.Hlc, entity.ClientId))
+                {
+                    entity.Flagged = row.Flagged;
+                    entity.Hlc = row.Hlc;
+                    entity.ClientId = row.ClientId;
+                    entity.UpdatedAt = DateTimeOffset.UtcNow;
+                }
+
+                reviewFlagResults.Add(entity);
+            }
+
+            // class_template/class_template_subject/class_template_lesson
+            // (#168) are immutable and create-only -- no deleted_at, and
+            // fields on an already-existing row are never overwritten -- so
+            // unlike the tables above, there's no "update the fields" step
+            // once an entity is found; a repeat push of the same row is just
+            // an ownership-checked no-op. Ownership is a same-batch-or-
+            // existing three-level chain: class_template.user_id is checked
+            // directly, then a class_template_subject's class_template_id and
+            // a class_template_lesson's class_template_subject_id are each
+            // checked against a set that a same-batch-created parent was
+            // already added to earlier in this same loop.
+            var classTemplateResults = new List<ClassTemplate>();
+            foreach (var row in request.ClassTemplates ?? [])
+            {
+                if (row.UserId != userId.Value)
+                {
+                    return Results.StatusCode(StatusCodes.Status403Forbidden);
+                }
+
+                var entity = await db.ClassTemplates.FindAsync([row.Id], cancellationToken);
+                if (entity is not null && entity.UserId != userId.Value)
+                {
+                    return Results.StatusCode(StatusCodes.Status403Forbidden);
+                }
+
+                if (entity is null)
+                {
+                    entity = new ClassTemplate
+                    {
+                        Id = row.Id,
+                        UserId = row.UserId,
+                        Name = row.Name,
+                        CreatedAt = row.CreatedAt,
+                        UpdatedAt = DateTimeOffset.UtcNow,
+                    };
+                    db.ClassTemplates.Add(entity);
+                }
+
+                ownership.ClassTemplateIds.Add(entity.Id);
+                classTemplateResults.Add(entity);
+            }
+
+            var classTemplateSubjectResults = new List<ClassTemplateSubject>();
+            foreach (var row in request.ClassTemplateSubjects ?? [])
+            {
+                if (!ownership.ClassTemplateIds.Contains(row.ClassTemplateId))
+                {
+                    return Results.StatusCode(StatusCodes.Status403Forbidden);
+                }
+
+                var entity = await db.ClassTemplateSubjects.FindAsync([row.Id], cancellationToken);
+                if (entity is not null && !ownership.ClassTemplateIds.Contains(entity.ClassTemplateId))
+                {
+                    return Results.StatusCode(StatusCodes.Status403Forbidden);
+                }
+
+                if (entity is null)
+                {
+                    entity = new ClassTemplateSubject
+                    {
+                        Id = row.Id,
+                        ClassTemplateId = row.ClassTemplateId,
+                        Name = row.Name,
+                        Position = row.Position,
+                        CreatedAt = row.CreatedAt,
+                        UpdatedAt = DateTimeOffset.UtcNow,
+                    };
+                    db.ClassTemplateSubjects.Add(entity);
+                }
+
+                ownership.ClassTemplateSubjectIds.Add(entity.Id);
+                classTemplateSubjectResults.Add(entity);
+            }
+
+            var classTemplateLessonResults = new List<ClassTemplateLesson>();
+            foreach (var row in request.ClassTemplateLessons ?? [])
+            {
+                if (!ownership.ClassTemplateSubjectIds.Contains(row.ClassTemplateSubjectId))
+                {
+                    return Results.StatusCode(StatusCodes.Status403Forbidden);
+                }
+
+                var entity = await db.ClassTemplateLessons.FindAsync([row.Id], cancellationToken);
+                if (entity is not null && !ownership.ClassTemplateSubjectIds.Contains(entity.ClassTemplateSubjectId))
+                {
+                    return Results.StatusCode(StatusCodes.Status403Forbidden);
+                }
+
+                if (entity is null)
+                {
+                    entity = new ClassTemplateLesson
+                    {
+                        Id = row.Id,
+                        ClassTemplateSubjectId = row.ClassTemplateSubjectId,
+                        Unit = row.Unit,
+                        LessonInUnit = row.LessonInUnit,
+                        Title = row.Title,
+                        Description = row.Description,
+                        CreatedAt = row.CreatedAt,
+                        UpdatedAt = DateTimeOffset.UtcNow,
+                    };
+                    db.ClassTemplateLessons.Add(entity);
+                }
+
+                classTemplateLessonResults.Add(entity);
             }
 
             await db.SaveChangesAsync(cancellationToken);
@@ -221,7 +435,13 @@ public static class SyncEndpoints
                 subjectResults.Select(ToSyncRow).ToList(),
                 lessonResults.Select(ToSyncRow).ToList(),
                 studentResults.Select(ToSyncRow).ToList(),
-                progressResults.Select(ToSyncRow).ToList()));
+                progressResults.Select(ToSyncRow).ToList(),
+                reviewFlagResults.Select(ToSyncRow).ToList(),
+                subjectTemplateResults.Select(ToSyncRow).ToList(),
+                subjectTemplateLessonResults.Select(ToSyncRow).ToList(),
+                classTemplateResults.Select(ToSyncRow).ToList(),
+                classTemplateSubjectResults.Select(ToSyncRow).ToList(),
+                classTemplateLessonResults.Select(ToSyncRow).ToList()));
         })
         .WithName("SyncPush")
         .RequireAuthorization();
@@ -264,6 +484,27 @@ public static class SyncEndpoints
                     && ownership.SubjectIds.Contains(p.SubjectId)
                     && p.UpdatedAt > watermarkFloor)
                 .ToListAsync(cancellationToken);
+            var reviewFlags = await db.ReviewFlags
+                .Where(r => ownership.StudentIds.Contains(r.StudentId)
+                    && ownership.LessonIds.Contains(r.LessonId)
+                    && r.UpdatedAt > watermarkFloor)
+                .ToListAsync(cancellationToken);
+            var subjectTemplates = await db.SubjectTemplates
+                .Where(t => t.UserId == userId.Value && t.UpdatedAt > watermarkFloor)
+                .ToListAsync(cancellationToken);
+            var subjectTemplateLessons = await db.SubjectTemplateLessons
+                .Where(tl => ownership.SubjectTemplateIds.Contains(tl.SubjectTemplateId) && tl.UpdatedAt > watermarkFloor)
+                .ToListAsync(cancellationToken);
+            var classTemplates = await db.ClassTemplates
+                .Where(ct => ct.UserId == userId.Value && ct.UpdatedAt > watermarkFloor)
+                .ToListAsync(cancellationToken);
+            var classTemplateSubjects = await db.ClassTemplateSubjects
+                .Where(cts => ownership.ClassTemplateIds.Contains(cts.ClassTemplateId) && cts.UpdatedAt > watermarkFloor)
+                .ToListAsync(cancellationToken);
+            var classTemplateLessons = await db.ClassTemplateLessons
+                .Where(ctl => ownership.ClassTemplateSubjectIds.Contains(ctl.ClassTemplateSubjectId)
+                    && ctl.UpdatedAt > watermarkFloor)
+                .ToListAsync(cancellationToken);
 
             var watermark = new[] { watermarkFloor }
                 .Concat(classes.Select(c => c.UpdatedAt))
@@ -271,6 +512,12 @@ public static class SyncEndpoints
                 .Concat(students.Select(st => st.UpdatedAt))
                 .Concat(lessons.Select(l => l.UpdatedAt))
                 .Concat(progress.Select(p => p.UpdatedAt))
+                .Concat(reviewFlags.Select(r => r.UpdatedAt))
+                .Concat(subjectTemplates.Select(t => t.UpdatedAt))
+                .Concat(subjectTemplateLessons.Select(tl => tl.UpdatedAt))
+                .Concat(classTemplates.Select(ct => ct.UpdatedAt))
+                .Concat(classTemplateSubjects.Select(cts => cts.UpdatedAt))
+                .Concat(classTemplateLessons.Select(ctl => ctl.UpdatedAt))
                 .Max();
 
             return Results.Ok(new SyncPullResponse(
@@ -279,6 +526,12 @@ public static class SyncEndpoints
                 lessons.Select(ToSyncRow).ToList(),
                 students.Select(ToSyncRow).ToList(),
                 progress.Select(ToSyncRow).ToList(),
+                reviewFlags.Select(ToSyncRow).ToList(),
+                subjectTemplates.Select(ToSyncRow).ToList(),
+                subjectTemplateLessons.Select(ToSyncRow).ToList(),
+                classTemplates.Select(ToSyncRow).ToList(),
+                classTemplateSubjects.Select(ToSyncRow).ToList(),
+                classTemplateLessons.Select(ToSyncRow).ToList(),
                 watermark));
         })
         .WithName("SyncPull")
@@ -296,6 +549,11 @@ public static class SyncEndpoints
     // FK chain up to a class the user owns. Deliberately not filtered by
     // deleted_at: a soft-deleted class is still this user's class, and a
     // device that was offline when it was deleted still needs to be told so.
+    //
+    // class_template is a second, independent ownership root anchored at its
+    // own user_id (not a class -- a template outlives its source class), with
+    // class_template_subject/class_template_lesson walking down from it the
+    // same way subject/lesson walk down from class.
     private static async Task<OwnershipSets> LoadOwnershipAsync(
         AppDbContext db, Guid userId, CancellationToken cancellationToken)
     {
@@ -317,7 +575,34 @@ public static class SyncEndpoints
             .ToListAsync(cancellationToken))
             .ToHashSet();
 
-        return new OwnershipSets(classIds, subjectIds, studentIds);
+        var lessonIds = (await db.Lessons
+            .Where(l => subjectIds.Contains(l.SubjectId))
+            .Select(l => l.Id)
+            .ToListAsync(cancellationToken))
+            .ToHashSet();
+
+        // subject_template is keyed by user_id directly (per #165), not
+        // walked via a Class/Subject FK chain like the sets above.
+        var subjectTemplateIds = (await db.SubjectTemplates
+            .Where(t => t.UserId == userId)
+            .Select(t => t.Id)
+            .ToListAsync(cancellationToken))
+            .ToHashSet();
+
+        var classTemplateIds = (await db.ClassTemplates
+            .Where(ct => ct.UserId == userId)
+            .Select(ct => ct.Id)
+            .ToListAsync(cancellationToken))
+            .ToHashSet();
+
+        var classTemplateSubjectIds = (await db.ClassTemplateSubjects
+            .Where(cts => classTemplateIds.Contains(cts.ClassTemplateId))
+            .Select(cts => cts.Id)
+            .ToListAsync(cancellationToken))
+            .ToHashSet();
+
+        return new OwnershipSets(
+            classIds, subjectIds, studentIds, lessonIds, subjectTemplateIds, classTemplateIds, classTemplateSubjectIds);
     }
 
     // Same "does the challenger's HLC beat the incumbent's" rule the client
@@ -351,7 +636,34 @@ public static class SyncEndpoints
 
     private static ProgressSyncRow ToSyncRow(Progress entity) =>
         new(entity.Id, entity.StudentId, entity.SubjectId, entity.StepUnit, entity.StepLessonInUnit,
-            entity.StepHlc, entity.StepClientId, entity.Review, entity.ReviewHlc, entity.ReviewClientId, entity.UpdatedAt);
+            entity.StepHlc, entity.StepClientId, entity.UpdatedAt);
 
-    private sealed record OwnershipSets(HashSet<Guid> ClassIds, HashSet<Guid> SubjectIds, HashSet<Guid> StudentIds);
+    private static ReviewFlagSyncRow ToSyncRow(ReviewFlag entity) =>
+        new(entity.Id, entity.StudentId, entity.LessonId, entity.Flagged, entity.Hlc, entity.ClientId, entity.UpdatedAt);
+
+    private static SubjectTemplateSyncRow ToSyncRow(SubjectTemplate entity) =>
+        new(entity.Id, entity.UserId, entity.Name, entity.CreatedAt, entity.UpdatedAt);
+
+    private static SubjectTemplateLessonSyncRow ToSyncRow(SubjectTemplateLesson entity) =>
+        new(entity.Id, entity.SubjectTemplateId, entity.Unit, entity.LessonInUnit, entity.Title, entity.Description,
+            entity.CreatedAt, entity.UpdatedAt);
+
+    private static ClassTemplateSyncRow ToSyncRow(ClassTemplate entity) =>
+        new(entity.Id, entity.UserId, entity.Name, entity.CreatedAt, entity.UpdatedAt);
+
+    private static ClassTemplateSubjectSyncRow ToSyncRow(ClassTemplateSubject entity) =>
+        new(entity.Id, entity.ClassTemplateId, entity.Name, entity.Position, entity.CreatedAt, entity.UpdatedAt);
+
+    private static ClassTemplateLessonSyncRow ToSyncRow(ClassTemplateLesson entity) =>
+        new(entity.Id, entity.ClassTemplateSubjectId, entity.Unit, entity.LessonInUnit, entity.Title,
+            entity.Description, entity.CreatedAt, entity.UpdatedAt);
+
+    private sealed record OwnershipSets(
+        HashSet<Guid> ClassIds,
+        HashSet<Guid> SubjectIds,
+        HashSet<Guid> StudentIds,
+        HashSet<Guid> LessonIds,
+        HashSet<Guid> SubjectTemplateIds,
+        HashSet<Guid> ClassTemplateIds,
+        HashSet<Guid> ClassTemplateSubjectIds);
 }

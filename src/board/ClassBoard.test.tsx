@@ -8,9 +8,11 @@ import {
   createStudent,
   createSubject,
   listStudentsForClass,
+  saveSubjectTemplate,
   upsertProgressStep,
+  upsertReviewFlag,
 } from '../db'
-import type { ClassRow, LessonRow, ProgressRow, StudentRow, SubjectRow } from '../db/schema'
+import type { ClassRow, LessonRow, ProgressRow, ReviewFlagRow, StudentRow, SubjectRow } from '../db/schema'
 
 class MockResizeObserver {
   callback: ResizeObserverCallback
@@ -55,6 +57,7 @@ function renderBoard(props: {
   subjects: SubjectRow[]
   students: StudentRow[]
   progress: ProgressRow[]
+  reviewFlags?: ReviewFlagRow[]
   lessons: LessonRow[]
   activeSubjectId: string | undefined
   onSubjectChange?: (id: string) => void
@@ -68,6 +71,7 @@ function renderBoard(props: {
       subjects={props.subjects}
       students={props.students}
       progress={props.progress}
+      reviewFlags={props.reviewFlags ?? []}
       lessons={props.lessons}
       activeSubjectId={props.activeSubjectId}
       onSubjectChange={props.onSubjectChange ?? vi.fn()}
@@ -168,6 +172,150 @@ describe('ClassBoard', () => {
     expect(rows).toHaveLength(1)
   })
 
+  async function makeSubjectTemplateForUser(userId: string, templateName: string) {
+    const templateClass = await createClass({ user_id: userId, name: 'Template Source Class' })
+    const templateSubject = await createSubject({
+      class_id: templateClass.id,
+      name: 'Template Source Subject',
+      position: 0,
+    })
+    await createLesson({
+      subject_id: templateSubject.id,
+      unit: 1,
+      lesson_in_unit: 1,
+      title: 'Intro',
+      description: 'Intro lesson',
+    })
+    await createLesson({
+      subject_id: templateSubject.id,
+      unit: 1,
+      lesson_in_unit: 2,
+      title: 'Next up',
+      description: 'Second lesson',
+    })
+    return saveSubjectTemplate(templateSubject.id, templateName)
+  }
+
+  it('offers "Start from scratch" vs. "Start from a Template" on the add-subject form, defaulting to scratch', async () => {
+    const classRow = await createClass({ user_id: 'user-1', name: 'Homeroom' })
+
+    renderBoard({
+      classRow,
+      subjects: [],
+      students: [],
+      progress: [],
+      lessons: [],
+      activeSubjectId: undefined,
+    })
+
+    fireEvent.click(screen.getByRole('button', { name: '+ Add subject' }))
+
+    expect(screen.getByRole('radio', { name: 'Start from scratch' })).toBeChecked()
+    expect(screen.getByRole('radio', { name: 'Start from a Template' })).not.toBeChecked()
+    expect(screen.queryByLabelText('Template')).not.toBeInTheDocument()
+  })
+
+  it('choosing "Start from a Template" lists every Subject Template the teacher has ever saved', async () => {
+    const classRow = await createClass({ user_id: 'user-1', name: 'Homeroom' })
+    const template = await makeSubjectTemplateForUser('user-1', 'Math Basics')
+
+    renderBoard({
+      classRow,
+      subjects: [],
+      students: [],
+      progress: [],
+      lessons: [],
+      activeSubjectId: undefined,
+    })
+
+    fireEvent.click(screen.getByRole('button', { name: '+ Add subject' }))
+    fireEvent.click(screen.getByRole('radio', { name: 'Start from a Template' }))
+
+    await waitFor(() => {
+      expect(screen.getByRole('option', { name: template.name })).toBeInTheDocument()
+    })
+  })
+
+  it('selecting a Template prefills the subject name field, which stays editable', async () => {
+    const classRow = await createClass({ user_id: 'user-1', name: 'Homeroom' })
+    const template = await makeSubjectTemplateForUser('user-1', 'Math Basics')
+
+    renderBoard({
+      classRow,
+      subjects: [],
+      students: [],
+      progress: [],
+      lessons: [],
+      activeSubjectId: undefined,
+    })
+
+    fireEvent.click(screen.getByRole('button', { name: '+ Add subject' }))
+    fireEvent.click(screen.getByRole('radio', { name: 'Start from a Template' }))
+
+    await waitFor(() => screen.getByLabelText('Template'))
+    fireEvent.change(screen.getByLabelText('Template'), { target: { value: template.id } })
+
+    expect(screen.getByLabelText('Subject name')).toHaveValue('Math Basics')
+
+    fireEvent.change(screen.getByLabelText('Subject name'), { target: { value: 'Math Basics (Room 5)' } })
+    expect(screen.getByLabelText('Subject name')).toHaveValue('Math Basics (Room 5)')
+  })
+
+  it('submitting in Template mode creates the Subject and populates its Lessons from the Template', async () => {
+    const classRow = await createClass({ user_id: 'user-1', name: 'Homeroom' })
+    const template = await makeSubjectTemplateForUser('user-1', 'Math Basics')
+
+    renderBoard({
+      classRow,
+      subjects: [],
+      students: [],
+      progress: [],
+      lessons: [],
+      activeSubjectId: undefined,
+    })
+
+    fireEvent.click(screen.getByRole('button', { name: '+ Add subject' }))
+    fireEvent.click(screen.getByRole('radio', { name: 'Start from a Template' }))
+
+    await waitFor(() => screen.getByLabelText('Template'))
+    fireEvent.change(screen.getByLabelText('Template'), { target: { value: template.id } })
+    fireEvent.click(screen.getByRole('button', { name: 'Add' }))
+
+    let newSubjectId = ''
+    await waitFor(async () => {
+      const rows = await db.subject.where('class_id').equals(classRow.id).toArray()
+      expect(rows).toHaveLength(1)
+      expect(rows[0]).toMatchObject({ name: 'Math Basics', position: 0 })
+      newSubjectId = rows[0].id
+    })
+
+    // applySubjectTemplate resolves after createSubject, in the same submit
+    // handler -- wait for the Lessons to land rather than asserting
+    // immediately, the same way the subject-creation check above retries.
+    await waitFor(async () => {
+      const lessons = await db.lesson.where('subject_id').equals(newSubjectId).toArray()
+      expect(lessons).toHaveLength(2)
+    })
+
+    const lessons = (await db.lesson.where('subject_id').equals(newSubjectId).toArray()).sort(
+      (a, b) => a.unit - b.unit || a.lesson_in_unit - b.lesson_in_unit,
+    )
+    expect(lessons[0]).toMatchObject({ unit: 1, lesson_in_unit: 1, title: 'Intro', description: 'Intro lesson' })
+    expect(lessons[1]).toMatchObject({
+      unit: 1,
+      lesson_in_unit: 2,
+      title: 'Next up',
+      description: 'Second lesson',
+    })
+
+    // The card clears and collapses after a successful add, same as "start
+    // from scratch" -- this only settles once reset()/collapse() run after
+    // applySubjectTemplate resolves, so it needs its own wait too.
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: '+ Add subject' })).toBeInTheDocument()
+    })
+  })
+
   it('shows "This Subject is empty." and a curriculum-navigation link instead of the student list when the panel has zero lessons', async () => {
     const classRow = await createClass({ user_id: 'user-1', name: 'Homeroom' })
     const subject = await createSubject({ class_id: classRow.id, name: 'Math', position: 0 })
@@ -252,7 +400,34 @@ describe('ClassBoard', () => {
     expect(screen.getByRole('button', { name: 'Complete' })).toBeDisabled()
   })
 
-  it('clicking the review toggle flags the row in the real db', async () => {
+  it('clicking the review toggle flags the student\'s current lesson via ReviewFlag (#152/ADR-0011)', async () => {
+    const { classRow, subject, student, lesson } = await seedClassWithOneSubjectOneStudent()
+    const progress = await upsertProgressStep(student.id, subject.id, {
+      unit: lesson.unit,
+      lesson_in_unit: lesson.lesson_in_unit,
+    })
+
+    renderBoard({
+      classRow,
+      subjects: [subject],
+      students: [student],
+      progress: [progress],
+      lessons: [lesson],
+      activeSubjectId: subject.id,
+    })
+
+    fireEvent.click(screen.getByRole('button', { name: 'Flag for review' }))
+
+    await waitFor(async () => {
+      const row = await db.review_flag
+        .where('[student_id+lesson_id]')
+        .equals([student.id, lesson.id])
+        .first()
+      expect(row?.flagged).toBe(true)
+    })
+  })
+
+  it('the review toggle is a no-op when the student has no current lesson yet (Not started)', async () => {
     const { classRow, subject, student, lesson } = await seedClassWithOneSubjectOneStudent()
 
     renderBoard({
@@ -266,10 +441,101 @@ describe('ClassBoard', () => {
 
     fireEvent.click(screen.getByRole('button', { name: 'Flag for review' }))
 
-    await waitFor(async () => {
-      const row = await db.progress.where('[student_id+subject_id]').equals([student.id, subject.id]).first()
-      expect(row?.review).toBe(true)
+    // No lesson occupies the {0,0} "Not started" position, so there's
+    // nothing to flag yet -- the click must not create any ReviewFlag row.
+    expect(await db.review_flag.count()).toBe(0)
+  })
+
+  it("reflects the current lesson's ReviewFlag state on the Progress Cell toggle, not a flag on a different lesson", async () => {
+    const classRow = await createClass({ user_id: 'user-1', name: 'Homeroom' })
+    const subject = await createSubject({ class_id: classRow.id, name: 'Math', position: 0 })
+    const student = await createStudent({ class_id: classRow.id, name: 'Emily', position: 0 })
+    const first = await createLesson({
+      subject_id: subject.id,
+      unit: 1,
+      lesson_in_unit: 1,
+      title: 'Fractions',
+      description: '',
     })
+    const second = await createLesson({
+      subject_id: subject.id,
+      unit: 1,
+      lesson_in_unit: 2,
+      title: 'Decimals',
+      description: '',
+    })
+    const progress = await upsertProgressStep(student.id, subject.id, {
+      unit: first.unit,
+      lesson_in_unit: first.lesson_in_unit,
+    })
+    const reviewFlag = await upsertReviewFlag(student.id, second.id, true)
+
+    renderBoard({
+      classRow,
+      subjects: [subject],
+      students: [student],
+      progress: [progress],
+      reviewFlags: [reviewFlag],
+      lessons: [first, second],
+      activeSubjectId: subject.id,
+    })
+
+    // Flagged lesson is `second`, but the student's current lesson is
+    // `first` -- the quick-toggle only ever reflects the current lesson.
+    expect(screen.getByRole('button', { name: 'Flag for review' })).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Remove review flag' })).not.toBeInTheDocument()
+  })
+
+  it('shows "N lessons marked for review" in the roster, summed across every subject (#152/ADR-0011)', async () => {
+    const classRow = await createClass({ user_id: 'user-1', name: 'Homeroom' })
+    const math = await createSubject({ class_id: classRow.id, name: 'Math', position: 0 })
+    const reading = await createSubject({ class_id: classRow.id, name: 'Reading', position: 1 })
+    const student = await createStudent({ class_id: classRow.id, name: 'Emily', position: 0 })
+    const mathLesson = await createLesson({
+      subject_id: math.id,
+      unit: 1,
+      lesson_in_unit: 1,
+      title: 'Fractions',
+      description: '',
+    })
+    const readingLesson = await createLesson({
+      subject_id: reading.id,
+      unit: 1,
+      lesson_in_unit: 1,
+      title: 'Phonics',
+      description: '',
+    })
+    const mathFlag = await upsertReviewFlag(student.id, mathLesson.id, true)
+    const readingFlag = await upsertReviewFlag(student.id, readingLesson.id, true)
+
+    renderBoard({
+      classRow,
+      subjects: [math, reading],
+      students: [student],
+      progress: [],
+      reviewFlags: [mathFlag, readingFlag],
+      lessons: [mathLesson, readingLesson],
+      activeSubjectId: math.id,
+    })
+
+    expect(screen.getByText('2 lessons marked for review')).toBeInTheDocument()
+  })
+
+  it('shows the singular "1 lesson marked for review" for exactly one flagged lesson', async () => {
+    const { classRow, subject, student, lesson } = await seedClassWithOneSubjectOneStudent()
+    const reviewFlag = await upsertReviewFlag(student.id, lesson.id, true)
+
+    renderBoard({
+      classRow,
+      subjects: [subject],
+      students: [student],
+      progress: [],
+      reviewFlags: [reviewFlag],
+      lessons: [lesson],
+      activeSubjectId: subject.id,
+    })
+
+    expect(screen.getByText('1 lesson marked for review')).toBeInTheDocument()
   })
 
   it('calls onSubjectChange with a subject id when a dot is clicked', async () => {
@@ -611,7 +877,7 @@ describe('ClassBoard', () => {
   it('clears the Undo control once a single-cell edit touches the same subject\'s progress', async () => {
     const { classRow, subject, student, lesson } = await seedClassWithOneSubjectOneStudent()
 
-    renderBoard({
+    const view = renderBoard({
       classRow,
       subjects: [subject],
       students: [student],
@@ -622,6 +888,28 @@ describe('ClassBoard', () => {
 
     fireEvent.click(screen.getByRole('button', { name: 'Bulk Advance' }))
     await waitFor(() => expect(screen.getByRole('button', { name: 'Undo' })).toBeInTheDocument())
+
+    // ClassBoard is a controlled/presentational component (fed by a live
+    // query in the real app) -- simulate the next render a teacher would
+    // actually see once that query re-fires with Bulk Advance's write, so
+    // the review toggle (which now targets the *current lesson*, #152/
+    // ADR-0011) has one to target.
+    const advanced = await db.progress.where('[student_id+subject_id]').equals([student.id, subject.id]).first()
+    view.rerender(
+      <ClassBoard
+        classRow={classRow}
+        subjects={[subject]}
+        students={[student]}
+        progress={[advanced!]}
+        reviewFlags={[]}
+        lessons={[lesson]}
+        activeSubjectId={subject.id}
+        onSubjectChange={vi.fn()}
+        onCurriculumNavigate={vi.fn()}
+        onReportNavigate={vi.fn()}
+        onStudentNavigate={vi.fn()}
+      />,
+    )
 
     fireEvent.click(screen.getByRole('button', { name: 'Flag for review' }))
 
@@ -667,6 +955,124 @@ describe('ClassBoard', () => {
 
     expect(onReportNavigate).toHaveBeenCalledTimes(1)
     expect(screen.queryByRole('button', { name: 'Generate report' })).not.toBeInTheDocument()
+  })
+
+  it('wires up the book icon menu\'s "Save Class Template" item: opens a name form prefilled with the class name', async () => {
+    const classRow = await createClass({ user_id: 'user-1', name: 'Homeroom' })
+    const subject = await createSubject({ class_id: classRow.id, name: 'Math', position: 0 })
+
+    renderBoard({
+      classRow,
+      subjects: [subject],
+      students: [],
+      progress: [],
+      lessons: [],
+      activeSubjectId: subject.id,
+    })
+
+    expect(screen.queryByLabelText('Template name')).not.toBeInTheDocument()
+
+    fireEvent.click(screen.getByRole('button', { name: 'Add lessons menu' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Save Class Template' }))
+
+    expect(screen.queryByRole('button', { name: 'Save Class Template' })).not.toBeInTheDocument()
+    expect(screen.getByLabelText('Template name')).toHaveValue('Homeroom')
+  })
+
+  it('submitting the prefilled template name persists a class_template row (and its subject/lesson rows)', async () => {
+    const classRow = await createClass({ user_id: 'user-1', name: 'Homeroom' })
+    const subject = await createSubject({ class_id: classRow.id, name: 'Math', position: 0 })
+    const lesson = await createLesson({
+      subject_id: subject.id,
+      unit: 1,
+      lesson_in_unit: 1,
+      title: 'Fractions',
+      description: '',
+    })
+
+    renderBoard({
+      classRow,
+      subjects: [subject],
+      students: [],
+      progress: [],
+      lessons: [lesson],
+      activeSubjectId: subject.id,
+    })
+
+    fireEvent.click(screen.getByRole('button', { name: 'Add lessons menu' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Save Class Template' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Save' }))
+
+    await waitFor(async () => {
+      const rows = await db.class_template.where('user_id').equals('user-1').toArray()
+      expect(rows).toHaveLength(1)
+      expect(rows[0]).toMatchObject({ name: 'Homeroom' })
+    })
+
+    const template = (await db.class_template.where('user_id').equals('user-1').toArray())[0]!
+    const templateSubjects = await db.class_template_subject
+      .where('class_template_id')
+      .equals(template.id)
+      .toArray()
+    expect(templateSubjects).toHaveLength(1)
+    expect(templateSubjects[0]).toMatchObject({ name: 'Math', position: 0 })
+
+    const templateLessons = await db.class_template_lesson
+      .where('class_template_subject_id')
+      .equals(templateSubjects[0]!.id)
+      .toArray()
+    expect(templateLessons).toHaveLength(1)
+    expect(templateLessons[0]).toMatchObject({ title: 'Fractions', unit: 1, lesson_in_unit: 1 })
+
+    expect(screen.queryByLabelText('Template name')).not.toBeInTheDocument()
+  })
+
+  it('submitting an edited template name persists that edited name', async () => {
+    const classRow = await createClass({ user_id: 'user-1', name: 'Homeroom' })
+    const subject = await createSubject({ class_id: classRow.id, name: 'Math', position: 0 })
+
+    renderBoard({
+      classRow,
+      subjects: [subject],
+      students: [],
+      progress: [],
+      lessons: [],
+      activeSubjectId: subject.id,
+    })
+
+    fireEvent.click(screen.getByRole('button', { name: 'Add lessons menu' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Save Class Template' }))
+    fireEvent.change(screen.getByLabelText('Template name'), { target: { value: 'End of year snapshot' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Save' }))
+
+    await waitFor(async () => {
+      const rows = await db.class_template.where('user_id').equals('user-1').toArray()
+      expect(rows).toHaveLength(1)
+      expect(rows[0]).toMatchObject({ name: 'End of year snapshot' })
+    })
+    expect(screen.queryByLabelText('Template name')).not.toBeInTheDocument()
+  })
+
+  it('cancelling the Save Class Template form closes it without persisting anything', async () => {
+    const classRow = await createClass({ user_id: 'user-1', name: 'Homeroom' })
+    const subject = await createSubject({ class_id: classRow.id, name: 'Math', position: 0 })
+
+    renderBoard({
+      classRow,
+      subjects: [subject],
+      students: [],
+      progress: [],
+      lessons: [],
+      activeSubjectId: subject.id,
+    })
+
+    fireEvent.click(screen.getByRole('button', { name: 'Add lessons menu' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Save Class Template' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Cancel' }))
+
+    expect(screen.queryByLabelText('Template name')).not.toBeInTheDocument()
+    const rows = await db.class_template.where('user_id').equals('user-1').toArray()
+    expect(rows).toHaveLength(0)
   })
 
   it('clicking "+ Add student" reveals the inline form', async () => {
@@ -742,6 +1148,7 @@ describe('ClassBoard', () => {
         subjects={[subjectA, subjectB]}
         students={allStudents}
         progress={[]}
+        reviewFlags={[]}
         lessons={[lessonA, lessonB]}
         activeSubjectId={subjectA.id}
         onSubjectChange={vi.fn()}
@@ -921,6 +1328,7 @@ describe('ClassBoard', () => {
         subjects={[subject]}
         students={remaining}
         progress={[]}
+        reviewFlags={[]}
         lessons={[lesson]}
         activeSubjectId={subject.id}
         onSubjectChange={vi.fn()}

@@ -102,6 +102,30 @@ public class SchemaInspector(string connectionString)
         return result as string;
     }
 
+    // The delete rule ('CASCADE', 'RESTRICT', 'NO ACTION', ...) Postgres will
+    // enforce for the named FK column, per information_schema.referential_constraints.
+    public async Task<string?> GetForeignKeyDeleteRuleAsync(string table, string column)
+    {
+        await using var connection = await OpenAsync();
+        await using var cmd = new NpgsqlCommand(
+            """
+            select rc.delete_rule
+            from information_schema.table_constraints tc
+            join information_schema.key_column_usage kcu
+              on tc.constraint_name = kcu.constraint_name and tc.table_schema = kcu.table_schema
+            join information_schema.referential_constraints rc
+              on tc.constraint_name = rc.constraint_name and tc.table_schema = rc.constraint_schema
+            where tc.table_schema = 'public' and tc.table_name = @table
+              and tc.constraint_type = 'FOREIGN KEY' and kcu.column_name = @column
+            """,
+            connection);
+        cmd.Parameters.AddWithValue("table", table);
+        cmd.Parameters.AddWithValue("column", column);
+
+        var result = await cmd.ExecuteScalarAsync();
+        return result as string;
+    }
+
     private async Task<NpgsqlConnection> OpenAsync()
     {
         var connection = new NpgsqlConnection(connectionString);

@@ -1,4 +1,16 @@
-export type { ClassRow, SubjectRow, LessonRow, StudentRow, ProgressRow } from './schema'
+export type {
+  ClassRow,
+  SubjectRow,
+  LessonRow,
+  StudentRow,
+  ProgressRow,
+  ReviewFlagRow,
+  SubjectTemplateRow,
+  SubjectTemplateLessonRow,
+  ClassTemplateRow,
+  ClassTemplateSubjectRow,
+  ClassTemplateLessonRow,
+} from './schema'
 
 export { createClass, getClass, getClassForUser, deleteClass, renameClass } from './classes'
 export type { CreateClassInput } from './classes'
@@ -20,6 +32,7 @@ export {
   deleteLesson,
   updateLessonContent,
   formatLessonLabel,
+  bulkGenerateLessons,
 } from './lessons'
 export type { CreateLessonInput, LessonPosition, UpdateLessonContentInput } from './lessons'
 
@@ -36,7 +49,6 @@ export type { CreateStudentInput } from './students'
 export {
   getProgress,
   upsertProgressStep,
-  upsertProgressReview,
   listProgressForStudents,
   advanceProgress,
   unAdvanceProgress,
@@ -45,5 +57,14 @@ export {
   positionOf,
 } from './progress'
 export type { ProgressStep, BulkAdvanceEntry } from './progress'
+
+export { getReviewFlag, upsertReviewFlag, listReviewFlagsForStudents } from './reviewFlags'
+
+export {
+  saveSubjectTemplate,
+  listSubjectTemplatesForUser,
+  applySubjectTemplate,
+  saveClassTemplate,
+} from './templates'
 
 export { getClientId } from './clientId'

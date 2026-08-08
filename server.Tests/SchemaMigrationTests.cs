@@ -13,6 +13,12 @@ public class SchemaMigrationTests(DatabaseFixture fixture) : IClassFixture<Datab
     [InlineData("lesson")]
     [InlineData("student")]
     [InlineData("progress")]
+    [InlineData("review_flag")]
+    [InlineData("subject_template")]
+    [InlineData("subject_template_lesson")]
+    [InlineData("class_template")]
+    [InlineData("class_template_subject")]
+    [InlineData("class_template_lesson")]
     public async Task Table_exists(string table)
     {
         Assert.True(await _schema.TableExistsAsync(table), $"Expected table '{table}' to exist.");
@@ -100,11 +106,96 @@ public class SchemaMigrationTests(DatabaseFixture fixture) : IClassFixture<Datab
         AssertColumn(columns, "step_lesson_in_unit", "integer", nullable: false);
         AssertColumn(columns, "step_hlc", "text", nullable: false);
         AssertColumn(columns, "step_client_id", "uuid", nullable: false);
-        AssertColumn(columns, "review", "boolean", nullable: false);
-        AssertColumn(columns, "review_hlc", "text", nullable: false);
-        AssertColumn(columns, "review_client_id", "uuid", nullable: false);
         AssertColumn(columns, "updated_at", "timestamp with time zone", nullable: false);
         Assert.False(columns.ContainsKey("deleted_at"), "progress should have no deleted_at -- fields are overwritten in place, never removed.");
+        Assert.False(columns.ContainsKey("review"), "review moved to its own review_flag table (#152/ADR-0011).");
+    }
+
+    [Fact]
+    public async Task ReviewFlag_has_expected_columns()
+    {
+        var columns = await _schema.GetColumnsAsync("review_flag");
+
+        AssertColumn(columns, "id", "uuid", nullable: false);
+        AssertColumn(columns, "student_id", "uuid", nullable: false);
+        AssertColumn(columns, "lesson_id", "uuid", nullable: false);
+        AssertColumn(columns, "flagged", "boolean", nullable: false);
+        AssertColumn(columns, "hlc", "text", nullable: false);
+        AssertColumn(columns, "client_id", "uuid", nullable: false);
+        AssertColumn(columns, "updated_at", "timestamp with time zone", nullable: false);
+        Assert.False(columns.ContainsKey("deleted_at"), "review_flag should have no deleted_at -- fields are overwritten in place, never removed.");
+    }
+
+    [Fact]
+    public async Task Subject_template_has_expected_columns()
+    {
+        var columns = await _schema.GetColumnsAsync("subject_template");
+
+        AssertColumn(columns, "id", "uuid", nullable: false);
+        AssertColumn(columns, "user_id", "uuid", nullable: false);
+        AssertColumn(columns, "name", "text", nullable: false);
+        AssertColumn(columns, "created_at", "timestamp with time zone", nullable: false);
+        AssertColumn(columns, "updated_at", "timestamp with time zone", nullable: false);
+        Assert.False(columns.ContainsKey("deleted_at"), "subject_template should have no deleted_at -- Templates are immutable/create-only per #147.");
+    }
+
+    [Fact]
+    public async Task Subject_template_lesson_has_expected_columns()
+    {
+        var columns = await _schema.GetColumnsAsync("subject_template_lesson");
+
+        AssertColumn(columns, "id", "uuid", nullable: false);
+        AssertColumn(columns, "subject_template_id", "uuid", nullable: false);
+        AssertColumn(columns, "unit", "integer", nullable: false);
+        AssertColumn(columns, "lesson_in_unit", "integer", nullable: false);
+        AssertColumn(columns, "title", "text", nullable: false);
+        AssertColumn(columns, "description", "text", nullable: false);
+        AssertColumn(columns, "created_at", "timestamp with time zone", nullable: false);
+        AssertColumn(columns, "updated_at", "timestamp with time zone", nullable: false);
+        Assert.False(columns.ContainsKey("deleted_at"), "subject_template_lesson should have no deleted_at -- Templates are immutable/create-only per #147.");
+    }
+
+    [Fact]
+    public async Task Class_template_has_expected_columns()
+    {
+        var columns = await _schema.GetColumnsAsync("class_template");
+
+        AssertColumn(columns, "id", "uuid", nullable: false);
+        AssertColumn(columns, "user_id", "uuid", nullable: false);
+        AssertColumn(columns, "name", "text", nullable: false);
+        AssertColumn(columns, "created_at", "timestamp with time zone", nullable: false);
+        AssertColumn(columns, "updated_at", "timestamp with time zone", nullable: false);
+        Assert.False(columns.ContainsKey("deleted_at"), "class_template should have no deleted_at -- immutable, create-only.");
+    }
+
+    [Fact]
+    public async Task Class_template_subject_has_expected_columns()
+    {
+        var columns = await _schema.GetColumnsAsync("class_template_subject");
+
+        AssertColumn(columns, "id", "uuid", nullable: false);
+        AssertColumn(columns, "class_template_id", "uuid", nullable: false);
+        AssertColumn(columns, "name", "text", nullable: false);
+        AssertColumn(columns, "position", "integer", nullable: false);
+        AssertColumn(columns, "created_at", "timestamp with time zone", nullable: false);
+        AssertColumn(columns, "updated_at", "timestamp with time zone", nullable: false);
+        Assert.False(columns.ContainsKey("deleted_at"), "class_template_subject should have no deleted_at -- immutable, create-only.");
+    }
+
+    [Fact]
+    public async Task Class_template_lesson_has_expected_columns()
+    {
+        var columns = await _schema.GetColumnsAsync("class_template_lesson");
+
+        AssertColumn(columns, "id", "uuid", nullable: false);
+        AssertColumn(columns, "class_template_subject_id", "uuid", nullable: false);
+        AssertColumn(columns, "unit", "integer", nullable: false);
+        AssertColumn(columns, "lesson_in_unit", "integer", nullable: false);
+        AssertColumn(columns, "title", "text", nullable: false);
+        AssertColumn(columns, "description", "text", nullable: false);
+        AssertColumn(columns, "created_at", "timestamp with time zone", nullable: false);
+        AssertColumn(columns, "updated_at", "timestamp with time zone", nullable: false);
+        Assert.False(columns.ContainsKey("deleted_at"), "class_template_lesson should have no deleted_at -- immutable, create-only.");
     }
 
     [Fact]
@@ -125,6 +216,15 @@ public class SchemaMigrationTests(DatabaseFixture fixture) : IClassFixture<Datab
             new[] { "student_id", "subject_id" }.OrderBy(c => c)));
     }
 
+    [Fact]
+    public async Task ReviewFlag_is_unique_on_student_and_lesson()
+    {
+        var uniqueSets = await _schema.GetUniqueConstraintColumnSetsAsync("review_flag");
+
+        Assert.Contains(uniqueSets, set => set.OrderBy(c => c).SequenceEqual(
+            new[] { "student_id", "lesson_id" }.OrderBy(c => c)));
+    }
+
     [Theory]
     [InlineData("class", "user_id", "users")]
     [InlineData("subject", "class_id", "class")]
@@ -132,11 +232,32 @@ public class SchemaMigrationTests(DatabaseFixture fixture) : IClassFixture<Datab
     [InlineData("student", "class_id", "class")]
     [InlineData("progress", "student_id", "student")]
     [InlineData("progress", "subject_id", "subject")]
+    [InlineData("review_flag", "student_id", "student")]
+    [InlineData("review_flag", "lesson_id", "lesson")]
+    [InlineData("subject_template", "user_id", "users")]
+    [InlineData("subject_template_lesson", "subject_template_id", "subject_template")]
+    [InlineData("class_template", "user_id", "users")]
+    [InlineData("class_template_subject", "class_template_id", "class_template")]
+    [InlineData("class_template_lesson", "class_template_subject_id", "class_template_subject")]
     public async Task Foreign_key_resolves_to_parent_table(string table, string column, string expectedParentTable)
     {
         var actualParentTable = await _schema.GetForeignKeyTargetTableAsync(table, column);
 
         Assert.Equal(expectedParentTable, actualParentTable);
+    }
+
+    // class_template_subject/class_template_lesson cascade-delete on their
+    // parent (unlike every other FK in this schema, which RESTRICTs) since
+    // these three tables have no deleted_at to soft-delete through instead.
+    [Theory]
+    [InlineData("class_template", "user_id", "RESTRICT")]
+    [InlineData("class_template_subject", "class_template_id", "CASCADE")]
+    [InlineData("class_template_lesson", "class_template_subject_id", "CASCADE")]
+    public async Task Class_template_foreign_key_has_expected_delete_rule(string table, string column, string expectedDeleteRule)
+    {
+        var actualDeleteRule = await _schema.GetForeignKeyDeleteRuleAsync(table, column);
+
+        Assert.Equal(expectedDeleteRule, actualDeleteRule);
     }
 
     private static void AssertColumn(
