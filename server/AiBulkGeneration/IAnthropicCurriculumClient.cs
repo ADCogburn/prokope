@@ -32,14 +32,22 @@ public record CurriculumGenerationResult
     public required CurriculumGenerationStatus Status { get; init; }
     public IReadOnlyList<GeneratedLesson>? Lessons { get; init; }
 
+    // #221: token usage actually spent reaching this outcome, for the
+    // endpoint's cost-visibility log. Optional (rather than required) so the
+    // NotFound/Failed/TimedOut singletons below stay usable exactly as they
+    // already are everywhere -- StubAnthropicCurriculumClient included, per
+    // #221's "existing test cases pass unmodified" acceptance criterion --
+    // with the real client attaching usage via a `with` expression instead.
+    public TokenUsage? TokenUsage { get; init; }
+
     public static CurriculumGenerationResult NotFound { get; } = new() { Status = CurriculumGenerationStatus.NotFound };
 
     public static CurriculumGenerationResult Failed { get; } = new() { Status = CurriculumGenerationStatus.Failed };
 
     public static CurriculumGenerationResult TimedOut { get; } = new() { Status = CurriculumGenerationStatus.TimedOut };
 
-    public static CurriculumGenerationResult Generated(IReadOnlyList<GeneratedLesson> lessons) =>
-        new() { Status = CurriculumGenerationStatus.Generated, Lessons = lessons };
+    public static CurriculumGenerationResult Generated(IReadOnlyList<GeneratedLesson> lessons, TokenUsage? tokenUsage = null) =>
+        new() { Status = CurriculumGenerationStatus.Generated, Lessons = lessons, TokenUsage = tokenUsage };
 }
 
 // Domain-level shape of one generated lesson -- deliberately separate from
@@ -47,3 +55,13 @@ public record CurriculumGenerationResult
 // interface doesn't carry any HTTP/JSON concerns. Variable count per unit,
 // per #192's spec.
 public record GeneratedLesson(int Unit, int LessonInUnit, string Title, string Description);
+
+// #221: domain-level token usage for one generation attempt, summed across
+// however many real Anthropic calls it actually made (search + gather, plus
+// one or two extract + constrain attempts). Deliberately separate from the
+// Anthropic SDK's own Usage type, same rationale as GeneratedLesson above.
+public sealed record TokenUsage(long InputTokens, long OutputTokens)
+{
+    public static TokenUsage operator +(TokenUsage a, TokenUsage b) =>
+        new(a.InputTokens + b.InputTokens, a.OutputTokens + b.OutputTokens);
+}

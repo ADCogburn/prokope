@@ -14,6 +14,12 @@ namespace server.AiBulkGeneration;
 // #214 adds this endpoint's first notion of "the authenticated teacher": the
 // JWT `sub` claim, read the same way SyncEndpoints already does, used only
 // to key the daily rate limit below (not persisted or otherwise used yet).
+//
+// #221/ADR-0020: every attempt that reaches the client below -- generated,
+// not-found, failed, or timed-out -- gets a structured log entry (teacher
+// id, timestamp, token usage) for cost visibility. A log line only, not a
+// new table -- ILoggerFactory.CreateLogger, not ILogger<AiBulkGenerationEndpoints>,
+// since this is a static class and can't be used as a generic type argument.
 public static class AiBulkGenerationEndpoints
 {
     public static void MapAiBulkGenerationEndpoints(this WebApplication app)
@@ -23,6 +29,7 @@ public static class AiBulkGenerationEndpoints
             IAnthropicCurriculumClient client,
             IDailyGenerationRateLimiter dailyRateLimiter,
             IMonthlyGenerationRateLimiter monthlyRateLimiter,
+            ILoggerFactory loggerFactory,
             ClaimsPrincipal principal,
             CancellationToken cancellationToken) =>
         {
@@ -54,6 +61,21 @@ public static class AiBulkGenerationEndpoints
             }
 
             var result = await client.GenerateAsync(request.CurriculumName, cancellationToken);
+
+            // #221: logged for every outcome above -- generated, not-found,
+            // failed, or timed-out -- since all four mean this attempt
+            // actually reached Anthropic. TokenUsage is null (logged as
+            // absent) when the failure happened before any response came
+            // back, e.g. a network error or a call that timed out with no
+            // prior call in the same attempt to attach usage from.
+            var logger = loggerFactory.CreateLogger("AiBulkGeneration");
+            logger.LogInformation(
+                "AI Bulk Generation attempt reached Anthropic: teacher={TeacherId} at={Timestamp:o} outcome={Outcome} inputTokens={InputTokens} outputTokens={OutputTokens}",
+                teacherId.Value,
+                DateTimeOffset.UtcNow,
+                result.Status,
+                result.TokenUsage?.InputTokens,
+                result.TokenUsage?.OutputTokens);
 
             return result.Status switch
             {
