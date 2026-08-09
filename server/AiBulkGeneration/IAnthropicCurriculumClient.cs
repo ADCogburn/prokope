@@ -12,16 +12,19 @@ public interface IAnthropicCurriculumClient
     Task<CurriculumGenerationResult> GenerateAsync(string curriculumName, CancellationToken cancellationToken = default);
 }
 
-// The three outcomes a curriculum-generation attempt can produce: a
-// successfully generated lesson list, a distinct "couldn't find this
-// curriculum" result, and a generic hard failure. Kept distinct so a future
-// client can tell "we don't have this curriculum" apart from "something
-// broke" (#192's user story #2/#15).
+// The outcomes a curriculum-generation attempt can produce: a successfully
+// generated lesson list, a distinct "couldn't find this curriculum" result,
+// a generic hard failure, or (#218) a call that exceeded its explicit
+// per-call deadline. Kept distinct so a future client can tell "we don't
+// have this curriculum" apart from "something broke" (#192's user story
+// #2/#15), and TimedOut apart from Failed so the endpoint can surface a
+// specific 504 rather than the generic 502.
 public enum CurriculumGenerationStatus
 {
     Generated,
     NotFound,
     Failed,
+    TimedOut,
 }
 
 public record CurriculumGenerationResult
@@ -32,6 +35,8 @@ public record CurriculumGenerationResult
     public static CurriculumGenerationResult NotFound { get; } = new() { Status = CurriculumGenerationStatus.NotFound };
 
     public static CurriculumGenerationResult Failed { get; } = new() { Status = CurriculumGenerationStatus.Failed };
+
+    public static CurriculumGenerationResult TimedOut { get; } = new() { Status = CurriculumGenerationStatus.TimedOut };
 
     public static CurriculumGenerationResult Generated(IReadOnlyList<GeneratedLesson> lessons) =>
         new() { Status = CurriculumGenerationStatus.Generated, Lessons = lessons };

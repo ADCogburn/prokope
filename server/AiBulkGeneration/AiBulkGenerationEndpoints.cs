@@ -54,6 +54,13 @@ public static class AiBulkGenerationEndpoints
                         request.CurriculumName,
                         $"Couldn't find a public curriculum matching \"{request.CurriculumName}\".")),
 
+                // #218: distinct from the generic failure below so a client
+                // can tell "took too long, maybe try again" apart from
+                // "something broke".
+                CurriculumGenerationStatus.TimedOut => Results.Problem(
+                    detail: "AI curriculum generation timed out. Please try again.",
+                    statusCode: StatusCodes.Status504GatewayTimeout),
+
                 _ => Results.Problem(
                     detail: "AI curriculum generation failed. Please try again.",
                     statusCode: StatusCodes.Status502BadGateway),
