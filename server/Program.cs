@@ -44,6 +44,15 @@ if (string.IsNullOrEmpty(anthropicApiKey))
 // change, not a code change.
 var anthropicModel = builder.Configuration["Anthropic:Model"] ?? "claude-sonnet-5";
 
+// #218/ADR-0020: explicit per-call deadlines for the two sequential
+// Anthropic calls inside AnthropicCurriculumClient -- defaults (30s search,
+// 60s extract) match the ADR; config-driven for the same reason as the
+// daily limit above.
+var searchCallTimeout = TimeSpan.FromSeconds(
+    builder.Configuration.GetValue<int?>("AiBulkGeneration:SearchCallTimeoutSeconds") ?? 30);
+var extractCallTimeout = TimeSpan.FromSeconds(
+    builder.Configuration.GetValue<int?>("AiBulkGeneration:ExtractCallTimeoutSeconds") ?? 60);
+
 builder.Services.AddScoped<IGoogleTokenVerifier>(_ => new GoogleTokenVerifier(googleClientId));
 builder.Services.AddScoped<ISessionTokenService, JwtSessionTokenService>();
 
@@ -59,7 +68,29 @@ builder.Services.AddSingleton<IAnthropicClient>(_ => new AnthropicClient { ApiKe
 // failure) -- see AnthropicCurriculumClient.cs. Replaces the #197
 // placeholder registration.
 builder.Services.AddScoped<IAnthropicCurriculumClient>(sp =>
-    new AnthropicCurriculumClient(sp.GetRequiredService<IAnthropicClient>(), anthropicModel));
+    new AnthropicCurriculumClient(sp.GetRequiredService<IAnthropicClient>(), anthropicModel, searchCallTimeout, extractCallTimeout));
+
+// Singleton: the daily count must be shared across every request, not
+// reset per-scope (#214, ADR-0020). Default of 20 matches ADR-0020;
+// config-driven so the cap is a config change, not a code change, same
+// rationale as anthropicModel above. Read lazily here (at DI-resolution
+// time, after builder.Build()) rather than eagerly captured in a local
+// like anthropicModel -- same reason Jwt:SigningKey is read lazily below:
+// a lazy read sees the test host's ConfigureAppConfiguration overrides
+// (see DatabaseFixture), an eager one only sees the pre-Build() defaults.
+builder.Services.AddSingleton<IDailyGenerationRateLimiter>(sp =>
+    new InMemoryDailyGenerationRateLimiter(
+        sp.GetRequiredService<IConfiguration>().GetValue<int?>("AiBulkGeneration:DailyLimitPerTeacher") ?? 20));
+
+// Scoped, unlike the daily limiter above: the monthly count lives in the
+// database (AppDbContext, itself Scoped), not in this object (#215).
+// Default of 100, persisted (see AiBulkGenerationMonthlyUsage) unlike the
+// daily cap above since this is the limit actually guarding real Anthropic
+// spend. Read lazily for the same reason as the daily limit above.
+builder.Services.AddScoped<IMonthlyGenerationRateLimiter>(sp =>
+    new PersistedMonthlyGenerationRateLimiter(
+        sp.GetRequiredService<AppDbContext>(),
+        sp.GetRequiredService<IConfiguration>().GetValue<int?>("AiBulkGeneration:MonthlyLimit") ?? 100));
 
 builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
     .AddJwtBearer(options =>

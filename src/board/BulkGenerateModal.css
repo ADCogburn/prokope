@@ -55,3 +55,53 @@
 .bulk-generate-modal .inline-add-card__form {
   padding: 20px;
 }
+
+.bulk-generate-modal__auto-generate,
+.bulk-generate-modal__back {
+  display: block;
+  font: inherit;
+  font-size: 14px;
+  font-weight: 600;
+  padding: 0;
+  margin-bottom: 16px;
+  border: none;
+  background: none;
+  color: var(--accent);
+  cursor: pointer;
+  text-decoration: underline;
+}
+
+.bulk-generate-modal__confirm-count {
+  margin: 0 0 12px;
+  font-weight: 600;
+}
+
+.bulk-generate-modal__not-found {
+  margin: 0 0 12px;
+  color: var(--text);
+  font-weight: 600;
+}
+
+.bulk-generate-modal__error {
+  margin: 0 0 12px;
+  color: var(--error);
+  font-weight: 600;
+}
+
+.bulk-generate-modal__confirm-list {
+  max-height: 40vh;
+  overflow-y: auto;
+  margin: 0 0 16px;
+  padding: 0;
+  list-style: none;
+
+  h3 {
+    margin: 0 0 4px;
+    font-size: 14px;
+  }
+
+  ul {
+    margin: 0 0 12px;
+    padding-left: 20px;
+  }
+}

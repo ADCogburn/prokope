@@ -12,6 +12,7 @@ public class StubAnthropicCurriculumClient : IAnthropicCurriculumClient
     private const string GeneratedPrefix = "stub-generated:";
     private const string NotFoundPrefix = "stub-not-found:";
     private const string FailedPrefix = "stub-failed:";
+    private const string TimedOutPrefix = "stub-timed-out:";
 
     // Encodes a small, fixed lesson list; individual tests only need to
     // assert generation succeeded, not control specific lesson content.
@@ -20,6 +21,11 @@ public class StubAnthropicCurriculumClient : IAnthropicCurriculumClient
     public static string NotFound(string curriculumName) => $"{NotFoundPrefix}{curriculumName}";
 
     public static string Failed(string curriculumName) => $"{FailedPrefix}{curriculumName}";
+
+    // #218: simulates a call that exceeded its per-call deadline, without
+    // an actual real-time wait -- the outcome is encoded directly, same as
+    // every other case here.
+    public static string TimedOut(string curriculumName) => $"{TimedOutPrefix}{curriculumName}";
 
     public Task<CurriculumGenerationResult> GenerateAsync(string curriculumName, CancellationToken cancellationToken = default)
     {
@@ -38,6 +44,11 @@ public class StubAnthropicCurriculumClient : IAnthropicCurriculumClient
         if (curriculumName.StartsWith(NotFoundPrefix, StringComparison.Ordinal))
         {
             return Task.FromResult(CurriculumGenerationResult.NotFound);
+        }
+
+        if (curriculumName.StartsWith(TimedOutPrefix, StringComparison.Ordinal))
+        {
+            return Task.FromResult(CurriculumGenerationResult.TimedOut);
         }
 
         // Any other input -- including the FailedPrefix case and anything

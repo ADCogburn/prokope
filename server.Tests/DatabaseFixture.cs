@@ -48,6 +48,20 @@ public class DatabaseFixture : IAsyncLifetime
     // WebApplicationFactory build time.
     protected virtual bool DemoAccountEnabled => true;
 
+    // Overridden by SmallDailyLimitDatabaseFixture so #214's rate-limit
+    // tests can exhaust the cap in a handful of requests instead of 20.
+    protected virtual int DailyLimitPerTeacher => 20;
+
+    // Overridden by SmallMonthlyLimitDatabaseFixture (#215) so its
+    // rate-limit tests can exhaust the cap in a handful of requests instead
+    // of 100.
+    protected virtual int MonthlyLimit => 100;
+
+    // No-op by default; see the ConfigureServices call site above.
+    protected virtual void ConfigureTestServices(IServiceCollection services)
+    {
+    }
+
     public HttpClient CreateClient() => _factory!.CreateClient();
 
     // Exposes the running app's DI container so tests can assert directly
@@ -87,6 +101,8 @@ public class DatabaseFixture : IAsyncLifetime
                         ["Google:ClientId"] = GoogleClientId,
                         ["Anthropic:ApiKey"] = AnthropicApiKey,
                         ["App:DemoAccountEnabled"] = DemoAccountEnabled ? "true" : "false",
+                        ["AiBulkGeneration:DailyLimitPerTeacher"] = DailyLimitPerTeacher.ToString(),
+                        ["AiBulkGeneration:MonthlyLimit"] = MonthlyLimit.ToString(),
                     }));
 
                 // The real GoogleTokenVerifier calls out to Google's network;
@@ -100,6 +116,13 @@ public class DatabaseFixture : IAsyncLifetime
                 // decisions (mirrors the Google replacement above).
                 builder.ConfigureServices(services =>
                     services.Replace(ServiceDescriptor.Scoped<IAnthropicCurriculumClient, StubAnthropicCurriculumClient>()));
+
+                // Extension point for a subclass needing a different
+                // IAnthropicCurriculumClient double (e.g.
+                // CancellationProbeDatabaseFixture) or any other
+                // test-specific service override -- runs last, after the
+                // two replacements above, so it can override them further.
+                builder.ConfigureServices(ConfigureTestServices);
             });
 
             // Accessing Services forces the host to build, which runs Program.cs's
@@ -133,4 +156,42 @@ public class DatabaseFixture : IAsyncLifetime
 public class DemoAccountDisabledDatabaseFixture : DatabaseFixture
 {
     protected override bool DemoAccountEnabled => false;
+}
+
+// Same real-app boot as DatabaseFixture, but with a daily generation cap
+// small enough that AiBulkGenerationRateLimitTests can exhaust it in a
+// handful of requests instead of 20.
+public class SmallDailyLimitDatabaseFixture : DatabaseFixture
+{
+    protected override int DailyLimitPerTeacher => 3;
+}
+
+// Same real-app boot as DatabaseFixture, but with IAnthropicCurriculumClient
+// replaced by a singleton probe that blocks until cancelled, so
+// AiBulkGenerationCancellationTests (#218) can observe -- from outside the
+// request -- whether the endpoint's CancellationToken actually reached the
+// generation call when a client disconnects mid-request. Singleton (not
+// Scoped, like the other stub) specifically so the test can resolve the
+// exact instance a request used via fixture.Services.
+public class CancellationProbeDatabaseFixture : DatabaseFixture
+{
+    protected override void ConfigureTestServices(IServiceCollection services) =>
+        services.Replace(ServiceDescriptor.Singleton<IAnthropicCurriculumClient, CancellationProbeAnthropicCurriculumClient>());
+}
+
+// Same real-app boot as DatabaseFixture, but with a monthly generation cap
+// small enough that AiBulkGenerationMonthlyRateLimitTests (#215) can exhaust
+// it in a handful of requests instead of 100.
+public class SmallMonthlyLimitDatabaseFixture : DatabaseFixture
+{
+    protected override int MonthlyLimit => 3;
+}
+
+// Same real-app boot as DatabaseFixture, but with both caps small, so
+// AiBulkGenerationRateLimitCrossContaminationTests (#215) can exercise both
+// limits within the same test run without either one dwarfing the other.
+public class SmallDailyAndMonthlyLimitDatabaseFixture : DatabaseFixture
+{
+    protected override int DailyLimitPerTeacher => 2;
+    protected override int MonthlyLimit => 3;
 }
