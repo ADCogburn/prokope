@@ -48,6 +48,11 @@ var anthropicModel = builder.Configuration["Anthropic:Model"] ?? "claude-sonnet-
 // change, not a code change, same rationale as anthropicModel above.
 var dailyGenerationLimit = builder.Configuration.GetValue<int?>("AiBulkGeneration:DailyLimitPerTeacher") ?? 20;
 
+// #215/ADR-0020: default of 100, persisted (see AiBulkGenerationMonthlyUsage)
+// unlike the daily cap above since this is the limit actually guarding real
+// Anthropic spend.
+var monthlyGenerationLimit = builder.Configuration.GetValue<int?>("AiBulkGeneration:MonthlyLimit") ?? 100;
+
 // #218/ADR-0020: explicit per-call deadlines for the two sequential
 // Anthropic calls inside AnthropicCurriculumClient -- defaults (30s search,
 // 60s extract) match the ADR; config-driven for the same reason as the
@@ -78,6 +83,11 @@ builder.Services.AddScoped<IAnthropicCurriculumClient>(sp =>
 // reset per-scope (#214, ADR-0020).
 builder.Services.AddSingleton<IDailyGenerationRateLimiter>(
     _ => new InMemoryDailyGenerationRateLimiter(dailyGenerationLimit));
+
+// Scoped, unlike the daily limiter above: the monthly count lives in the
+// database (AppDbContext, itself Scoped), not in this object (#215).
+builder.Services.AddScoped<IMonthlyGenerationRateLimiter>(sp =>
+    new PersistedMonthlyGenerationRateLimiter(sp.GetRequiredService<AppDbContext>(), monthlyGenerationLimit));
 
 builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
     .AddJwtBearer(options =>

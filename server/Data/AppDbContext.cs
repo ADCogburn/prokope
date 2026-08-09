@@ -19,6 +19,7 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
     public DbSet<ClassTemplate> ClassTemplates => Set<ClassTemplate>();
     public DbSet<ClassTemplateSubject> ClassTemplateSubjects => Set<ClassTemplateSubject>();
     public DbSet<ClassTemplateLesson> ClassTemplateLessons => Set<ClassTemplateLesson>();
+    public DbSet<AiBulkGenerationMonthlyUsage> AiBulkGenerationMonthlyUsage => Set<AiBulkGenerationMonthlyUsage>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -138,6 +139,13 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
             entity.HasIndex(e => e.UpdatedAt);
             ConfigureForeignKey<ClassTemplateLesson, ClassTemplateSubject>(
                 entity, e => e.ClassTemplateSubjectId, DeleteBehavior.Cascade);
+        });
+
+        modelBuilder.Entity<AiBulkGenerationMonthlyUsage>(entity =>
+        {
+            entity.ToTable("ai_bulk_generation_monthly_usage");
+            entity.HasKey(e => e.Id);
+            entity.HasIndex(e => e.Month).IsUnique();
         });
     }
 
