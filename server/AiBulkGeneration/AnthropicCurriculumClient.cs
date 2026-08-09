@@ -12,7 +12,7 @@ namespace server.AiBulkGeneration;
 // calls, never one:
 //
 //   1. Search + gather: curriculum name in, web_search_20260318 enabled
-//      (capped at max_uses: 8), no structured-output format -- free-text
+//      (capped at a configurable max_uses), no structured-output format -- free-text
 //      notes with citations. The prompt requires the model to say plainly
 //      when it couldn't find usable public source material, via a sentinel
 //      token this class checks for verbatim (see NotFoundSentinel).
@@ -36,6 +36,7 @@ public class AnthropicCurriculumClient(
     string model,
     TimeSpan searchTimeout,
     TimeSpan extractTimeout,
+    int searchMaxUses,
     ILogger<AnthropicCurriculumClient> logger) : IAnthropicCurriculumClient
 {
     // Distinctive token the call-1 prompt requires the model to emit,
@@ -103,7 +104,7 @@ public class AnthropicCurriculumClient(
             : CurriculumGenerationResult.Generated(lessons, totalUsage);
     }
 
-    // Call 1: search + gather. Web search enabled, capped at 8 uses, no
+    // Call 1: search + gather. Web search enabled, capped at searchMaxUses, no
     // structured-output format -- free text so the model can explain what
     // it found (or didn't) in its own words, with citations.
     private async Task<(string Notes, TokenUsage Usage)> SearchAndGatherAsync(string curriculumName, CancellationToken cancellationToken)
@@ -113,7 +114,7 @@ public class AnthropicCurriculumClient(
             {
                 Model = model,
                 MaxTokens = SearchMaxTokens,
-                Tools = [new WebSearchTool20260318 { MaxUses = 8 }],
+                Tools = [new WebSearchTool20260318 { MaxUses = searchMaxUses }],
                 Messages =
                 [
                     new MessageParam
@@ -141,6 +142,10 @@ public class AnthropicCurriculumClient(
             searchTimeout,
             cancellationToken,
             "search");
+
+        logger.LogInformation(
+            "AI bulk generation: search call used {WebSearchRequests}/{SearchMaxUses} web searches",
+            response.Usage.ServerToolUse.WebSearchRequests, searchMaxUses);
 
         return (ExtractText(response), ToTokenUsage(response.Usage));
     }

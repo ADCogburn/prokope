@@ -70,6 +70,7 @@ builder.Services.AddScoped<IAnthropicCurriculumClient>(sp =>
         anthropicModel,
         TimeSpan.FromSeconds(sp.GetRequiredService<IConfiguration>().GetValue<int?>("AiBulkGeneration:SearchCallTimeoutSeconds") ?? 30),
         TimeSpan.FromSeconds(sp.GetRequiredService<IConfiguration>().GetValue<int?>("AiBulkGeneration:ExtractCallTimeoutSeconds") ?? 60),
+        sp.GetRequiredService<IConfiguration>().GetValue<int?>("AiBulkGeneration:SearchMaxUses") ?? 8,
         sp.GetRequiredService<ILogger<AnthropicCurriculumClient>>()));
 
 // Singleton: the daily count must be shared across every request, not
