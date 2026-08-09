@@ -1,0 +1,7 @@
+# AI Bulk Generation's response stays binary: found or not-found, nothing in between
+
+#161 asked what the generation endpoint's response must contain and guarantee beyond what #197/#198 already shipped: per-lesson field constraints, how confidence/ambiguity gets communicated, and whether a source/citation is surfaced for trust. We kept the shipped shape as-is rather than extending it.
+
+`GeneratedLessonDto` (`unit`, `lesson_in_unit`, `title`, `description`) gets no new length or format constraints — none exist anywhere else in the codebase for lesson title/description (not in the DB layer, not in `AddLessonModal`), so there was no convention to match and no evidence one is needed. The response stays a strict binary: a found curriculum returns the full lesson list (200), an unfound one returns a distinct 404 body — nothing else. We considered and rejected two additional states: an "ambiguous / multiple matches" outcome (adds a third sentinel the search call would need to reliably self-detect, for a case the teacher can already resolve by retyping a more specific curriculum name) and a "partial results" flag (would require the model to accurately self-assess its own completeness, which it can't reliably do). We also rejected adding a source/citation field — #144's original spec never asked for one, and no field for it exists in the shipped DTO.
+
+None of this forecloses adding these later if real usage shows teachers need them; it just means v1 ships with the contract #197/#198 already built, not a speculative extension of it.
