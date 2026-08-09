@@ -35,7 +35,8 @@ public class AnthropicCurriculumClient(
     IAnthropicClient anthropicClient,
     string model,
     TimeSpan searchTimeout,
-    TimeSpan extractTimeout) : IAnthropicCurriculumClient
+    TimeSpan extractTimeout,
+    ILogger<AnthropicCurriculumClient> logger) : IAnthropicCurriculumClient
 {
     // Distinctive token the call-1 prompt requires the model to emit,
     // verbatim and alone, when it finds no usable public source material for
@@ -138,7 +139,8 @@ public class AnthropicCurriculumClient(
                 ],
             },
             searchTimeout,
-            cancellationToken);
+            cancellationToken,
+            "search");
 
         return (ExtractText(response), ToTokenUsage(response.Usage));
     }
@@ -182,7 +184,8 @@ public class AnthropicCurriculumClient(
                     ],
                 },
                 extractTimeout,
-                cancellationToken);
+                cancellationToken,
+                $"extract (attempt {attempt})");
             usage += ToTokenUsage(response.Usage);
 
             var json = ExtractText(response);
@@ -239,17 +242,30 @@ public class AnthropicCurriculumClient(
     // than the generic Failed a caught OperationCanceledException would
     // otherwise fall into.
     private async Task<Message> CreateWithTimeoutAsync(
-        MessageCreateParams parameters, TimeSpan timeout, CancellationToken cancellationToken)
+        MessageCreateParams parameters, TimeSpan timeout, CancellationToken cancellationToken, string callName)
     {
         using var linkedCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
         linkedCts.CancelAfter(timeout);
 
+        // Diagnostic only, added while chasing a production 504: the
+        // endpoint-level #221 log only records the overall outcome once
+        // GenerateAsync returns, not which of the two calls was in flight
+        // or how long it actually ran -- this fills that gap so Railway
+        // logs can tell "our own timeout fired" apart from "the call was
+        // still running when something else (e.g. the platform/proxy) cut
+        // the connection", which look identical to the browser.
+        var stopwatch = System.Diagnostics.Stopwatch.StartNew();
+        logger.LogInformation("AI bulk generation: {CallName} call starting (deadline {TimeoutSeconds}s)", callName, timeout.TotalSeconds);
+
         try
         {
-            return await anthropicClient.Messages.Create(parameters, linkedCts.Token);
+            var response = await anthropicClient.Messages.Create(parameters, linkedCts.Token);
+            logger.LogInformation("AI bulk generation: {CallName} call completed in {ElapsedMs}ms", callName, stopwatch.ElapsedMilliseconds);
+            return response;
         }
         catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
         {
+            logger.LogWarning("AI bulk generation: {CallName} call timed out after {ElapsedMs}ms (deadline {TimeoutSeconds}s)", callName, stopwatch.ElapsedMilliseconds, timeout.TotalSeconds);
             throw new CallTimeoutException();
         }
     }
