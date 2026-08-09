@@ -10,6 +10,8 @@ interface SubjectNameLabelProps {
   tag?: 'h1' | 'span'
   className?: string
   showPencil?: boolean
+  onNavigateToCurriculum?: () => void
+  onRequestRemove?: () => void
 }
 
 /**
@@ -31,8 +33,24 @@ interface SubjectNameLabelProps {
  * as a second, discoverable way to reach the same edit mode -- for the
  * Curriculum page header, where right-click's hidden affordance is easy to
  * miss. It mirrors the pencil-toggle pattern used by SubjectReorder.
+ *
+ * `onNavigateToCurriculum`/`onRequestRemove` (#193) are optional so each call
+ * site opts in independently: when present they append "Edit curriculum" /
+ * "Remove subject" items, in that order, after "Rename subject" in the same
+ * ContextMenu. Only the Class Board call site wires either in today; the
+ * dialog itself stays owned by the caller (the same "child reports the
+ * request up, parent owns the dialog" pattern as
+ * StudentRosterRow/ProgressCell), so this component never imports
+ * RemoveSubjectDialog.
  */
-export function SubjectNameLabel({ subject, tag = 'span', className, showPencil = false }: SubjectNameLabelProps) {
+export function SubjectNameLabel({
+  subject,
+  tag = 'span',
+  className,
+  showPencil = false,
+  onNavigateToCurriculum,
+  onRequestRemove,
+}: SubjectNameLabelProps) {
   const [menuPosition, setMenuPosition] = useState<{ x: number; y: number } | null>(null)
   const [editing, setEditing] = useState(false)
   const Tag = tag
@@ -76,7 +94,13 @@ export function SubjectNameLabel({ subject, tag = 'span', className, showPencil 
           x={menuPosition.x}
           y={menuPosition.y}
           onClose={() => setMenuPosition(null)}
-          items={[{ label: 'Rename subject', onSelect: () => setEditing(true) }]}
+          items={[
+            { label: 'Rename subject', onSelect: () => setEditing(true) },
+            ...(onNavigateToCurriculum
+              ? [{ label: 'Edit curriculum', onSelect: onNavigateToCurriculum }]
+              : []),
+            ...(onRequestRemove ? [{ label: 'Remove subject', onSelect: onRequestRemove }] : []),
+          ]}
         />
       )}
     </>

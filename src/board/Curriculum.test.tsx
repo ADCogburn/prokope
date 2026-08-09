@@ -702,6 +702,66 @@ describe('Curriculum', () => {
     expect(screen.getByRole('menuitem', { name: 'Rename subject' })).toBeInTheDocument()
   })
 
+  it('right-clicking the subject name header shows exactly "Rename subject" and "Remove subject", with no "Edit curriculum" item', async () => {
+    const classRow = await createClass({ user_id: 'user-1', name: 'Homeroom' })
+    const subject = await createSubject({ class_id: classRow.id, name: 'Math', position: 0 })
+
+    renderCurriculum({ classRow, subject, lessons: [] })
+
+    fireEvent.contextMenu(screen.getByText('Math'))
+
+    const items = screen.getAllByRole('menuitem').map((item) => item.textContent)
+    expect(items).toEqual(['Rename subject', 'Remove subject'])
+  })
+
+  it('selecting "Remove subject" from the curriculum header opens a confirmation dialog naming that subject', async () => {
+    const classRow = await createClass({ user_id: 'user-1', name: 'Homeroom' })
+    const subject = await createSubject({ class_id: classRow.id, name: 'Math', position: 0 })
+
+    renderCurriculum({ classRow, subject, lessons: [] })
+
+    fireEvent.contextMenu(screen.getByText('Math'))
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Remove subject' }))
+
+    const dialog = screen.getByRole('dialog', { name: 'Remove subject' })
+    expect(dialog).toHaveTextContent('Remove Math?')
+
+    const row = await db.subject.get(subject.id)
+    expect(row?.deleted_at).toBeNull()
+  })
+
+  it('confirming subject removal from the curriculum header soft-deletes it and closes the dialog', async () => {
+    const classRow = await createClass({ user_id: 'user-1', name: 'Homeroom' })
+    const subject = await createSubject({ class_id: classRow.id, name: 'Math', position: 0 })
+
+    renderCurriculum({ classRow, subject, lessons: [] })
+
+    fireEvent.contextMenu(screen.getByText('Math'))
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Remove subject' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Remove subject' }))
+
+    await waitFor(async () => {
+      const row = await db.subject.get(subject.id)
+      expect(row?.deleted_at).not.toBeNull()
+    })
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
+  })
+
+  it('cancelling subject removal from the curriculum header leaves the subject untouched and closes the dialog', async () => {
+    const classRow = await createClass({ user_id: 'user-1', name: 'Homeroom' })
+    const subject = await createSubject({ class_id: classRow.id, name: 'Math', position: 0 })
+
+    renderCurriculum({ classRow, subject, lessons: [] })
+
+    fireEvent.contextMenu(screen.getByText('Math'))
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Remove subject' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Cancel' }))
+
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
+    const row = await db.subject.get(subject.id)
+    expect(row?.deleted_at).toBeNull()
+  })
+
   it('renaming the subject from the curriculum header calls renameSubject and persists it', async () => {
     const classRow = await createClass({ user_id: 'user-1', name: 'Homeroom' })
     const subject = await createSubject({ class_id: classRow.id, name: 'Math', position: 0 })

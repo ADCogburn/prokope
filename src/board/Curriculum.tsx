@@ -1,11 +1,12 @@
 import { useEffect, useRef, useState, type FormEvent } from 'react'
 import type { ClassRow, LessonRow, SubjectRow } from '../db/schema'
-import { deleteLesson, saveSubjectTemplate, updateLessonContent } from '../db'
+import { deleteLesson, deleteSubject, saveSubjectTemplate, updateLessonContent } from '../db'
 import { ContextMenu } from './ContextMenu'
 import { SubjectNameLabel } from './SubjectNameLabel'
 import { AddLessonModal } from './AddLessonModal'
 import { BulkGenerateModal } from './BulkGenerateModal'
 import { RemoveLessonDialog } from './RemoveLessonDialog'
+import { RemoveSubjectDialog } from './RemoveSubjectDialog'
 import { InlineAddCard } from './InlineAddCard'
 import { groupLessonsByUnit } from './groupLessonsByUnit'
 import { useUnitWindow } from './useUnitWindow'
@@ -341,6 +342,12 @@ export function Curriculum({ classRow, subject, lessons, onBack }: CurriculumPro
   // or running Bulk Generate again) clears/replaces it, mirroring
   // ClassBoard's bulkUndo pattern for Bulk Advance (ADR-0005).
   const [lastBulkGenerateIds, setLastBulkGenerateIds] = useState<string[] | null>(null)
+  // #194: "child reports up, parent owns the dialog" -- same pattern as
+  // ClassBoard's removeSubjectRequest (#193). Once confirmed, deleteSubject
+  // soft-deletes this Subject and CurriculumRoute's existing reactive
+  // redirect (subjectId no longer matches a live Subject) sends the teacher
+  // back to the Class Board; no navigation call is needed here.
+  const [removeSubjectRequested, setRemoveSubjectRequested] = useState(false)
 
   useEffect(() => {
     const el = wrapRef.current
@@ -366,6 +373,11 @@ export function Curriculum({ classRow, subject, lessons, onBack }: CurriculumPro
     setLastBulkGenerateIds(null)
   }
 
+  async function handleRemoveSubject() {
+    await deleteSubject(subject.id)
+    setRemoveSubjectRequested(false)
+  }
+
   return (
     <div className="curriculum">
       <header className="curriculum__header">
@@ -374,7 +386,12 @@ export function Curriculum({ classRow, subject, lessons, onBack }: CurriculumPro
             ← Back to board
           </button>
           <div className="curriculum__title-row">
-            <SubjectNameLabel subject={subject} tag="h1" showPencil />
+            <SubjectNameLabel
+              subject={subject}
+              tag="h1"
+              showPencil
+              onRequestRemove={() => setRemoveSubjectRequested(true)}
+            />
             <div className="curriculum__header-actions">
               <button
                 type="button"
@@ -457,6 +474,13 @@ export function Curriculum({ classRow, subject, lessons, onBack }: CurriculumPro
           subjectId={subject.id}
           onClose={() => setBulkGenerateModalOpen(false)}
           onGenerated={(ids) => setLastBulkGenerateIds(ids.length > 0 ? ids : null)}
+        />
+      )}
+      {removeSubjectRequested && (
+        <RemoveSubjectDialog
+          subject={subject}
+          onConfirm={() => void handleRemoveSubject()}
+          onClose={() => setRemoveSubjectRequested(false)}
         />
       )}
     </div>
