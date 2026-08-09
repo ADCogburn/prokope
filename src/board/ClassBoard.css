@@ -272,6 +272,43 @@
   flex-shrink: 0;
 }
 
+.class-board__subject-name-group {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+
+.class-board__curriculum-quick-link {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  width: 26px;
+  height: 26px;
+  padding: 0;
+  border: none;
+  border-radius: 50%;
+  background: var(--bg);
+  color: var(--text-h);
+  font-size: 13px;
+  line-height: 1;
+  cursor: pointer;
+  opacity: 0;
+  transition: opacity 0.2s;
+}
+
+.class-board__subject-name-group:hover .class-board__curriculum-quick-link,
+.class-board__curriculum-quick-link:focus-visible {
+  opacity: 1;
+}
+
+@media (pointer: coarse) {
+  .class-board__curriculum-quick-link {
+    opacity: 1;
+  }
+}
+
 .class-board__bulk-advance {
   font: inherit;
   font-size: 14px;

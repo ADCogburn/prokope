@@ -15,6 +15,7 @@ import {
   createStudent,
   createSubject,
   deleteStudent,
+  deleteSubject,
   findNextLesson,
   jumpToLesson,
   listSubjectTemplatesForUser,
@@ -38,6 +39,7 @@ import { SubjectPickerModal } from './SubjectPickerModal'
 import { LessonPickerModal } from './LessonPickerModal'
 import { ReviewOtherLessonsModal } from './ReviewOtherLessonsModal'
 import { RemoveStudentDialog } from './RemoveStudentDialog'
+import { RemoveSubjectDialog } from './RemoveSubjectDialog'
 import './ClassBoard.css'
 
 const PANEL_GAP = 24
@@ -520,6 +522,7 @@ export function ClassBoard({
     subjectId: string
   } | null>(null)
   const [removeStudentRequest, setRemoveStudentRequest] = useState<StudentRow | null>(null)
+  const [removeSubjectRequest, setRemoveSubjectRequest] = useState<SubjectRow | null>(null)
 
   useEffect(() => {
     const el = wrapRef.current
@@ -672,6 +675,11 @@ export function ClassBoard({
     setRemoveStudentRequest(null)
   }
 
+  async function handleRemoveSubject(subjectId: string) {
+    await deleteSubject(subjectId)
+    setRemoveSubjectRequest(null)
+  }
+
   // Shared between the zero-subjects empty state and the full board, per
   // #78: a teacher can build their roster before adding any subject, so
   // setup order between students and subjects isn't forced.
@@ -699,6 +707,14 @@ export function ClassBoard({
       student={removeStudentRequest}
       onConfirm={() => void handleRemoveStudent(removeStudentRequest.id)}
       onClose={() => setRemoveStudentRequest(null)}
+    />
+  )
+
+  const removeSubjectDialog = removeSubjectRequest && (
+    <RemoveSubjectDialog
+      subject={removeSubjectRequest}
+      onConfirm={() => void handleRemoveSubject(removeSubjectRequest.id)}
+      onClose={() => setRemoveSubjectRequest(null)}
     />
   )
 
@@ -825,6 +841,7 @@ export function ClassBoard({
           )
         })()}
       {removeStudentDialog}
+      {removeSubjectDialog}
       <div className="class-board__body">
         {studentsPanel}
 
@@ -860,7 +877,26 @@ export function ClassBoard({
                   style={{ width: panelWidth, marginRight: PANEL_GAP, opacity: i === index ? 1 : 0.45 }}
                 >
                   <div className="class-board__panel-header">
-                    <SubjectNameLabel subject={subject} />
+                    <span className="class-board__subject-name-group">
+                      <SubjectNameLabel
+                        subject={subject}
+                        onNavigateToCurriculum={() => onCurriculumNavigate(subject.id)}
+                        onRequestRemove={() => setRemoveSubjectRequest(subject)}
+                      />
+                      {i === index && (
+                        <button
+                          type="button"
+                          aria-label={`Edit curriculum for ${subject.name}`}
+                          className="class-board__curriculum-quick-link"
+                          onClick={() => onCurriculumNavigate(subject.id)}
+                          onPointerDown={(event) => event.stopPropagation()}
+                          onPointerUp={(event) => event.stopPropagation()}
+                          onPointerMove={(event) => event.stopPropagation()}
+                        >
+                          <span aria-hidden="true">📝</span>
+                        </button>
+                      )}
+                    </span>
                     {i === index && (
                       <div className="class-board__bulk-advance-group">
                         <button

@@ -3,7 +3,7 @@ import { fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { MemoryRouter, Route, Routes } from 'react-router-dom'
 import { CurriculumRoute } from './CurriculumRoute'
 import { db } from '../db/schema'
-import { createClass, createLesson, createSubject } from '../db'
+import { createClass, createLesson, createSubject, deleteSubject } from '../db'
 
 afterEach(async () => {
   await Promise.all(db.tables.map((table) => table.clear()))
@@ -102,5 +102,39 @@ describe('CurriculumRoute', () => {
     await waitFor(() => expect(screen.getByText('Unit 2')).toBeInTheDocument())
     expect(screen.getByText('Decimals')).toBeInTheDocument()
     expect(screen.getByText('Math')).toBeInTheDocument()
+  })
+
+  // #194: distinct from the "invalid subjectId" redirect test above -- this
+  // starts on a *valid* subject and removes it mid-session (via the actual
+  // Remove subject flow), confirming the redirect is reactive rather than
+  // only evaluated on initial render/navigation.
+  it('confirming "Remove subject" on the curriculum header navigates back to the class board', async () => {
+    const classRow = await createClass({ user_id: 'user-1', name: 'Homeroom' })
+    const subject = await createSubject({ class_id: classRow.id, name: 'Math', position: 0 })
+
+    renderRoute(`/class/${classRow.id}/subject/${subject.id}/curriculum`)
+
+    await waitFor(() => expect(screen.getByText('Math')).toBeInTheDocument())
+    fireEvent.contextMenu(screen.getByText('Math'))
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Remove subject' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Remove subject' }))
+
+    await waitFor(() => expect(screen.getByText('Board stub')).toBeInTheDocument())
+  })
+
+  // Belt-and-suspenders: even a removal that doesn't go through this page's
+  // own UI (e.g. another tab/device) reactively redirects, since the
+  // redirect is driven by the live subjects query rather than local state.
+  it('redirects to the class board when the currently-viewed subject is removed out from under the page', async () => {
+    const classRow = await createClass({ user_id: 'user-1', name: 'Homeroom' })
+    const subject = await createSubject({ class_id: classRow.id, name: 'Math', position: 0 })
+
+    renderRoute(`/class/${classRow.id}/subject/${subject.id}/curriculum`)
+
+    await waitFor(() => expect(screen.getByText('Math')).toBeInTheDocument())
+
+    await deleteSubject(subject.id)
+
+    await waitFor(() => expect(screen.getByText('Board stub')).toBeInTheDocument())
   })
 })
