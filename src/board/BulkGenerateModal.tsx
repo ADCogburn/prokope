@@ -1,7 +1,8 @@
-import { useState, type FormEvent } from 'react'
+import { useEffect, useRef, useState, type FormEvent } from 'react'
 import { generateAiCurriculum, type GeneratedLesson } from '../api/aiBulkGeneration'
 import { bulkGenerateLessons, replaceLessonsFromAiGeneration } from '../db'
 import { groupLessonsByUnit } from './groupLessonsByUnit'
+import { StopGenerationDialog } from './StopGenerationDialog'
 import './BulkGenerateModal.css'
 
 interface BulkGenerateModalProps {
@@ -57,6 +58,15 @@ function isValidCount(value: string): boolean {
  * manual form's submitting/onClose flow. A `not-found` result or a thrown
  * error both fall back to the curriculum-name screen for now; #220 gives
  * each its own dedicated screen with a "Try again" action.
+ *
+ * #219 guards against losing an in-flight generation to an accidental click:
+ * closing the modal (x/backdrop) or clicking "Back" while the loading screen
+ * is showing routes through requestClose(), which shows StopGenerationDialog
+ * instead of closing directly. Confirming aborts the request (via the
+ * AbortController threaded into generateAiCurriculum) and closes the modal;
+ * declining just dismisses the dialog. Leaving the Curriculum page entirely
+ * unmounts this component, which aborts any in-flight request the same way,
+ * with no navigation blocking or dialog.
  */
 type Screen = 'manual' | 'auto' | 'auto-loading' | 'auto-confirm'
 
@@ -68,6 +78,14 @@ export function BulkGenerateModal({ subjectId, onClose, onGenerated }: BulkGener
   const [curriculumName, setCurriculumName] = useState('')
   const [generatedLessons, setGeneratedLessons] = useState<GeneratedLesson[]>([])
   const [committing, setCommitting] = useState(false)
+  const [showStopConfirm, setShowStopConfirm] = useState(false)
+  const abortControllerRef = useRef<AbortController | null>(null)
+
+  useEffect(() => {
+    return () => {
+      abortControllerRef.current?.abort()
+    }
+  }, [])
 
   const canSubmit = isValidCount(units) && isValidCount(lessonsPerUnit)
   const canGenerate = curriculumName.trim() !== ''
@@ -87,8 +105,10 @@ export function BulkGenerateModal({ subjectId, onClose, onGenerated }: BulkGener
     if (!canGenerate) return
 
     setScreen('auto-loading')
+    const controller = new AbortController()
+    abortControllerRef.current = controller
     try {
-      const result = await generateAiCurriculum(curriculumName)
+      const result = await generateAiCurriculum(curriculumName, controller.signal)
       if (result.status === 'found') {
         setGeneratedLessons(result.lessons)
         setScreen('auto-confirm')
@@ -98,9 +118,34 @@ export function BulkGenerateModal({ subjectId, onClose, onGenerated }: BulkGener
         setScreen('auto')
       }
     } catch {
+      // Aborted via the stop-generation confirm (#219) or an unmount: the
+      // modal is already closing, so there's no screen to fall back to.
+      if (controller.signal.aborted) return
       // Generic failure -- same fallback as `not-found` until #220.
       setScreen('auto')
+    } finally {
+      abortControllerRef.current = null
     }
+  }
+
+  /**
+   * Gate for closing the modal (x/backdrop) or clicking "Back" (#219): while
+   * a generation is in flight (the loading screen), route through
+   * StopGenerationDialog instead of closing directly. Every other screen
+   * closes immediately, same as before.
+   */
+  function requestClose() {
+    if (screen === 'auto-loading') {
+      setShowStopConfirm(true)
+      return
+    }
+    onClose()
+  }
+
+  function handleConfirmStop() {
+    abortControllerRef.current?.abort()
+    setShowStopConfirm(false)
+    onClose()
   }
 
   async function handleReplaceCurriculum() {
@@ -115,112 +160,120 @@ export function BulkGenerateModal({ subjectId, onClose, onGenerated }: BulkGener
   const generatedUnitGroups = groupLessonsByUnit(generatedLessons)
 
   return (
-    <div className="bulk-generate-modal__backdrop" onClick={onClose}>
-      <div
-        className="bulk-generate-modal"
-        role="dialog"
-        aria-modal="true"
-        aria-label="Bulk Generate"
-        onClick={(event) => event.stopPropagation()}
-      >
-        <div className="bulk-generate-modal__header">
-          <h2>{screen === 'manual' ? 'Bulk Generate' : 'Auto-generate Curriculum'}</h2>
-          <button type="button" aria-label="Close" className="bulk-generate-modal__close" onClick={onClose}>
-            <span aria-hidden="true">×</span>
-          </button>
+    <>
+      <div className="bulk-generate-modal__backdrop" onClick={requestClose}>
+        <div
+          className="bulk-generate-modal"
+          role="dialog"
+          aria-modal="true"
+          aria-label="Bulk Generate"
+          onClick={(event) => event.stopPropagation()}
+        >
+          <div className="bulk-generate-modal__header">
+            <h2>{screen === 'manual' ? 'Bulk Generate' : 'Auto-generate Curriculum'}</h2>
+            <button type="button" aria-label="Close" className="bulk-generate-modal__close" onClick={requestClose}>
+              <span aria-hidden="true">×</span>
+            </button>
+          </div>
+          {screen === 'manual' && (
+            <form className="inline-add-card__form" onSubmit={(event) => void handleSubmit(event)}>
+              <button
+                type="button"
+                className="bulk-generate-modal__auto-generate"
+                onClick={() => setScreen('auto')}
+              >
+                Auto-generate
+              </button>
+              <label htmlFor="bulk-generate-units">Units</label>
+              <input
+                id="bulk-generate-units"
+                type="number"
+                min={MIN_COUNT}
+                max={MAX_COUNT}
+                value={units}
+                onChange={(event) => setUnits(clampToMax(event.target.value))}
+                autoFocus
+              />
+              <label htmlFor="bulk-generate-lessons-per-unit">Lessons per unit</label>
+              <input
+                id="bulk-generate-lessons-per-unit"
+                type="number"
+                min={MIN_COUNT}
+                max={MAX_COUNT}
+                value={lessonsPerUnit}
+                onChange={(event) => setLessonsPerUnit(clampToMax(event.target.value))}
+              />
+              <div className="inline-add-card__actions">
+                <button type="button" onClick={onClose}>
+                  Cancel
+                </button>
+                <button type="submit" disabled={submitting || !canSubmit}>
+                  Generate
+                </button>
+              </div>
+            </form>
+          )}
+          {screen === 'auto' && (
+            <div className="inline-add-card__form">
+              <button type="button" className="bulk-generate-modal__back" onClick={() => setScreen('manual')}>
+                Back
+              </button>
+              <label htmlFor="bulk-generate-curriculum-name">Curriculum name</label>
+              <input
+                id="bulk-generate-curriculum-name"
+                type="text"
+                value={curriculumName}
+                onChange={(event) => setCurriculumName(event.target.value)}
+                autoFocus
+              />
+              <div className="inline-add-card__actions">
+                <button type="button" disabled={!canGenerate} onClick={() => void handleGenerate()}>
+                  Generate
+                </button>
+              </div>
+            </div>
+          )}
+          {screen === 'auto-loading' && (
+            <div className="inline-add-card__form">
+              <button type="button" className="bulk-generate-modal__back" onClick={requestClose}>
+                Back
+              </button>
+              <p>Generating curriculum… this can take up to a minute.</p>
+            </div>
+          )}
+          {screen === 'auto-confirm' && (
+            <div className="inline-add-card__form">
+              <p className="bulk-generate-modal__confirm-count">
+                {generatedLessons.length} lesson{generatedLessons.length === 1 ? '' : 's'} across{' '}
+                {generatedUnitGroups.length} unit{generatedUnitGroups.length === 1 ? '' : 's'}
+              </p>
+              <ul className="bulk-generate-modal__confirm-list">
+                {generatedUnitGroups.map((group) => (
+                  <li key={group.unit}>
+                    <h3>Unit {group.unit}</h3>
+                    <ul>
+                      {group.lessons.map((lesson) => (
+                        <li key={`${lesson.unit}.${lesson.lesson_in_unit}`}>{lesson.title}</li>
+                      ))}
+                    </ul>
+                  </li>
+                ))}
+              </ul>
+              <div className="inline-add-card__actions">
+                <button type="button" onClick={() => setScreen('auto')}>
+                  Cancel
+                </button>
+                <button type="button" disabled={committing} onClick={() => void handleReplaceCurriculum()}>
+                  Replace curriculum
+                </button>
+              </div>
+            </div>
+          )}
         </div>
-        {screen === 'manual' && (
-          <form className="inline-add-card__form" onSubmit={(event) => void handleSubmit(event)}>
-            <button
-              type="button"
-              className="bulk-generate-modal__auto-generate"
-              onClick={() => setScreen('auto')}
-            >
-              Auto-generate
-            </button>
-            <label htmlFor="bulk-generate-units">Units</label>
-            <input
-              id="bulk-generate-units"
-              type="number"
-              min={MIN_COUNT}
-              max={MAX_COUNT}
-              value={units}
-              onChange={(event) => setUnits(clampToMax(event.target.value))}
-              autoFocus
-            />
-            <label htmlFor="bulk-generate-lessons-per-unit">Lessons per unit</label>
-            <input
-              id="bulk-generate-lessons-per-unit"
-              type="number"
-              min={MIN_COUNT}
-              max={MAX_COUNT}
-              value={lessonsPerUnit}
-              onChange={(event) => setLessonsPerUnit(clampToMax(event.target.value))}
-            />
-            <div className="inline-add-card__actions">
-              <button type="button" onClick={onClose}>
-                Cancel
-              </button>
-              <button type="submit" disabled={submitting || !canSubmit}>
-                Generate
-              </button>
-            </div>
-          </form>
-        )}
-        {screen === 'auto' && (
-          <div className="inline-add-card__form">
-            <button type="button" className="bulk-generate-modal__back" onClick={() => setScreen('manual')}>
-              Back
-            </button>
-            <label htmlFor="bulk-generate-curriculum-name">Curriculum name</label>
-            <input
-              id="bulk-generate-curriculum-name"
-              type="text"
-              value={curriculumName}
-              onChange={(event) => setCurriculumName(event.target.value)}
-              autoFocus
-            />
-            <div className="inline-add-card__actions">
-              <button type="button" disabled={!canGenerate} onClick={() => void handleGenerate()}>
-                Generate
-              </button>
-            </div>
-          </div>
-        )}
-        {screen === 'auto-loading' && (
-          <div className="inline-add-card__form">
-            <p>Generating curriculum… this can take up to a minute.</p>
-          </div>
-        )}
-        {screen === 'auto-confirm' && (
-          <div className="inline-add-card__form">
-            <p className="bulk-generate-modal__confirm-count">
-              {generatedLessons.length} lesson{generatedLessons.length === 1 ? '' : 's'} across{' '}
-              {generatedUnitGroups.length} unit{generatedUnitGroups.length === 1 ? '' : 's'}
-            </p>
-            <ul className="bulk-generate-modal__confirm-list">
-              {generatedUnitGroups.map((group) => (
-                <li key={group.unit}>
-                  <h3>Unit {group.unit}</h3>
-                  <ul>
-                    {group.lessons.map((lesson) => (
-                      <li key={`${lesson.unit}.${lesson.lesson_in_unit}`}>{lesson.title}</li>
-                    ))}
-                  </ul>
-                </li>
-              ))}
-            </ul>
-            <div className="inline-add-card__actions">
-              <button type="button" onClick={() => setScreen('auto')}>
-                Cancel
-              </button>
-              <button type="button" disabled={committing} onClick={() => void handleReplaceCurriculum()}>
-                Replace curriculum
-              </button>
-            </div>
-          </div>
-        )}
       </div>
-    </div>
+      {showStopConfirm && (
+        <StopGenerationDialog onConfirm={handleConfirmStop} onClose={() => setShowStopConfirm(false)} />
+      )}
+    </>
   )
 }

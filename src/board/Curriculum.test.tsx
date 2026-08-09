@@ -660,6 +660,105 @@ describe('Curriculum', () => {
     })
   })
 
+  describe('Stop-confirmation while generating (#219)', () => {
+    beforeEach(() => {
+      localStorage.setItem(AUTH_TOKEN_STORAGE_KEY, 'a-token')
+      vi.stubGlobal('fetch', vi.fn())
+    })
+
+    async function openLoadingScreen(classRow: ClassRow, subject: SubjectRow) {
+      vi.mocked(fetch).mockReturnValueOnce(new Promise(() => {})) // never resolves within the test
+      const result = renderCurriculum({ classRow, subject, lessons: [] })
+      fireEvent.click(screen.getByRole('button', { name: 'Bulk Generate' }))
+      fireEvent.click(screen.getByRole('button', { name: 'Auto-generate' }))
+      fireEvent.change(screen.getByLabelText('Curriculum name'), { target: { value: 'Algebra 1' } })
+      fireEvent.click(screen.getByRole('button', { name: 'Generate' }))
+      await screen.findByText('Generating curriculum… this can take up to a minute.')
+      return result
+    }
+
+    it('clicking the close button while generating shows a stop-generation confirm dialog instead of closing', async () => {
+      const classRow = await createClass({ user_id: 'user-1', name: 'Homeroom' })
+      const subject = await createSubject({ class_id: classRow.id, name: 'Math', position: 0 })
+      await openLoadingScreen(classRow, subject)
+
+      fireEvent.click(screen.getByRole('button', { name: 'Close' }))
+
+      expect(screen.getByRole('dialog', { name: 'Stop generation' })).toBeInTheDocument()
+      expect(screen.getByRole('dialog', { name: 'Bulk Generate' })).toBeInTheDocument()
+    })
+
+    it('clicking Back while generating also shows the stop-generation confirm dialog', async () => {
+      const classRow = await createClass({ user_id: 'user-1', name: 'Homeroom' })
+      const subject = await createSubject({ class_id: classRow.id, name: 'Math', position: 0 })
+      await openLoadingScreen(classRow, subject)
+
+      fireEvent.click(screen.getByRole('button', { name: 'Back' }))
+
+      expect(screen.getByRole('dialog', { name: 'Stop generation' })).toBeInTheDocument()
+    })
+
+    it('declining ("Cancel") returns to the loading screen with the generation still running', async () => {
+      const classRow = await createClass({ user_id: 'user-1', name: 'Homeroom' })
+      const subject = await createSubject({ class_id: classRow.id, name: 'Math', position: 0 })
+      await openLoadingScreen(classRow, subject)
+      fireEvent.click(screen.getByRole('button', { name: 'Close' }))
+
+      fireEvent.click(screen.getByRole('button', { name: 'Cancel' }))
+
+      expect(screen.queryByRole('dialog', { name: 'Stop generation' })).not.toBeInTheDocument()
+      expect(screen.getByText('Generating curriculum… this can take up to a minute.')).toBeInTheDocument()
+    })
+
+    it('confirming "Stop generation" aborts the in-flight request and closes the modal', async () => {
+      const classRow = await createClass({ user_id: 'user-1', name: 'Homeroom' })
+      const subject = await createSubject({ class_id: classRow.id, name: 'Math', position: 0 })
+      await openLoadingScreen(classRow, subject)
+      fireEvent.click(screen.getByRole('button', { name: 'Close' }))
+
+      fireEvent.click(screen.getByRole('button', { name: 'Stop generation' }))
+
+      const [, init] = vi.mocked(fetch).mock.calls[0]!
+      expect((init as RequestInit).signal?.aborted).toBe(true)
+      expect(screen.queryByRole('dialog', { name: 'Bulk Generate' })).not.toBeInTheDocument()
+      expect(screen.queryByRole('dialog', { name: 'Stop generation' })).not.toBeInTheDocument()
+    })
+
+    it('closing the modal from the curriculum-name screen closes immediately, with no confirm dialog', async () => {
+      const classRow = await createClass({ user_id: 'user-1', name: 'Homeroom' })
+      const subject = await createSubject({ class_id: classRow.id, name: 'Math', position: 0 })
+      renderCurriculum({ classRow, subject, lessons: [] })
+      fireEvent.click(screen.getByRole('button', { name: 'Bulk Generate' }))
+      fireEvent.click(screen.getByRole('button', { name: 'Auto-generate' }))
+
+      fireEvent.click(screen.getByRole('button', { name: 'Close' }))
+
+      expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
+    })
+
+    it('closing the modal from the manual screen closes immediately, with no confirm dialog', async () => {
+      const classRow = await createClass({ user_id: 'user-1', name: 'Homeroom' })
+      const subject = await createSubject({ class_id: classRow.id, name: 'Math', position: 0 })
+      renderCurriculum({ classRow, subject, lessons: [] })
+      fireEvent.click(screen.getByRole('button', { name: 'Bulk Generate' }))
+
+      fireEvent.click(screen.getByRole('button', { name: 'Close' }))
+
+      expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
+    })
+
+    it('unmounting the page entirely while generating aborts the request quietly, with no dialog', async () => {
+      const classRow = await createClass({ user_id: 'user-1', name: 'Homeroom' })
+      const subject = await createSubject({ class_id: classRow.id, name: 'Math', position: 0 })
+      const { unmount } = await openLoadingScreen(classRow, subject)
+
+      unmount()
+
+      const [, init] = vi.mocked(fetch).mock.calls[0]!
+      expect((init as RequestInit).signal?.aborted).toBe(true)
+    })
+  })
+
   it('generated lessons appear in their unit columns alongside existing lessons', async () => {
     const classRow = await createClass({ user_id: 'user-1', name: 'Homeroom' })
     const subject = await createSubject({ class_id: classRow.id, name: 'Math', position: 0 })
