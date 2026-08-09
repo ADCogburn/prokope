@@ -3,7 +3,12 @@ import { act, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { Curriculum } from './Curriculum'
 import { db } from '../db/schema'
 import { createClass, createLesson, createSubject } from '../db'
+import { AUTH_TOKEN_STORAGE_KEY } from '../auth/token'
 import type { ClassRow, LessonRow, SubjectRow } from '../db/schema'
+
+function jsonResponse(body: unknown, status = 200): Response {
+  return new Response(JSON.stringify(body), { status })
+}
 
 let mockWrapWidth = 2000
 const resizeCallbacks: ResizeObserverCallback[] = []
@@ -554,6 +559,105 @@ describe('Curriculum', () => {
     expect(screen.getByRole('heading', { name: 'Bulk Generate' })).toBeInTheDocument()
     expect(screen.getByLabelText('Units')).toBeInTheDocument()
     expect(screen.getByLabelText('Lessons per unit')).toBeInTheDocument()
+  })
+
+  describe('Auto-generate (#217)', () => {
+    beforeEach(() => {
+      localStorage.setItem(AUTH_TOKEN_STORAGE_KEY, 'a-token')
+      vi.stubGlobal('fetch', vi.fn())
+    })
+
+    it('shows the loading message immediately after clicking Generate', async () => {
+      const classRow = await createClass({ user_id: 'user-1', name: 'Homeroom' })
+      const subject = await createSubject({ class_id: classRow.id, name: 'Math', position: 0 })
+      vi.mocked(fetch).mockReturnValueOnce(new Promise(() => {})) // never resolves within this test
+
+      renderCurriculum({ classRow, subject, lessons: [] })
+      fireEvent.click(screen.getByRole('button', { name: 'Bulk Generate' }))
+      fireEvent.click(screen.getByRole('button', { name: 'Auto-generate' }))
+      fireEvent.change(screen.getByLabelText('Curriculum name'), { target: { value: 'Algebra 1' } })
+      fireEvent.click(screen.getByRole('button', { name: 'Generate' }))
+
+      expect(
+        await screen.findByText('Generating curriculum… this can take up to a minute.'),
+      ).toBeInTheDocument()
+    })
+
+    it('shows a grouped confirm summary on a found result', async () => {
+      const classRow = await createClass({ user_id: 'user-1', name: 'Homeroom' })
+      const subject = await createSubject({ class_id: classRow.id, name: 'Math', position: 0 })
+      vi.mocked(fetch).mockResolvedValueOnce(
+        jsonResponse({
+          lessons: [
+            { unit: 1, lesson_in_unit: 1, title: 'Intro to Algebra', description: 'Overview' },
+            { unit: 1, lesson_in_unit: 2, title: 'Variables', description: 'Core concepts' },
+            { unit: 2, lesson_in_unit: 1, title: 'Linear Equations', description: 'Deeper dive' },
+          ],
+        }),
+      )
+
+      renderCurriculum({ classRow, subject, lessons: [] })
+      fireEvent.click(screen.getByRole('button', { name: 'Bulk Generate' }))
+      fireEvent.click(screen.getByRole('button', { name: 'Auto-generate' }))
+      fireEvent.change(screen.getByLabelText('Curriculum name'), { target: { value: 'Algebra 1' } })
+      fireEvent.click(screen.getByRole('button', { name: 'Generate' }))
+
+      expect(await screen.findByText('3 lessons across 2 units')).toBeInTheDocument()
+      expect(screen.getByText('Intro to Algebra')).toBeInTheDocument()
+      expect(screen.getByText('Variables')).toBeInTheDocument()
+      expect(screen.getByText('Linear Equations')).toBeInTheDocument()
+    })
+
+    it('Cancel on the confirm screen returns to the curriculum-name screen with the typed name retained', async () => {
+      const classRow = await createClass({ user_id: 'user-1', name: 'Homeroom' })
+      const subject = await createSubject({ class_id: classRow.id, name: 'Math', position: 0 })
+      vi.mocked(fetch).mockResolvedValueOnce(
+        jsonResponse({ lessons: [{ unit: 1, lesson_in_unit: 1, title: 'Intro', description: '' }] }),
+      )
+
+      renderCurriculum({ classRow, subject, lessons: [] })
+      fireEvent.click(screen.getByRole('button', { name: 'Bulk Generate' }))
+      fireEvent.click(screen.getByRole('button', { name: 'Auto-generate' }))
+      fireEvent.change(screen.getByLabelText('Curriculum name'), { target: { value: 'Algebra 1' } })
+      fireEvent.click(screen.getByRole('button', { name: 'Generate' }))
+      await screen.findByText('1 lesson across 1 unit')
+
+      fireEvent.click(screen.getByRole('button', { name: 'Cancel' }))
+
+      expect(screen.getByLabelText('Curriculum name')).toHaveValue('Algebra 1')
+    })
+
+    it('Replace curriculum commits the proposed lessons, replacing the subject existing curriculum, and closes the modal', async () => {
+      const classRow = await createClass({ user_id: 'user-1', name: 'Homeroom' })
+      const subject = await createSubject({ class_id: classRow.id, name: 'Math', position: 0 })
+      const existing = await createLesson({
+        subject_id: subject.id,
+        unit: 1,
+        lesson_in_unit: 1,
+        title: 'Old lesson',
+        description: '',
+      })
+      vi.mocked(fetch).mockResolvedValueOnce(
+        jsonResponse({ lessons: [{ unit: 1, lesson_in_unit: 1, title: 'New lesson', description: '' }] }),
+      )
+
+      renderCurriculum({ classRow, subject, lessons: [existing] })
+      fireEvent.click(screen.getByRole('button', { name: 'Bulk Generate' }))
+      fireEvent.click(screen.getByRole('button', { name: 'Auto-generate' }))
+      fireEvent.change(screen.getByLabelText('Curriculum name'), { target: { value: 'Algebra 1' } })
+      fireEvent.click(screen.getByRole('button', { name: 'Generate' }))
+      await screen.findByText('1 lesson across 1 unit')
+
+      fireEvent.click(screen.getByRole('button', { name: 'Replace curriculum' }))
+
+      await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument())
+      const rows = await db.lesson.where('subject_id').equals(subject.id).toArray()
+      const live = rows.filter((r) => r.deleted_at === null)
+      expect(live).toHaveLength(1)
+      expect(live[0]?.title).toBe('New lesson')
+      const oldRow = rows.find((r) => r.id === existing.id)
+      expect(oldRow?.deleted_at).not.toBeNull()
+    })
   })
 
   it('generated lessons appear in their unit columns alongside existing lessons', async () => {

@@ -1,5 +1,7 @@
 import { useState, type FormEvent } from 'react'
-import { bulkGenerateLessons } from '../db'
+import { generateAiCurriculum, type GeneratedLesson } from '../api/aiBulkGeneration'
+import { bulkGenerateLessons, replaceLessonsFromAiGeneration } from '../db'
+import { groupLessonsByUnit } from './groupLessonsByUnit'
 import './BulkGenerateModal.css'
 
 interface BulkGenerateModalProps {
@@ -45,8 +47,18 @@ function isValidCount(value: string): boolean {
  * #216 adds a second screen behind an "Auto-generate" toggle (ADR-0019):
  * swaps this manual form for a blank curriculum-name input, with "Back" to
  * return. Purely a mode switch -- no network call happens here yet.
+ *
+ * #217 wires that screen up to the real generate-preview-commit flow: a
+ * loading screen while POST /ai-bulk-generation is in flight, then (on a
+ * `found` result) a read-only confirm screen grouping the proposed lessons
+ * by unit before anything is written. "Replace curriculum" is the only
+ * write -- replaceLessonsFromAiGeneration soft-deletes the subject's
+ * existing lessons and creates the proposed ones in one call, mirroring the
+ * manual form's submitting/onClose flow. A `not-found` result or a thrown
+ * error both fall back to the curriculum-name screen for now; #220 gives
+ * each its own dedicated screen with a "Try again" action.
  */
-type Screen = 'manual' | 'auto'
+type Screen = 'manual' | 'auto' | 'auto-loading' | 'auto-confirm'
 
 export function BulkGenerateModal({ subjectId, onClose, onGenerated }: BulkGenerateModalProps) {
   const [screen, setScreen] = useState<Screen>('manual')
@@ -54,6 +66,8 @@ export function BulkGenerateModal({ subjectId, onClose, onGenerated }: BulkGener
   const [lessonsPerUnit, setLessonsPerUnit] = useState('')
   const [submitting, setSubmitting] = useState(false)
   const [curriculumName, setCurriculumName] = useState('')
+  const [generatedLessons, setGeneratedLessons] = useState<GeneratedLesson[]>([])
+  const [committing, setCommitting] = useState(false)
 
   const canSubmit = isValidCount(units) && isValidCount(lessonsPerUnit)
   const canGenerate = curriculumName.trim() !== ''
@@ -69,6 +83,37 @@ export function BulkGenerateModal({ subjectId, onClose, onGenerated }: BulkGener
     onClose()
   }
 
+  async function handleGenerate() {
+    if (!canGenerate) return
+
+    setScreen('auto-loading')
+    try {
+      const result = await generateAiCurriculum(curriculumName)
+      if (result.status === 'found') {
+        setGeneratedLessons(result.lessons)
+        setScreen('auto-confirm')
+      } else {
+        // `not-found` -- #220 gives this its own screen; for now, back to
+        // the curriculum-name screen with the typed name still in place.
+        setScreen('auto')
+      }
+    } catch {
+      // Generic failure -- same fallback as `not-found` until #220.
+      setScreen('auto')
+    }
+  }
+
+  async function handleReplaceCurriculum() {
+    if (committing) return
+
+    setCommitting(true)
+    await replaceLessonsFromAiGeneration(subjectId, generatedLessons)
+    setCommitting(false)
+    onClose()
+  }
+
+  const generatedUnitGroups = groupLessonsByUnit(generatedLessons)
+
   return (
     <div className="bulk-generate-modal__backdrop" onClick={onClose}>
       <div
@@ -79,35 +124,12 @@ export function BulkGenerateModal({ subjectId, onClose, onGenerated }: BulkGener
         onClick={(event) => event.stopPropagation()}
       >
         <div className="bulk-generate-modal__header">
-          <h2>{screen === 'auto' ? 'Auto-generate Curriculum' : 'Bulk Generate'}</h2>
+          <h2>{screen === 'manual' ? 'Bulk Generate' : 'Auto-generate Curriculum'}</h2>
           <button type="button" aria-label="Close" className="bulk-generate-modal__close" onClick={onClose}>
             <span aria-hidden="true">×</span>
           </button>
         </div>
-        {screen === 'auto' ? (
-          <div className="inline-add-card__form">
-            <button
-              type="button"
-              className="bulk-generate-modal__back"
-              onClick={() => setScreen('manual')}
-            >
-              Back
-            </button>
-            <label htmlFor="bulk-generate-curriculum-name">Curriculum name</label>
-            <input
-              id="bulk-generate-curriculum-name"
-              type="text"
-              value={curriculumName}
-              onChange={(event) => setCurriculumName(event.target.value)}
-              autoFocus
-            />
-            <div className="inline-add-card__actions">
-              <button type="button" disabled={!canGenerate}>
-                Generate
-              </button>
-            </div>
-          </div>
-        ) : (
+        {screen === 'manual' && (
           <form className="inline-add-card__form" onSubmit={(event) => void handleSubmit(event)}>
             <button
               type="button"
@@ -144,6 +166,59 @@ export function BulkGenerateModal({ subjectId, onClose, onGenerated }: BulkGener
               </button>
             </div>
           </form>
+        )}
+        {screen === 'auto' && (
+          <div className="inline-add-card__form">
+            <button type="button" className="bulk-generate-modal__back" onClick={() => setScreen('manual')}>
+              Back
+            </button>
+            <label htmlFor="bulk-generate-curriculum-name">Curriculum name</label>
+            <input
+              id="bulk-generate-curriculum-name"
+              type="text"
+              value={curriculumName}
+              onChange={(event) => setCurriculumName(event.target.value)}
+              autoFocus
+            />
+            <div className="inline-add-card__actions">
+              <button type="button" disabled={!canGenerate} onClick={() => void handleGenerate()}>
+                Generate
+              </button>
+            </div>
+          </div>
+        )}
+        {screen === 'auto-loading' && (
+          <div className="inline-add-card__form">
+            <p>Generating curriculum… this can take up to a minute.</p>
+          </div>
+        )}
+        {screen === 'auto-confirm' && (
+          <div className="inline-add-card__form">
+            <p className="bulk-generate-modal__confirm-count">
+              {generatedLessons.length} lesson{generatedLessons.length === 1 ? '' : 's'} across{' '}
+              {generatedUnitGroups.length} unit{generatedUnitGroups.length === 1 ? '' : 's'}
+            </p>
+            <ul className="bulk-generate-modal__confirm-list">
+              {generatedUnitGroups.map((group) => (
+                <li key={group.unit}>
+                  <h3>Unit {group.unit}</h3>
+                  <ul>
+                    {group.lessons.map((lesson) => (
+                      <li key={`${lesson.unit}.${lesson.lesson_in_unit}`}>{lesson.title}</li>
+                    ))}
+                  </ul>
+                </li>
+              ))}
+            </ul>
+            <div className="inline-add-card__actions">
+              <button type="button" onClick={() => setScreen('auto')}>
+                Cancel
+              </button>
+              <button type="button" disabled={committing} onClick={() => void handleReplaceCurriculum()}>
+                Replace curriculum
+              </button>
+            </div>
+          </div>
         )}
       </div>
     </div>

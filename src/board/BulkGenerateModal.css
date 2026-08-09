@@ -70,3 +70,26 @@
   cursor: pointer;
   text-decoration: underline;
 }
+
+.bulk-generate-modal__confirm-count {
+  margin: 0 0 12px;
+  font-weight: 600;
+}
+
+.bulk-generate-modal__confirm-list {
+  max-height: 40vh;
+  overflow-y: auto;
+  margin: 0 0 16px;
+  padding: 0;
+  list-style: none;
+
+  h3 {
+    margin: 0 0 4px;
+    font-size: 14px;
+  }
+
+  ul {
+    margin: 0 0 12px;
+    padding-left: 20px;
+  }
+}

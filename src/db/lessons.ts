@@ -244,3 +244,33 @@ export async function bulkGenerateLessons(
   }
   return createdIds
 }
+
+export interface ProposedLesson {
+  unit: number
+  lesson_in_unit: number
+  title: string
+  description: string
+}
+
+/**
+ * AI Bulk Generation's commit step (#217): unlike bulkGenerateLessons (which
+ * only fills gaps), this is a full replace -- every live lesson currently in
+ * subjectId is soft-deleted first, via the unmodified deleteLesson, then
+ * every proposed lesson is created via the unmodified createLesson. Deleting
+ * first means the AI's proposed positions never collide with a live lesson
+ * still occupying that spot. Lessons in every other subject are untouched.
+ */
+export async function replaceLessonsFromAiGeneration(subjectId: string, lessons: ProposedLesson[]): Promise<void> {
+  const existing = await listLessonsForSubject(subjectId)
+  await Promise.all(existing.map((lesson) => deleteLesson(lesson.id)))
+
+  for (const lesson of lessons) {
+    await createLesson({
+      subject_id: subjectId,
+      unit: lesson.unit,
+      lesson_in_unit: lesson.lesson_in_unit,
+      title: lesson.title,
+      description: lesson.description,
+    })
+  }
+}

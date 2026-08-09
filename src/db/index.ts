@@ -33,8 +33,9 @@ export {
   updateLessonContent,
   formatLessonLabel,
   bulkGenerateLessons,
+  replaceLessonsFromAiGeneration,
 } from './lessons'
-export type { CreateLessonInput, LessonPosition, UpdateLessonContentInput } from './lessons'
+export type { CreateLessonInput, LessonPosition, UpdateLessonContentInput, ProposedLesson } from './lessons'
 
 export {
   createStudent,

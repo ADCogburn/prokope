@@ -14,6 +14,7 @@ import {
   getSuggestedNewLessonPosition,
   listLessonsForSubject,
   listLessonsForSubjects,
+  replaceLessonsFromAiGeneration,
   updateLessonContent,
 } from './lessons'
 
@@ -545,6 +546,63 @@ describe('bulkGenerateLessons', () => {
     const raw = await db.lesson.get(createdIds[0])
     expect(raw?.title).toBe('Untitled')
     expect(raw?.description).toBe('')
+  })
+})
+
+describe('replaceLessonsFromAiGeneration', () => {
+  it('creates every proposed lesson', async () => {
+    await replaceLessonsFromAiGeneration('subject-1', [
+      { unit: 1, lesson_in_unit: 1, title: 'Intro', description: 'Overview' },
+      { unit: 1, lesson_in_unit: 2, title: 'Fundamentals', description: 'Core concepts' },
+      { unit: 2, lesson_in_unit: 1, title: 'Advanced', description: 'Deeper dive' },
+    ])
+
+    const rows = await listLessonsForSubject('subject-1')
+    expect(rows.map((r) => r.title).sort()).toEqual(['Advanced', 'Fundamentals', 'Intro'])
+  })
+
+  it('soft-deletes every live lesson already in the subject', async () => {
+    const existing1 = await createLesson(lessonInput({ unit: 1, lesson_in_unit: 1, title: 'Old lesson 1' }))
+    const existing2 = await createLesson(lessonInput({ unit: 2, lesson_in_unit: 1, title: 'Old lesson 2' }))
+
+    await replaceLessonsFromAiGeneration('subject-1', [
+      { unit: 1, lesson_in_unit: 1, title: 'New lesson', description: '' },
+    ])
+
+    const raw1 = await db.lesson.get(existing1.id)
+    const raw2 = await db.lesson.get(existing2.id)
+    expect(raw1?.deleted_at).not.toBeNull()
+    expect(raw2?.deleted_at).not.toBeNull()
+  })
+
+  it('every proposed lesson is present afterward via listLessonsForSubject', async () => {
+    await createLesson(lessonInput({ unit: 1, lesson_in_unit: 1, title: 'Old lesson' }))
+
+    await replaceLessonsFromAiGeneration('subject-1', [
+      { unit: 1, lesson_in_unit: 1, title: 'New lesson', description: 'New description' },
+    ])
+
+    const rows = await listLessonsForSubject('subject-1')
+    expect(rows).toHaveLength(1)
+    expect(rows[0]?.title).toBe('New lesson')
+  })
+
+  it('leaves lessons in other subjects untouched', async () => {
+    const otherSubject = await createLesson({
+      subject_id: 'subject-2',
+      unit: 1,
+      lesson_in_unit: 1,
+      title: 'Untouched',
+      description: '',
+    })
+
+    await replaceLessonsFromAiGeneration('subject-1', [
+      { unit: 1, lesson_in_unit: 1, title: 'New lesson', description: '' },
+    ])
+
+    const raw = await db.lesson.get(otherSubject.id)
+    expect(raw?.deleted_at).toBeNull()
+    expect(raw?.title).toBe('Untouched')
   })
 })
 
