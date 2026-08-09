@@ -62,6 +62,17 @@ public class AiBulkGenerationEndpointsTests(DatabaseFixture fixture) : IClassFix
     }
 
     [Fact]
+    public async Task Generation_timeout_returns_a_504_distinct_from_the_generic_failure()
+    {
+        using var client = await AuthenticatedClientAsync();
+        var curriculumName = StubAnthropicCurriculumClient.TimedOut("World History");
+
+        var response = await client.PostAsJsonAsync("/ai-bulk-generation", new AiBulkGenerationRequest(curriculumName));
+
+        Assert.Equal(HttpStatusCode.GatewayTimeout, response.StatusCode);
+    }
+
+    [Fact]
     public async Task Endpoint_requires_authentication()
     {
         using var client = fixture.CreateClient();

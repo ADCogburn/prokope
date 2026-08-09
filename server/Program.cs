@@ -48,6 +48,15 @@ var anthropicModel = builder.Configuration["Anthropic:Model"] ?? "claude-sonnet-
 // change, not a code change, same rationale as anthropicModel above.
 var dailyGenerationLimit = builder.Configuration.GetValue<int?>("AiBulkGeneration:DailyLimitPerTeacher") ?? 20;
 
+// #218/ADR-0020: explicit per-call deadlines for the two sequential
+// Anthropic calls inside AnthropicCurriculumClient -- defaults (30s search,
+// 60s extract) match the ADR; config-driven for the same reason as the
+// daily limit above.
+var searchCallTimeout = TimeSpan.FromSeconds(
+    builder.Configuration.GetValue<int?>("AiBulkGeneration:SearchCallTimeoutSeconds") ?? 30);
+var extractCallTimeout = TimeSpan.FromSeconds(
+    builder.Configuration.GetValue<int?>("AiBulkGeneration:ExtractCallTimeoutSeconds") ?? 60);
+
 builder.Services.AddScoped<IGoogleTokenVerifier>(_ => new GoogleTokenVerifier(googleClientId));
 builder.Services.AddScoped<ISessionTokenService, JwtSessionTokenService>();
 
@@ -63,7 +72,7 @@ builder.Services.AddSingleton<IAnthropicClient>(_ => new AnthropicClient { ApiKe
 // failure) -- see AnthropicCurriculumClient.cs. Replaces the #197
 // placeholder registration.
 builder.Services.AddScoped<IAnthropicCurriculumClient>(sp =>
-    new AnthropicCurriculumClient(sp.GetRequiredService<IAnthropicClient>(), anthropicModel));
+    new AnthropicCurriculumClient(sp.GetRequiredService<IAnthropicClient>(), anthropicModel, searchCallTimeout, extractCallTimeout));
 
 // Singleton: the daily count must be shared across every request, not
 // reset per-scope (#214, ADR-0020).

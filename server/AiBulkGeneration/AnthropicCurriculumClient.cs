@@ -31,7 +31,11 @@ namespace server.AiBulkGeneration;
 // AiBulkGenerationEndpointsTests) already cover all three outcomes by
 // substituting StubAnthropicCurriculumClient in DI, and there's no repo
 // precedent for testing an internal-only retry loop.
-public class AnthropicCurriculumClient(IAnthropicClient anthropicClient, string model) : IAnthropicCurriculumClient
+public class AnthropicCurriculumClient(
+    IAnthropicClient anthropicClient,
+    string model,
+    TimeSpan searchTimeout,
+    TimeSpan extractTimeout) : IAnthropicCurriculumClient
 {
     // Distinctive token the call-1 prompt requires the model to emit,
     // verbatim and alone, when it finds no usable public source material for
@@ -55,6 +59,10 @@ public class AnthropicCurriculumClient(IAnthropicClient anthropicClient, string 
         {
             notes = await SearchAndGatherAsync(curriculumName, cancellationToken);
         }
+        catch (CallTimeoutException)
+        {
+            return CurriculumGenerationResult.TimedOut;
+        }
         catch (Exception)
         {
             // Network/API failure on call 1 -- nothing to short-circuit on,
@@ -72,7 +80,16 @@ public class AnthropicCurriculumClient(IAnthropicClient anthropicClient, string 
             return CurriculumGenerationResult.NotFound;
         }
 
-        var lessons = await ExtractAndConstrainAsync(notes, cancellationToken);
+        IReadOnlyList<GeneratedLesson>? lessons;
+        try
+        {
+            lessons = await ExtractAndConstrainAsync(notes, cancellationToken);
+        }
+        catch (CallTimeoutException)
+        {
+            return CurriculumGenerationResult.TimedOut;
+        }
+
         return lessons is null
             ? CurriculumGenerationResult.Failed
             : CurriculumGenerationResult.Generated(lessons);
@@ -83,7 +100,7 @@ public class AnthropicCurriculumClient(IAnthropicClient anthropicClient, string 
     // it found (or didn't) in its own words, with citations.
     private async Task<string> SearchAndGatherAsync(string curriculumName, CancellationToken cancellationToken)
     {
-        var response = await anthropicClient.Messages.Create(
+        var response = await CreateWithTimeoutAsync(
             new MessageCreateParams
             {
                 Model = model,
@@ -113,6 +130,7 @@ public class AnthropicCurriculumClient(IAnthropicClient anthropicClient, string 
                     },
                 ],
             },
+            searchTimeout,
             cancellationToken);
 
         return ExtractText(response);
@@ -126,7 +144,7 @@ public class AnthropicCurriculumClient(IAnthropicClient anthropicClient, string 
         const int maxAttempts = 2;
         for (var attempt = 1; attempt <= maxAttempts; attempt++)
         {
-            var response = await anthropicClient.Messages.Create(
+            var response = await CreateWithTimeoutAsync(
                 new MessageCreateParams
                 {
                     Model = model,
@@ -152,6 +170,7 @@ public class AnthropicCurriculumClient(IAnthropicClient anthropicClient, string 
                         },
                     ],
                 },
+                extractTimeout,
                 cancellationToken);
 
             var json = ExtractText(response);
@@ -192,6 +211,37 @@ public class AnthropicCurriculumClient(IAnthropicClient anthropicClient, string 
 
         return builder.ToString();
     }
+
+    // #218: bounds a single Messages.Create call with an explicit deadline,
+    // via a linked token so the caller's own cancellationToken (a teacher
+    // navigating away or closing the tab -- already threaded through both
+    // calls before this ticket) keeps working exactly as it did before.
+    // Distinguishes which token fired by checking cancellationToken's own
+    // state after the fact: if it's still unset, the linked source's
+    // CancelAfter is what tripped, so this is a timeout, not a
+    // caller-initiated cancellation -- surfaced as CallTimeoutException so
+    // GenerateAsync can map it to the TimedOut outcome specifically, rather
+    // than the generic Failed a caught OperationCanceledException would
+    // otherwise fall into.
+    private async Task<Message> CreateWithTimeoutAsync(
+        MessageCreateParams parameters, TimeSpan timeout, CancellationToken cancellationToken)
+    {
+        using var linkedCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        linkedCts.CancelAfter(timeout);
+
+        try
+        {
+            return await anthropicClient.Messages.Create(parameters, linkedCts.Token);
+        }
+        catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
+        {
+            throw new CallTimeoutException();
+        }
+    }
+
+    // Internal-only signal from CreateWithTimeoutAsync to GenerateAsync;
+    // never crosses this class's boundary.
+    private sealed class CallTimeoutException : Exception;
 
     // Wire shape for call 2's structured output only -- deliberately
     // separate from both GeneratedLesson (the domain type this class
