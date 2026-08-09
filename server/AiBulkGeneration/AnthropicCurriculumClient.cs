@@ -55,20 +55,23 @@ public class AnthropicCurriculumClient(
     public async Task<CurriculumGenerationResult> GenerateAsync(string curriculumName, CancellationToken cancellationToken = default)
     {
         string notes;
+        TokenUsage searchUsage;
         try
         {
-            notes = await SearchAndGatherAsync(curriculumName, cancellationToken);
+            (notes, searchUsage) = await SearchAndGatherAsync(curriculumName, cancellationToken);
         }
         catch (CallTimeoutException)
         {
+            // No response ever came back, so no usage to attach.
             return CurriculumGenerationResult.TimedOut;
         }
         catch (Exception)
         {
             // Network/API failure on call 1 -- nothing to short-circuit on,
-            // nothing to extract. Surface as a generic failure rather than
-            // NotFound, which is reserved for the model's own "couldn't
-            // find it" signal.
+            // nothing to extract, and (same as the timeout above) no usage:
+            // this failed before any response was returned. Surface as a
+            // generic failure rather than NotFound, which is reserved for
+            // the model's own "couldn't find it" signal.
             return CurriculumGenerationResult.Failed;
         }
 
@@ -77,28 +80,32 @@ public class AnthropicCurriculumClient(
             // Call 2 must never run against notes that say nothing was
             // found -- that's exactly the fabricated-lesson-list failure
             // mode #198 exists to prevent.
-            return CurriculumGenerationResult.NotFound;
+            return CurriculumGenerationResult.NotFound with { TokenUsage = searchUsage };
         }
 
         IReadOnlyList<GeneratedLesson>? lessons;
+        TokenUsage extractUsage;
         try
         {
-            lessons = await ExtractAndConstrainAsync(notes, cancellationToken);
+            (lessons, extractUsage) = await ExtractAndConstrainAsync(notes, cancellationToken);
         }
         catch (CallTimeoutException)
         {
-            return CurriculumGenerationResult.TimedOut;
+            // Call 1's usage is still real spend even though call 2 never
+            // finished -- attach what we have rather than discarding it.
+            return CurriculumGenerationResult.TimedOut with { TokenUsage = searchUsage };
         }
 
+        var totalUsage = searchUsage + extractUsage;
         return lessons is null
-            ? CurriculumGenerationResult.Failed
-            : CurriculumGenerationResult.Generated(lessons);
+            ? CurriculumGenerationResult.Failed with { TokenUsage = totalUsage }
+            : CurriculumGenerationResult.Generated(lessons, totalUsage);
     }
 
     // Call 1: search + gather. Web search enabled, capped at 8 uses, no
     // structured-output format -- free text so the model can explain what
     // it found (or didn't) in its own words, with citations.
-    private async Task<string> SearchAndGatherAsync(string curriculumName, CancellationToken cancellationToken)
+    private async Task<(string Notes, TokenUsage Usage)> SearchAndGatherAsync(string curriculumName, CancellationToken cancellationToken)
     {
         var response = await CreateWithTimeoutAsync(
             new MessageCreateParams
@@ -133,15 +140,19 @@ public class AnthropicCurriculumClient(
             searchTimeout,
             cancellationToken);
 
-        return ExtractText(response);
+        return (ExtractText(response), ToTokenUsage(response.Usage));
     }
 
     // Call 2: extract + constrain. No tools; output_config.format
     // constrains the response to the lesson-list JSON schema. Retries once
     // on a schema-validation failure, reusing the same notes (no re-search).
-    private async Task<IReadOnlyList<GeneratedLesson>?> ExtractAndConstrainAsync(string notes, CancellationToken cancellationToken)
+    // Usage accumulates across both attempts when a retry happens -- both
+    // are real spend against the same generation attempt.
+    private async Task<(IReadOnlyList<GeneratedLesson>? Lessons, TokenUsage Usage)> ExtractAndConstrainAsync(
+        string notes, CancellationToken cancellationToken)
     {
         const int maxAttempts = 2;
+        var usage = new TokenUsage(0, 0);
         for (var attempt = 1; attempt <= maxAttempts; attempt++)
         {
             var response = await CreateWithTimeoutAsync(
@@ -172,6 +183,7 @@ public class AnthropicCurriculumClient(
                 },
                 extractTimeout,
                 cancellationToken);
+            usage += ToTokenUsage(response.Usage);
 
             var json = ExtractText(response);
             try
@@ -184,9 +196,10 @@ public class AnthropicCurriculumClient(
                     continue;
                 }
 
-                return payload.Lessons
+                var lessons = payload.Lessons
                     .Select(lesson => new GeneratedLesson(lesson.Unit, lesson.LessonInUnit, lesson.Title, lesson.Description))
                     .ToList();
+                return (lessons, usage);
             }
             catch (JsonException) when (attempt < maxAttempts)
             {
@@ -195,8 +208,10 @@ public class AnthropicCurriculumClient(
             }
         }
 
-        return null;
+        return (null, usage);
     }
+
+    private static TokenUsage ToTokenUsage(Usage usage) => new(usage.InputTokens, usage.OutputTokens);
 
     private static string ExtractText(Message response)
     {
