@@ -1,6 +1,8 @@
+using Anthropic;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Tokens;
+using server.AiBulkGeneration;
 using server.Auth;
 using server.Data;
 using server.Sync;
@@ -24,8 +26,40 @@ if (string.IsNullOrEmpty(googleClientId))
     throw new InvalidOperationException("Google:ClientId is not configured.");
 }
 
+// Read eagerly, same as Google:ClientId above, so a missing Anthropic:ApiKey
+// fails the app at startup instead of the Anthropic client silently
+// degrading (or throwing mid-request) on the first AI Bulk Generation call.
+// Unlike Google:ClientId, a fake value here can't authenticate against the
+// real Anthropic API -- appsettings.Development.json intentionally carries
+// no placeholder, so local dev requires `dotnet user-secrets set
+// Anthropic:ApiKey <key>` (see server/README.md).
+var anthropicApiKey = builder.Configuration["Anthropic:ApiKey"];
+if (string.IsNullOrEmpty(anthropicApiKey))
+{
+    throw new InvalidOperationException("Anthropic:ApiKey is not configured.");
+}
+
+// Defaulted to claude-sonnet-5 in appsettings.json (#196); read here rather
+// than hardcoded in AnthropicCurriculumClient so a model bump is a config
+// change, not a code change.
+var anthropicModel = builder.Configuration["Anthropic:Model"] ?? "claude-sonnet-5";
+
 builder.Services.AddScoped<IGoogleTokenVerifier>(_ => new GoogleTokenVerifier(googleClientId));
 builder.Services.AddScoped<ISessionTokenService, JwtSessionTokenService>();
+
+// Singleton: the SDK client wraps a single HttpClient and is safe to share
+// across requests, same rationale as any other typed HTTP client in this
+// app. Constructed here (not resolved from DI as its own registration)
+// because it needs the eagerly-validated API key above, not a fresh
+// re-read of configuration per resolution.
+builder.Services.AddSingleton<IAnthropicClient>(_ => new AnthropicClient { ApiKey = anthropicApiKey });
+
+// Real Anthropic-backed two-call implementation (ADR-0018: search + gather,
+// then extract + constrain, with a one-time retry on schema-validation
+// failure) -- see AnthropicCurriculumClient.cs. Replaces the #197
+// placeholder registration.
+builder.Services.AddScoped<IAnthropicCurriculumClient>(sp =>
+    new AnthropicCurriculumClient(sp.GetRequiredService<IAnthropicClient>(), anthropicModel));
 
 builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
     .AddJwtBearer(options =>
@@ -97,6 +131,7 @@ app.UseAuthorization();
 
 app.MapAuthEndpoints();
 app.MapSyncEndpoints();
+app.MapAiBulkGenerationEndpoints();
 
 // Confirms the process is up (and, since Migrate() above already ran, that
 // migrations succeeded) -- for the docker build+run check and a one-time
