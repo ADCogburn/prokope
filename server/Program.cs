@@ -44,6 +44,10 @@ if (string.IsNullOrEmpty(anthropicApiKey))
 // change, not a code change.
 var anthropicModel = builder.Configuration["Anthropic:Model"] ?? "claude-sonnet-5";
 
+// Default of 20 matches ADR-0020; config-driven so the cap is a config
+// change, not a code change, same rationale as anthropicModel above.
+var dailyGenerationLimit = builder.Configuration.GetValue<int?>("AiBulkGeneration:DailyLimitPerTeacher") ?? 20;
+
 builder.Services.AddScoped<IGoogleTokenVerifier>(_ => new GoogleTokenVerifier(googleClientId));
 builder.Services.AddScoped<ISessionTokenService, JwtSessionTokenService>();
 
@@ -60,6 +64,11 @@ builder.Services.AddSingleton<IAnthropicClient>(_ => new AnthropicClient { ApiKe
 // placeholder registration.
 builder.Services.AddScoped<IAnthropicCurriculumClient>(sp =>
     new AnthropicCurriculumClient(sp.GetRequiredService<IAnthropicClient>(), anthropicModel));
+
+// Singleton: the daily count must be shared across every request, not
+// reset per-scope (#214, ADR-0020).
+builder.Services.AddSingleton<IDailyGenerationRateLimiter>(
+    _ => new InMemoryDailyGenerationRateLimiter(dailyGenerationLimit));
 
 builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
     .AddJwtBearer(options =>

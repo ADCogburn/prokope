@@ -48,6 +48,10 @@ public class DatabaseFixture : IAsyncLifetime
     // WebApplicationFactory build time.
     protected virtual bool DemoAccountEnabled => true;
 
+    // Overridden by SmallDailyLimitDatabaseFixture so #214's rate-limit
+    // tests can exhaust the cap in a handful of requests instead of 20.
+    protected virtual int DailyLimitPerTeacher => 20;
+
     public HttpClient CreateClient() => _factory!.CreateClient();
 
     // Exposes the running app's DI container so tests can assert directly
@@ -87,6 +91,7 @@ public class DatabaseFixture : IAsyncLifetime
                         ["Google:ClientId"] = GoogleClientId,
                         ["Anthropic:ApiKey"] = AnthropicApiKey,
                         ["App:DemoAccountEnabled"] = DemoAccountEnabled ? "true" : "false",
+                        ["AiBulkGeneration:DailyLimitPerTeacher"] = DailyLimitPerTeacher.ToString(),
                     }));
 
                 // The real GoogleTokenVerifier calls out to Google's network;
@@ -133,4 +138,12 @@ public class DatabaseFixture : IAsyncLifetime
 public class DemoAccountDisabledDatabaseFixture : DatabaseFixture
 {
     protected override bool DemoAccountEnabled => false;
+}
+
+// Same real-app boot as DatabaseFixture, but with a daily generation cap
+// small enough that AiBulkGenerationRateLimitTests can exhaust it in a
+// handful of requests instead of 20.
+public class SmallDailyLimitDatabaseFixture : DatabaseFixture
+{
+    protected override int DailyLimitPerTeacher => 3;
 }
