@@ -52,6 +52,11 @@ public class DatabaseFixture : IAsyncLifetime
     // tests can exhaust the cap in a handful of requests instead of 20.
     protected virtual int DailyLimitPerTeacher => 20;
 
+    // Overridden by SmallMonthlyLimitDatabaseFixture (#215) so its
+    // rate-limit tests can exhaust the cap in a handful of requests instead
+    // of 100.
+    protected virtual int MonthlyLimit => 100;
+
     // No-op by default; see the ConfigureServices call site above.
     protected virtual void ConfigureTestServices(IServiceCollection services)
     {
@@ -97,6 +102,7 @@ public class DatabaseFixture : IAsyncLifetime
                         ["Anthropic:ApiKey"] = AnthropicApiKey,
                         ["App:DemoAccountEnabled"] = DemoAccountEnabled ? "true" : "false",
                         ["AiBulkGeneration:DailyLimitPerTeacher"] = DailyLimitPerTeacher.ToString(),
+                        ["AiBulkGeneration:MonthlyLimit"] = MonthlyLimit.ToString(),
                     }));
 
                 // The real GoogleTokenVerifier calls out to Google's network;
@@ -171,4 +177,21 @@ public class CancellationProbeDatabaseFixture : DatabaseFixture
 {
     protected override void ConfigureTestServices(IServiceCollection services) =>
         services.Replace(ServiceDescriptor.Singleton<IAnthropicCurriculumClient, CancellationProbeAnthropicCurriculumClient>());
+}
+
+// Same real-app boot as DatabaseFixture, but with a monthly generation cap
+// small enough that AiBulkGenerationMonthlyRateLimitTests (#215) can exhaust
+// it in a handful of requests instead of 100.
+public class SmallMonthlyLimitDatabaseFixture : DatabaseFixture
+{
+    protected override int MonthlyLimit => 3;
+}
+
+// Same real-app boot as DatabaseFixture, but with both caps small, so
+// AiBulkGenerationRateLimitCrossContaminationTests (#215) can exercise both
+// limits within the same test run without either one dwarfing the other.
+public class SmallDailyAndMonthlyLimitDatabaseFixture : DatabaseFixture
+{
+    protected override int DailyLimitPerTeacher => 2;
+    protected override int MonthlyLimit => 3;
 }

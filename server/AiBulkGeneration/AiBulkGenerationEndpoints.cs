@@ -22,6 +22,7 @@ public static class AiBulkGenerationEndpoints
             AiBulkGenerationRequest request,
             IAnthropicCurriculumClient client,
             IDailyGenerationRateLimiter dailyRateLimiter,
+            IMonthlyGenerationRateLimiter monthlyRateLimiter,
             ClaimsPrincipal principal,
             CancellationToken cancellationToken) =>
         {
@@ -39,6 +40,16 @@ public static class AiBulkGenerationEndpoints
             {
                 return Results.Problem(
                     detail: $"You've used all {dailyRateLimiter.DailyLimit} AI generations for today — try again tomorrow.",
+                    statusCode: StatusCodes.Status429TooManyRequests);
+            }
+
+            // #215: independent from the daily check above -- separate
+            // storage, separate key (app-wide, not per-teacher) -- so
+            // exhausting one never consumes or affects the other's count.
+            if (!await monthlyRateLimiter.TryRecordAttemptAsync(cancellationToken))
+            {
+                return Results.Problem(
+                    detail: "AI Bulk Generation has reached its limit for this month — try again next month.",
                     statusCode: StatusCodes.Status429TooManyRequests);
             }
 
