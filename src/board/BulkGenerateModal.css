@@ -76,6 +76,18 @@
   font-weight: 600;
 }
 
+.bulk-generate-modal__not-found {
+  margin: 0 0 12px;
+  color: var(--text);
+  font-weight: 600;
+}
+
+.bulk-generate-modal__error {
+  margin: 0 0 12px;
+  color: var(--error);
+  font-weight: 600;
+}
+
 .bulk-generate-modal__confirm-list {
   max-height: 40vh;
   overflow-y: auto;

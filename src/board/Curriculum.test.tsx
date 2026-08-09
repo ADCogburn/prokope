@@ -759,6 +759,131 @@ describe('Curriculum', () => {
     })
   })
 
+  describe('Not-found and error screens with retry (#220)', () => {
+    beforeEach(() => {
+      localStorage.setItem(AUTH_TOKEN_STORAGE_KEY, 'a-token')
+      vi.stubGlobal('fetch', vi.fn())
+    })
+
+    it('shows a distinct not-found message with the typed name retained, on a 404 response', async () => {
+      const classRow = await createClass({ user_id: 'user-1', name: 'Homeroom' })
+      const subject = await createSubject({ class_id: classRow.id, name: 'Math', position: 0 })
+      vi.mocked(fetch).mockResolvedValueOnce(
+        jsonResponse({ curriculum_name: 'Zzyzx Math', message: "Couldn't find Zzyzx Math." }, 404),
+      )
+
+      renderCurriculum({ classRow, subject, lessons: [] })
+      fireEvent.click(screen.getByRole('button', { name: 'Bulk Generate' }))
+      fireEvent.click(screen.getByRole('button', { name: 'Auto-generate' }))
+      fireEvent.change(screen.getByLabelText('Curriculum name'), { target: { value: 'Zzyzx Math' } })
+      fireEvent.click(screen.getByRole('button', { name: 'Generate' }))
+
+      expect(await screen.findByText("Couldn't find Zzyzx Math.")).toBeInTheDocument()
+      expect(screen.getByLabelText('Curriculum name')).toHaveValue('Zzyzx Math')
+    })
+
+    it('Try again on the not-found screen resubmits the retained curriculum name', async () => {
+      const classRow = await createClass({ user_id: 'user-1', name: 'Homeroom' })
+      const subject = await createSubject({ class_id: classRow.id, name: 'Math', position: 0 })
+      vi.mocked(fetch).mockResolvedValueOnce(
+        jsonResponse({ curriculum_name: 'Zzyzx Math', message: "Couldn't find Zzyzx Math." }, 404),
+      )
+      vi.mocked(fetch).mockResolvedValueOnce(
+        jsonResponse({ lessons: [{ unit: 1, lesson_in_unit: 1, title: 'Intro', description: '' }] }),
+      )
+
+      renderCurriculum({ classRow, subject, lessons: [] })
+      fireEvent.click(screen.getByRole('button', { name: 'Bulk Generate' }))
+      fireEvent.click(screen.getByRole('button', { name: 'Auto-generate' }))
+      fireEvent.change(screen.getByLabelText('Curriculum name'), { target: { value: 'Zzyzx Math' } })
+      fireEvent.click(screen.getByRole('button', { name: 'Generate' }))
+      await screen.findByText("Couldn't find Zzyzx Math.")
+
+      fireEvent.click(screen.getByRole('button', { name: 'Try again' }))
+
+      expect(await screen.findByText('1 lesson across 1 unit')).toBeInTheDocument()
+      expect(vi.mocked(fetch)).toHaveBeenCalledTimes(2)
+      const [, secondInit] = vi.mocked(fetch).mock.calls[1]!
+      expect(JSON.parse((secondInit as RequestInit).body as string)).toEqual({ curriculum_name: 'Zzyzx Math' })
+    })
+
+    it('shows a generic error message, distinct from the not-found message, on a thrown error', async () => {
+      const classRow = await createClass({ user_id: 'user-1', name: 'Homeroom' })
+      const subject = await createSubject({ class_id: classRow.id, name: 'Math', position: 0 })
+      vi.mocked(fetch).mockResolvedValueOnce(jsonResponse({ detail: 'boom' }, 502))
+
+      renderCurriculum({ classRow, subject, lessons: [] })
+      fireEvent.click(screen.getByRole('button', { name: 'Bulk Generate' }))
+      fireEvent.click(screen.getByRole('button', { name: 'Auto-generate' }))
+      fireEvent.change(screen.getByLabelText('Curriculum name'), { target: { value: 'Algebra 1' } })
+      fireEvent.click(screen.getByRole('button', { name: 'Generate' }))
+
+      expect(await screen.findByRole('alert')).toHaveTextContent(
+        'Something went wrong while generating this curriculum. Please try again.',
+      )
+      expect(screen.queryByText(/Couldn't find/)).not.toBeInTheDocument()
+      expect(screen.getByLabelText('Curriculum name')).toHaveValue('Algebra 1')
+    })
+
+    it('Try again on the generic error screen resubmits the retained curriculum name', async () => {
+      const classRow = await createClass({ user_id: 'user-1', name: 'Homeroom' })
+      const subject = await createSubject({ class_id: classRow.id, name: 'Math', position: 0 })
+      vi.mocked(fetch).mockResolvedValueOnce(jsonResponse({ detail: 'boom' }, 502))
+      vi.mocked(fetch).mockResolvedValueOnce(
+        jsonResponse({ lessons: [{ unit: 1, lesson_in_unit: 1, title: 'Intro', description: '' }] }),
+      )
+
+      renderCurriculum({ classRow, subject, lessons: [] })
+      fireEvent.click(screen.getByRole('button', { name: 'Bulk Generate' }))
+      fireEvent.click(screen.getByRole('button', { name: 'Auto-generate' }))
+      fireEvent.change(screen.getByLabelText('Curriculum name'), { target: { value: 'Algebra 1' } })
+      fireEvent.click(screen.getByRole('button', { name: 'Generate' }))
+      await screen.findByRole('alert')
+
+      fireEvent.click(screen.getByRole('button', { name: 'Try again' }))
+
+      expect(await screen.findByText('1 lesson across 1 unit')).toBeInTheDocument()
+      expect(vi.mocked(fetch)).toHaveBeenCalledTimes(2)
+    })
+
+    it('Back on the not-found screen returns to the curriculum-name screen with no confirm dialog', async () => {
+      const classRow = await createClass({ user_id: 'user-1', name: 'Homeroom' })
+      const subject = await createSubject({ class_id: classRow.id, name: 'Math', position: 0 })
+      vi.mocked(fetch).mockResolvedValueOnce(
+        jsonResponse({ curriculum_name: 'Zzyzx Math', message: "Couldn't find Zzyzx Math." }, 404),
+      )
+
+      renderCurriculum({ classRow, subject, lessons: [] })
+      fireEvent.click(screen.getByRole('button', { name: 'Bulk Generate' }))
+      fireEvent.click(screen.getByRole('button', { name: 'Auto-generate' }))
+      fireEvent.change(screen.getByLabelText('Curriculum name'), { target: { value: 'Zzyzx Math' } })
+      fireEvent.click(screen.getByRole('button', { name: 'Generate' }))
+      await screen.findByText("Couldn't find Zzyzx Math.")
+
+      fireEvent.click(screen.getByRole('button', { name: 'Back' }))
+
+      expect(screen.queryByRole('dialog', { name: 'Stop generation' })).not.toBeInTheDocument()
+      expect(screen.getByLabelText('Curriculum name')).toHaveValue('Zzyzx Math')
+    })
+
+    it('closing the modal from the error screen closes immediately, with no confirm dialog', async () => {
+      const classRow = await createClass({ user_id: 'user-1', name: 'Homeroom' })
+      const subject = await createSubject({ class_id: classRow.id, name: 'Math', position: 0 })
+      vi.mocked(fetch).mockResolvedValueOnce(jsonResponse({ detail: 'boom' }, 502))
+
+      renderCurriculum({ classRow, subject, lessons: [] })
+      fireEvent.click(screen.getByRole('button', { name: 'Bulk Generate' }))
+      fireEvent.click(screen.getByRole('button', { name: 'Auto-generate' }))
+      fireEvent.change(screen.getByLabelText('Curriculum name'), { target: { value: 'Algebra 1' } })
+      fireEvent.click(screen.getByRole('button', { name: 'Generate' }))
+      await screen.findByRole('alert')
+
+      fireEvent.click(screen.getByRole('button', { name: 'Close' }))
+
+      expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
+    })
+  })
+
   it('generated lessons appear in their unit columns alongside existing lessons', async () => {
     const classRow = await createClass({ user_id: 'user-1', name: 'Homeroom' })
     const subject = await createSubject({ class_id: classRow.id, name: 'Math', position: 0 })
