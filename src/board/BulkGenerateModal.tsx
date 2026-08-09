@@ -55,9 +55,7 @@ function isValidCount(value: string): boolean {
  * by unit before anything is written. "Replace curriculum" is the only
  * write -- replaceLessonsFromAiGeneration soft-deletes the subject's
  * existing lessons and creates the proposed ones in one call, mirroring the
- * manual form's submitting/onClose flow. A `not-found` result or a thrown
- * error both fall back to the curriculum-name screen for now; #220 gives
- * each its own dedicated screen with a "Try again" action.
+ * manual form's submitting/onClose flow.
  *
  * #219 guards against losing an in-flight generation to an accidental click:
  * closing the modal (x/backdrop) or clicking "Back" while the loading screen
@@ -67,8 +65,16 @@ function isValidCount(value: string): boolean {
  * declining just dismisses the dialog. Leaving the Curriculum page entirely
  * unmounts this component, which aborts any in-flight request the same way,
  * with no navigation blocking or dialog.
+ *
+ * #220 gives a `not-found` result and a thrown error each their own screen
+ * (`auto-not-found` / `auto-error`) with a visibly distinct message -- the
+ * `not-found` message comes straight from the endpoint's response, the
+ * generic-error one is static -- and a "Try again" that resubmits the
+ * curriculum name still sitting in the retained input, no retyping needed.
+ * Neither screen is the loading screen, so requestClose() closes the modal
+ * from either one immediately, same as any other non-loading screen.
  */
-type Screen = 'manual' | 'auto' | 'auto-loading' | 'auto-confirm'
+type Screen = 'manual' | 'auto' | 'auto-loading' | 'auto-confirm' | 'auto-not-found' | 'auto-error'
 
 export function BulkGenerateModal({ subjectId, onClose, onGenerated }: BulkGenerateModalProps) {
   const [screen, setScreen] = useState<Screen>('manual')
@@ -78,6 +84,7 @@ export function BulkGenerateModal({ subjectId, onClose, onGenerated }: BulkGener
   const [curriculumName, setCurriculumName] = useState('')
   const [generatedLessons, setGeneratedLessons] = useState<GeneratedLesson[]>([])
   const [committing, setCommitting] = useState(false)
+  const [notFoundMessage, setNotFoundMessage] = useState('')
   const [showStopConfirm, setShowStopConfirm] = useState(false)
   const abortControllerRef = useRef<AbortController | null>(null)
 
@@ -113,16 +120,14 @@ export function BulkGenerateModal({ subjectId, onClose, onGenerated }: BulkGener
         setGeneratedLessons(result.lessons)
         setScreen('auto-confirm')
       } else {
-        // `not-found` -- #220 gives this its own screen; for now, back to
-        // the curriculum-name screen with the typed name still in place.
-        setScreen('auto')
+        setNotFoundMessage(result.message)
+        setScreen('auto-not-found')
       }
     } catch {
       // Aborted via the stop-generation confirm (#219) or an unmount: the
       // modal is already closing, so there's no screen to fall back to.
       if (controller.signal.aborted) return
-      // Generic failure -- same fallback as `not-found` until #220.
-      setScreen('auto')
+      setScreen('auto-error')
     } finally {
       abortControllerRef.current = null
     }
@@ -239,6 +244,50 @@ export function BulkGenerateModal({ subjectId, onClose, onGenerated }: BulkGener
                 Back
               </button>
               <p>Generating curriculum… this can take up to a minute.</p>
+            </div>
+          )}
+          {screen === 'auto-not-found' && (
+            <div className="inline-add-card__form">
+              <button type="button" className="bulk-generate-modal__back" onClick={() => setScreen('auto')}>
+                Back
+              </button>
+              <p className="bulk-generate-modal__not-found">{notFoundMessage}</p>
+              <label htmlFor="bulk-generate-curriculum-name">Curriculum name</label>
+              <input
+                id="bulk-generate-curriculum-name"
+                type="text"
+                value={curriculumName}
+                onChange={(event) => setCurriculumName(event.target.value)}
+                autoFocus
+              />
+              <div className="inline-add-card__actions">
+                <button type="button" disabled={!canGenerate} onClick={() => void handleGenerate()}>
+                  Try again
+                </button>
+              </div>
+            </div>
+          )}
+          {screen === 'auto-error' && (
+            <div className="inline-add-card__form">
+              <button type="button" className="bulk-generate-modal__back" onClick={() => setScreen('auto')}>
+                Back
+              </button>
+              <p role="alert" className="bulk-generate-modal__error">
+                Something went wrong while generating this curriculum. Please try again.
+              </p>
+              <label htmlFor="bulk-generate-curriculum-name">Curriculum name</label>
+              <input
+                id="bulk-generate-curriculum-name"
+                type="text"
+                value={curriculumName}
+                onChange={(event) => setCurriculumName(event.target.value)}
+                autoFocus
+              />
+              <div className="inline-add-card__actions">
+                <button type="button" disabled={!canGenerate} onClick={() => void handleGenerate()}>
+                  Try again
+                </button>
+              </div>
             </div>
           )}
           {screen === 'auto-confirm' && (
