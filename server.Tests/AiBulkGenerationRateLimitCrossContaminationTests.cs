@@ -2,8 +2,11 @@ using System.Net;
 using System.Net.Http.Headers;
 using System.Net.Http.Json;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.DependencyInjection;
 using server.AiBulkGeneration;
 using server.Auth;
+using server.Data;
 
 namespace server.Tests;
 
@@ -13,8 +16,25 @@ namespace server.Tests;
 // other's count. Uses SmallDailyAndMonthlyLimitDatabaseFixture (daily cap
 // 2, monthly cap 3) so both limits are reachable within the same test.
 public class AiBulkGenerationRateLimitCrossContaminationTests(SmallDailyAndMonthlyLimitDatabaseFixture fixture)
-    : IClassFixture<SmallDailyAndMonthlyLimitDatabaseFixture>
+    : IClassFixture<SmallDailyAndMonthlyLimitDatabaseFixture>, IAsyncLifetime
 {
+    // The monthly count is a single row keyed by calendar month, persisted
+    // in the one Postgres database this fixture boots for the whole class
+    // (IClassFixture) -- without clearing it before each test, the first
+    // test method's monthly spend would carry into the second, which
+    // assumes a fresh monthly budget. The daily cap doesn't need the same
+    // treatment: it's keyed per-teacher, and each test method mints its own
+    // brand-new teachers.
+    public async Task InitializeAsync()
+    {
+        using var scope = fixture.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+        db.AiBulkGenerationMonthlyUsage.RemoveRange(db.AiBulkGenerationMonthlyUsage);
+        await db.SaveChangesAsync();
+    }
+
+    public Task DisposeAsync() => Task.CompletedTask;
+
     [Fact]
     public async Task Exhausting_one_teacher_daily_cap_does_not_consume_the_monthly_budget()
     {
