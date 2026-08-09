@@ -44,15 +44,6 @@ if (string.IsNullOrEmpty(anthropicApiKey))
 // change, not a code change.
 var anthropicModel = builder.Configuration["Anthropic:Model"] ?? "claude-sonnet-5";
 
-// #218/ADR-0020: explicit per-call deadlines for the two sequential
-// Anthropic calls inside AnthropicCurriculumClient -- defaults (30s search,
-// 60s extract) match the ADR; config-driven for the same reason as the
-// daily limit above.
-var searchCallTimeout = TimeSpan.FromSeconds(
-    builder.Configuration.GetValue<int?>("AiBulkGeneration:SearchCallTimeoutSeconds") ?? 30);
-var extractCallTimeout = TimeSpan.FromSeconds(
-    builder.Configuration.GetValue<int?>("AiBulkGeneration:ExtractCallTimeoutSeconds") ?? 60);
-
 builder.Services.AddScoped<IGoogleTokenVerifier>(_ => new GoogleTokenVerifier(googleClientId));
 builder.Services.AddScoped<ISessionTokenService, JwtSessionTokenService>();
 
@@ -67,8 +58,19 @@ builder.Services.AddSingleton<IAnthropicClient>(_ => new AnthropicClient { ApiKe
 // then extract + constrain, with a one-time retry on schema-validation
 // failure) -- see AnthropicCurriculumClient.cs. Replaces the #197
 // placeholder registration.
+//
+// #218/ADR-0020: explicit per-call deadlines for the two sequential
+// Anthropic calls -- defaults (30s search, 60s extract) match the ADR.
+// Read lazily here (at DI-resolution time, after builder.Build()), same as
+// the daily/monthly rate limits below and for the same reason: an eager
+// read above would only ever see the pre-Build() defaults.
 builder.Services.AddScoped<IAnthropicCurriculumClient>(sp =>
-    new AnthropicCurriculumClient(sp.GetRequiredService<IAnthropicClient>(), anthropicModel, searchCallTimeout, extractCallTimeout));
+    new AnthropicCurriculumClient(
+        sp.GetRequiredService<IAnthropicClient>(),
+        anthropicModel,
+        TimeSpan.FromSeconds(sp.GetRequiredService<IConfiguration>().GetValue<int?>("AiBulkGeneration:SearchCallTimeoutSeconds") ?? 30),
+        TimeSpan.FromSeconds(sp.GetRequiredService<IConfiguration>().GetValue<int?>("AiBulkGeneration:ExtractCallTimeoutSeconds") ?? 60),
+        sp.GetRequiredService<ILogger<AnthropicCurriculumClient>>()));
 
 // Singleton: the daily count must be shared across every request, not
 // reset per-scope (#214, ADR-0020). Default of 20 matches ADR-0020;
