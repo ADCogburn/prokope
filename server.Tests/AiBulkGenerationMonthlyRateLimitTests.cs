@@ -17,9 +17,24 @@ namespace server.Tests;
 // from configuration rather than hardcoded, since it trips at request 4
 // here instead of request 101.
 public class AiBulkGenerationMonthlyRateLimitTests(SmallMonthlyLimitDatabaseFixture fixture)
-    : IClassFixture<SmallMonthlyLimitDatabaseFixture>
+    : IClassFixture<SmallMonthlyLimitDatabaseFixture>, IAsyncLifetime
 {
     private const int MonthlyLimit = 3;
+
+    // The monthly count is a single row keyed by calendar month, persisted
+    // in the one Postgres database this fixture boots for the whole class
+    // (IClassFixture) -- without clearing it before each test, whichever
+    // test method runs first would consume slots every later method also
+    // assumes are still free.
+    public async Task InitializeAsync()
+    {
+        using var scope = fixture.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+        db.AiBulkGenerationMonthlyUsage.RemoveRange(db.AiBulkGenerationMonthlyUsage);
+        await db.SaveChangesAsync();
+    }
+
+    public Task DisposeAsync() => Task.CompletedTask;
 
     [Fact]
     public async Task Once_the_monthly_cap_is_reached_further_requests_receive_429_with_a_monthly_specific_message()
