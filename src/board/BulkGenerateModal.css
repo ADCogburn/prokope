@@ -55,3 +55,18 @@
 .bulk-generate-modal .inline-add-card__form {
   padding: 20px;
 }
+
+.bulk-generate-modal__auto-generate,
+.bulk-generate-modal__back {
+  display: block;
+  font: inherit;
+  font-size: 14px;
+  font-weight: 600;
+  padding: 0;
+  margin-bottom: 16px;
+  border: none;
+  background: none;
+  color: var(--accent);
+  cursor: pointer;
+  text-decoration: underline;
+}

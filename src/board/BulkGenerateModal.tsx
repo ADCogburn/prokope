@@ -41,13 +41,22 @@ function isValidCount(value: string): boolean {
  * closes the dialog once it resolves, mirroring AddLessonModal's
  * submitting/onClose flow so generated lessons sync the same way any other
  * locally-created lesson already does.
+ *
+ * #216 adds a second screen behind an "Auto-generate" toggle (ADR-0019):
+ * swaps this manual form for a blank curriculum-name input, with "Back" to
+ * return. Purely a mode switch -- no network call happens here yet.
  */
+type Screen = 'manual' | 'auto'
+
 export function BulkGenerateModal({ subjectId, onClose, onGenerated }: BulkGenerateModalProps) {
+  const [screen, setScreen] = useState<Screen>('manual')
   const [units, setUnits] = useState('')
   const [lessonsPerUnit, setLessonsPerUnit] = useState('')
   const [submitting, setSubmitting] = useState(false)
+  const [curriculumName, setCurriculumName] = useState('')
 
   const canSubmit = isValidCount(units) && isValidCount(lessonsPerUnit)
+  const canGenerate = curriculumName.trim() !== ''
 
   async function handleSubmit(event: FormEvent) {
     event.preventDefault()
@@ -70,40 +79,72 @@ export function BulkGenerateModal({ subjectId, onClose, onGenerated }: BulkGener
         onClick={(event) => event.stopPropagation()}
       >
         <div className="bulk-generate-modal__header">
-          <h2>Bulk Generate</h2>
+          <h2>{screen === 'auto' ? 'Auto-generate Curriculum' : 'Bulk Generate'}</h2>
           <button type="button" aria-label="Close" className="bulk-generate-modal__close" onClick={onClose}>
             <span aria-hidden="true">×</span>
           </button>
         </div>
-        <form className="inline-add-card__form" onSubmit={(event) => void handleSubmit(event)}>
-          <label htmlFor="bulk-generate-units">Units</label>
-          <input
-            id="bulk-generate-units"
-            type="number"
-            min={MIN_COUNT}
-            max={MAX_COUNT}
-            value={units}
-            onChange={(event) => setUnits(clampToMax(event.target.value))}
-            autoFocus
-          />
-          <label htmlFor="bulk-generate-lessons-per-unit">Lessons per unit</label>
-          <input
-            id="bulk-generate-lessons-per-unit"
-            type="number"
-            min={MIN_COUNT}
-            max={MAX_COUNT}
-            value={lessonsPerUnit}
-            onChange={(event) => setLessonsPerUnit(clampToMax(event.target.value))}
-          />
-          <div className="inline-add-card__actions">
-            <button type="button" onClick={onClose}>
-              Cancel
+        {screen === 'auto' ? (
+          <div className="inline-add-card__form">
+            <button
+              type="button"
+              className="bulk-generate-modal__back"
+              onClick={() => setScreen('manual')}
+            >
+              Back
             </button>
-            <button type="submit" disabled={submitting || !canSubmit}>
-              Generate
-            </button>
+            <label htmlFor="bulk-generate-curriculum-name">Curriculum name</label>
+            <input
+              id="bulk-generate-curriculum-name"
+              type="text"
+              value={curriculumName}
+              onChange={(event) => setCurriculumName(event.target.value)}
+              autoFocus
+            />
+            <div className="inline-add-card__actions">
+              <button type="button" disabled={!canGenerate}>
+                Generate
+              </button>
+            </div>
           </div>
-        </form>
+        ) : (
+          <form className="inline-add-card__form" onSubmit={(event) => void handleSubmit(event)}>
+            <button
+              type="button"
+              className="bulk-generate-modal__auto-generate"
+              onClick={() => setScreen('auto')}
+            >
+              Auto-generate
+            </button>
+            <label htmlFor="bulk-generate-units">Units</label>
+            <input
+              id="bulk-generate-units"
+              type="number"
+              min={MIN_COUNT}
+              max={MAX_COUNT}
+              value={units}
+              onChange={(event) => setUnits(clampToMax(event.target.value))}
+              autoFocus
+            />
+            <label htmlFor="bulk-generate-lessons-per-unit">Lessons per unit</label>
+            <input
+              id="bulk-generate-lessons-per-unit"
+              type="number"
+              min={MIN_COUNT}
+              max={MAX_COUNT}
+              value={lessonsPerUnit}
+              onChange={(event) => setLessonsPerUnit(clampToMax(event.target.value))}
+            />
+            <div className="inline-add-card__actions">
+              <button type="button" onClick={onClose}>
+                Cancel
+              </button>
+              <button type="submit" disabled={submitting || !canSubmit}>
+                Generate
+              </button>
+            </div>
+          </form>
+        )}
       </div>
     </div>
   )

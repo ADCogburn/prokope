@@ -487,6 +487,75 @@ describe('Curriculum', () => {
     expect(rows).toHaveLength(0)
   })
 
+  it('shows an Auto-generate button above the Units input in the Bulk Generate dialog', async () => {
+    const classRow = await createClass({ user_id: 'user-1', name: 'Homeroom' })
+    const subject = await createSubject({ class_id: classRow.id, name: 'Math', position: 0 })
+
+    renderCurriculum({ classRow, subject, lessons: [] })
+
+    fireEvent.click(screen.getByRole('button', { name: 'Bulk Generate' }))
+
+    expect(screen.getByRole('button', { name: 'Auto-generate' })).toBeInTheDocument()
+  })
+
+  it('clicking Auto-generate swaps the manual form for the curriculum-name screen', async () => {
+    const classRow = await createClass({ user_id: 'user-1', name: 'Homeroom' })
+    const subject = await createSubject({ class_id: classRow.id, name: 'Math', position: 0 })
+
+    renderCurriculum({ classRow, subject, lessons: [] })
+
+    fireEvent.click(screen.getByRole('button', { name: 'Bulk Generate' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Auto-generate' }))
+
+    expect(screen.getByRole('heading', { name: 'Auto-generate Curriculum' })).toBeInTheDocument()
+    expect(screen.getByLabelText('Curriculum name')).toBeInTheDocument()
+    expect(screen.queryByLabelText('Units')).not.toBeInTheDocument()
+    expect(screen.queryByLabelText('Lessons per unit')).not.toBeInTheDocument()
+  })
+
+  it('the curriculum-name field starts blank, never pre-filled with the subject name', async () => {
+    const classRow = await createClass({ user_id: 'user-1', name: 'Homeroom' })
+    const subject = await createSubject({ class_id: classRow.id, name: 'Math', position: 0 })
+
+    renderCurriculum({ classRow, subject, lessons: [] })
+
+    fireEvent.click(screen.getByRole('button', { name: 'Bulk Generate' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Auto-generate' }))
+
+    expect(screen.getByLabelText('Curriculum name')).toHaveValue('')
+  })
+
+  it('disables Generate on the auto-generate screen until the curriculum name is non-empty', async () => {
+    const classRow = await createClass({ user_id: 'user-1', name: 'Homeroom' })
+    const subject = await createSubject({ class_id: classRow.id, name: 'Math', position: 0 })
+
+    renderCurriculum({ classRow, subject, lessons: [] })
+
+    fireEvent.click(screen.getByRole('button', { name: 'Bulk Generate' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Auto-generate' }))
+
+    expect(screen.getByRole('button', { name: 'Generate' })).toBeDisabled()
+
+    fireEvent.change(screen.getByLabelText('Curriculum name'), { target: { value: 'Algebra' } })
+
+    expect(screen.getByRole('button', { name: 'Generate' })).toBeEnabled()
+  })
+
+  it('Back on the curriculum-name screen returns to the manual Bulk Generate form', async () => {
+    const classRow = await createClass({ user_id: 'user-1', name: 'Homeroom' })
+    const subject = await createSubject({ class_id: classRow.id, name: 'Math', position: 0 })
+
+    renderCurriculum({ classRow, subject, lessons: [] })
+
+    fireEvent.click(screen.getByRole('button', { name: 'Bulk Generate' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Auto-generate' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Back' }))
+
+    expect(screen.getByRole('heading', { name: 'Bulk Generate' })).toBeInTheDocument()
+    expect(screen.getByLabelText('Units')).toBeInTheDocument()
+    expect(screen.getByLabelText('Lessons per unit')).toBeInTheDocument()
+  })
+
   it('generated lessons appear in their unit columns alongside existing lessons', async () => {
     const classRow = await createClass({ user_id: 'user-1', name: 'Homeroom' })
     const subject = await createSubject({ class_id: classRow.id, name: 'Math', position: 0 })
